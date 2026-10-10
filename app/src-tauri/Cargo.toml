@@ -21,8 +21,10 @@ deadwax-sources = { path = "../../crates/deadwax-sources" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-opener = "2"
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["macros", "sync"] }
 
 [dev-dependencies]
 syn = { version = "2", features = ["full"] }
 tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"

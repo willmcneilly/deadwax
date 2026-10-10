@@ -42,6 +42,7 @@ pub fn run() {
             commands::get_client_id,
             commands::set_client_id,
             commands::sign_in,
+            commands::cancel_sign_in,
             commands::open_spotify_dashboard,
         ])
         .run(tauri::generate_context!())

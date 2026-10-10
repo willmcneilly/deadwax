@@ -113,6 +113,31 @@ describe("App", () => {
     expect(await screen.findByText("Signed in as Will")).toBeInTheDocument();
   });
 
+  it("cancels a sign-in that never comes back, and ignores it if it does", async () => {
+    let fail: (reason: string) => void = () => {};
+    const calls = backEnd({
+      get_session: session({ state: "signedOut", message: null }),
+      sign_in: () => new Promise<Session>((_, reject) => (fail = reject)),
+      cancel_sign_in: () => null,
+    });
+    render(<App />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sign in with Spotify" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Sign in with Spotify" }),
+    ).toBeInTheDocument();
+    expect(calls.map((c) => c.cmd)).toContain("cancel_sign_in");
+
+    // Rust ends the cancelled sign-in with an error, which isn't shown.
+    fail("Sign-in was cancelled.");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows a failed sign-in and lets you try again", async () => {
     backEnd({
       get_session: session({ state: "signedOut", message: null }),

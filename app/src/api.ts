@@ -16,6 +16,7 @@ export const getClientId = () => invoke<string | null>("get_client_id");
 export const setClientId = (clientId: string) =>
   invoke<Session>("set_client_id", { clientId });
 export const signIn = () => invoke<Session>("sign_in");
+export const cancelSignIn = () => invoke<void>("cancel_sign_in");
 export const openSpotifyDashboard = () =>
   invoke<void>("open_spotify_dashboard");
 
