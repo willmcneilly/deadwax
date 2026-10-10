@@ -9,6 +9,7 @@ import {
 import AlbumPage from "./AlbumPage";
 import DevList from "./DevList";
 import Grid from "./Grid";
+import PlaybackBar from "./PlaybackBar";
 import Search from "./Search";
 import "./Library.css";
 
@@ -18,12 +19,17 @@ type Props = {
   onSignedOut: (session: Session) => void;
 };
 
-/** The collection, with the search box above it, or one album's page. */
+/**
+ * The collection, with the search box above it, or one album's page. The
+ * playback bar is always at the bottom.
+ */
 function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** The album whose page is open, if any. */
   const [open, setOpen] = useState<string | null>(null);
+  /** Counts albums started, so the playback bar asks again straight away. */
+  const [started, setStarted] = useState(0);
 
   const load = useCallback(() => {
     getCollection().then(setAlbums, (e: unknown) => setError(errorMessage(e)));
@@ -91,6 +97,7 @@ function Library({ name, onSignedOut }: Props) {
           id={open}
           onBack={closeAlbum}
           onRemoved={removed}
+          onPlayed={() => setStarted((n) => n + 1)}
           onFailed={failed}
         />
       ) : (
@@ -105,6 +112,7 @@ function Library({ name, onSignedOut }: Props) {
           {albums && <Grid albums={albums} onOpen={openAlbum} />}
         </>
       )}
+      <PlaybackBar started={started} onFailed={failed} />
     </div>
   );
 }

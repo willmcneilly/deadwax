@@ -167,3 +167,39 @@
   flex-basis: 100%;
   margin: 0;
 }
+
+/* Room for the playback bar, which sits over the bottom of the window. */
+.library {
+  padding-bottom: calc(var(--space) * 12);
+}
+
+.playback-bar {
+  position: fixed;
+  inset: auto 0 0;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 1.5) calc(var(--space) * 4);
+  background: var(--surface);
+  border-top: 1px solid var(--ink-muted);
+}
+
+.playback-controls {
+  display: flex;
+  gap: var(--space);
+}
+
+.playback-now {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.playback-track {
+  font-weight: 600;
+}
+
+.playback-meta,
+.playback-quiet {
+  color: var(--ink-muted);
+}

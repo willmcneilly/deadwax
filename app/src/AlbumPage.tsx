@@ -3,12 +3,15 @@ import {
   errorMessage,
   getAlbum,
   openAlbumInSpotify,
+  playAlbum,
   refreshAlbum,
   removeAlbum,
   type AlbumDetails,
   type AlbumTrack,
 } from "./api";
 import Cover from "./Cover";
+import DevicePicker from "./DevicePicker";
+import useDevices from "./useDevices";
 import "./AlbumPage.css";
 
 type Props = {
@@ -17,6 +20,8 @@ type Props = {
   onBack: () => void;
   /** The album has left the collection. */
   onRemoved: (id: string) => void;
+  /** Spotify has started playing the album. */
+  onPlayed: () => void;
   onFailed: (error: unknown) => void;
 };
 
@@ -25,10 +30,12 @@ type Props = {
  * A cache over a week old is fetched again, and the page updates when it
  * arrives.
  */
-function AlbumPage({ id, onBack, onRemoved, onFailed }: Props) {
+function AlbumPage({ id, onBack, onRemoved, onPlayed, onFailed }: Props) {
   const [album, setAlbum] = useState<AlbumDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const devices = useDevices(onFailed);
   // The latest handler, so a new one from the parent doesn't load the page
   // again.
   const failed = useRef(onFailed);
@@ -59,6 +66,26 @@ function AlbumPage({ id, onBack, onRemoved, onFailed }: Props) {
       current = false;
     };
   }, [id]);
+
+  /**
+   * Plays the album on the chosen device, from the first track or `trackId`.
+   * Rust asks Spotify for its devices first. If the device isn't listed, the
+   * picker says so.
+   */
+  async function play(trackId: string | null) {
+    if (devices.selected === null) return;
+    setStarting(true);
+    try {
+      const outcome = await playAlbum(id, devices.selected, trackId);
+      devices.setDevices(outcome.devices);
+      if (outcome.state === "playing") onPlayed();
+    } catch (e) {
+      onFailed(e);
+    } finally {
+      setStarting(false);
+    }
+  }
+  const canPlay = devices.selected !== null && !starting;
 
   async function remove() {
     setRemoving(true);
@@ -112,7 +139,26 @@ function AlbumPage({ id, onBack, onRemoved, onFailed }: Props) {
                 {removing ? "Removing…" : "Remove from collection"}
               </button>
             </div>
-            <Tracklist tracks={album.tracks} />
+            <div className="album-play">
+              <button
+                type="button"
+                onClick={() => void play(null)}
+                disabled={!canPlay}
+              >
+                {starting ? "Starting…" : "Play"}
+              </button>
+              <DevicePicker
+                devices={devices.devices}
+                selected={devices.selected}
+                refreshing={devices.refreshing}
+                onChoose={devices.choose}
+                onRefresh={devices.refresh}
+              />
+            </div>
+            <Tracklist
+              tracks={album.tracks}
+              onPlay={canPlay ? (track) => void play(track) : null}
+            />
           </div>
         </div>
       )}
@@ -120,10 +166,20 @@ function AlbumPage({ id, onBack, onRemoved, onFailed }: Props) {
   );
 }
 
-/** The tracks in order, under a heading per disc when there's more than one. */
-function Tracklist({ tracks }: { tracks: AlbumTrack[] }) {
+type TracksProps = {
+  tracks: AlbumTrack[];
+  /** Plays the album from the track with this ID. Null when it can't. */
+  onPlay: ((trackId: string) => void) | null;
+};
+
+/**
+ * The tracks in order, under a heading per disc when there's more than one.
+ * Clicking a track plays the album from there.
+ */
+function Tracklist({ tracks, onPlay }: TracksProps) {
   const discs = [...new Set(tracks.map((track) => track.disc))];
-  if (discs.length <= 1) return <Tracks tracks={tracks} label="Tracks" />;
+  if (discs.length <= 1)
+    return <Tracks tracks={tracks} label="Tracks" onPlay={onPlay} />;
   return (
     <>
       {discs.map((disc) => (
@@ -132,6 +188,7 @@ function Tracklist({ tracks }: { tracks: AlbumTrack[] }) {
           <Tracks
             tracks={tracks.filter((track) => track.disc === disc)}
             label={`Disc ${disc}`}
+            onPlay={onPlay}
           />
         </section>
       ))}
@@ -139,13 +196,32 @@ function Tracklist({ tracks }: { tracks: AlbumTrack[] }) {
   );
 }
 
-function Tracks({ tracks, label }: { tracks: AlbumTrack[]; label: string }) {
+function Tracks({
+  tracks,
+  label,
+  onPlay,
+}: TracksProps & {
+  label: string;
+}) {
   return (
     <ol className="tracks" aria-label={label}>
-      {tracks.map((track) => (
-        <li key={track.id} className="track">
+      {tracks.map((track, index) => (
+        <li key={track.id || index} className="track">
           <span className="track-number">{track.number}</span>
-          <span className="track-title">{track.title}</span>
+          {/* A track Spotify gave no ID (a local file) can't be played. */}
+          {track.id ? (
+            <button
+              type="button"
+              className="track-title"
+              aria-label={`Play ${track.title}`}
+              onClick={() => onPlay?.(track.id)}
+              disabled={!onPlay}
+            >
+              {track.title}
+            </button>
+          ) : (
+            <span className="track-title">{track.title}</span>
+          )}
           <span className="track-duration">{duration(track.durationMs)}</span>
         </li>
       ))}
