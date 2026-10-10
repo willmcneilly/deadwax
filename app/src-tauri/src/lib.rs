@@ -117,6 +117,14 @@ pub fn run() {
             commands::refresh_album,
             commands::remove_album,
             commands::open_album_in_spotify,
+            commands::get_devices,
+            commands::choose_device,
+            commands::play_album,
+            commands::get_playback,
+            commands::pause_playback,
+            commands::resume_playback,
+            commands::next_track,
+            commands::previous_track,
             #[cfg(debug_assertions)]
             commands::dev::dev_list_missing,
             #[cfg(debug_assertions)]
