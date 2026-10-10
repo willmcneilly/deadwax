@@ -1,0 +1,209 @@
+//! The one HTTP client every Spotify call goes through, so rate limits are
+//! handled in one place.
+//!
+//! Spotify counts requests over a rolling 30 seconds and doesn't publish the
+//! limit. When it's hit, the reply is a `429` with `Retry-After` in seconds.
+//! We wait exactly that long and try again, a few times at most, and never in
+//! a tight loop.
+
+use std::time::Duration;
+
+use reqwest::header::RETRY_AFTER;
+use reqwest::{Request, RequestBuilder, Response, StatusCode};
+
+use crate::clock::Clock;
+
+/// How many times a request is retried after a `429` before giving up.
+const MAX_RETRIES: u32 = 3;
+
+/// The longest `Retry-After` we'll sit through. Spotify sometimes asks for
+/// hours. Better to say so than to leave a button spinning.
+const MAX_WAIT: Duration = Duration::from_secs(30);
+
+/// The wait when a `429` has no usable `Retry-After`.
+const DEFAULT_WAIT: Duration = Duration::from_secs(5);
+
+#[derive(Debug, thiserror::Error)]
+pub enum HttpError {
+    #[error("couldn't reach Spotify: {0}")]
+    Network(#[from] reqwest::Error),
+    #[error("Spotify is rate limiting Deadwax. Try again in {} seconds.", .0.as_secs())]
+    RateLimited(Duration),
+}
+
+pub struct SpotifyHttp<C> {
+    client: reqwest::Client,
+    clock: C,
+}
+
+impl<C: Clock> SpotifyHttp<C> {
+    pub fn new(clock: C) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            clock,
+        }
+    }
+
+    pub fn clock(&self) -> &C {
+        &self.clock
+    }
+
+    pub fn get(&self, url: &str) -> RequestBuilder {
+        self.client.get(url)
+    }
+
+    pub fn post(&self, url: &str) -> RequestBuilder {
+        self.client.post(url)
+    }
+
+    /// Sends the request, waiting out any `429`s. Any other status is the
+    /// caller's to handle.
+    pub async fn send(&self, request: RequestBuilder) -> Result<Response, HttpError> {
+        let request = request.build()?;
+        let mut retries = 0;
+        loop {
+            let response = self.client.execute(clone(&request)).await?;
+            if response.status() != StatusCode::TOO_MANY_REQUESTS {
+                return Ok(response);
+            }
+            let wait = retry_after(&response);
+            if retries == MAX_RETRIES || wait > MAX_WAIT {
+                return Err(HttpError::RateLimited(wait));
+            }
+            retries += 1;
+            self.clock.sleep(wait).await;
+        }
+    }
+}
+
+fn clone(request: &Request) -> Request {
+    // Our requests have no streaming bodies, so they always clone.
+    request
+        .try_clone()
+        .expect("Spotify requests have cloneable bodies")
+}
+
+fn retry_after(response: &Response) -> Duration {
+    response
+        .headers()
+        .get(RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_WAIT)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, Request as MockRequest, Respond, ResponseTemplate};
+
+    use super::*;
+    use crate::clock::fake::FakeClock;
+
+    /// Writes "request" to the shared log, then replies with `response`.
+    struct Logged {
+        log: Arc<Mutex<Vec<String>>>,
+        response: ResponseTemplate,
+    }
+
+    impl Respond for Logged {
+        fn respond(&self, _: &MockRequest) -> ResponseTemplate {
+            self.log.lock().unwrap().push("request".into());
+            self.response.clone()
+        }
+    }
+
+    /// A server whose first `limited` replies are `429`s with `retry_after`,
+    /// and every reply after that a `200`.
+    async fn server(log: &Arc<Mutex<Vec<String>>>, limited: u64, retry_after: &str) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/me"))
+            .respond_with(Logged {
+                log: log.clone(),
+                response: ResponseTemplate::new(429).insert_header("Retry-After", retry_after),
+            })
+            .up_to_n_times(limited)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v1/me"))
+            .respond_with(Logged {
+                log: log.clone(),
+                response: ResponseTemplate::new(200),
+            })
+            .with_priority(2)
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn retries_a_429_after_its_retry_after_and_only_then() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server = server(&log, 1, "2").await;
+        let http = SpotifyHttp::new(FakeClock::new(log.clone()));
+
+        let response = http
+            .send(http.get(&format!("{}/v1/me", server.uri())))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(*log.lock().unwrap(), ["request", "sleep 2s", "request"]);
+    }
+
+    #[tokio::test]
+    async fn gives_up_after_three_retries() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server = server(&log, 10, "1").await;
+        let http = SpotifyHttp::new(FakeClock::new(log.clone()));
+
+        let result = http
+            .send(http.get(&format!("{}/v1/me", server.uri())))
+            .await;
+
+        assert!(
+            matches!(result, Err(HttpError::RateLimited(wait)) if wait == Duration::from_secs(1))
+        );
+        assert_eq!(
+            *log.lock().unwrap(),
+            [
+                "request", "sleep 1s", "request", "sleep 1s", "request", "sleep 1s", "request"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_sit_through_a_long_retry_after() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server = server(&log, 1, "3600").await;
+        let http = SpotifyHttp::new(FakeClock::new(log.clone()));
+
+        let result = http
+            .send(http.get(&format!("{}/v1/me", server.uri())))
+            .await;
+
+        assert!(
+            matches!(result, Err(HttpError::RateLimited(wait)) if wait == Duration::from_secs(3600))
+        );
+        assert_eq!(*log.lock().unwrap(), ["request"]);
+    }
+
+    #[tokio::test]
+    async fn waits_a_default_time_when_retry_after_is_missing_or_unreadable() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server = server(&log, 1, "soon").await;
+        let http = SpotifyHttp::new(FakeClock::new(log.clone()));
+
+        http.send(http.get(&format!("{}/v1/me", server.uri())))
+            .await
+            .unwrap();
+
+        assert_eq!(*log.lock().unwrap(), ["request", "sleep 5s", "request"]);
+    }
+}
