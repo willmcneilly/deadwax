@@ -222,3 +222,7 @@
 .playback-quiet {
   color: var(--ink-muted);
 }
+
+.playback-open {
+  margin-left: auto;
+}
