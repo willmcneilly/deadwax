@@ -517,7 +517,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "Spotify replied 404 Not Found to the album"
+            "Spotify replied 404 Not Found to the album: Resource not found"
         );
     }
 

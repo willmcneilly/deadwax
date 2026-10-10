@@ -79,3 +79,55 @@ export const refreshAlbum = (id: string) =>
 export const removeAlbum = (id: string) => invoke<void>("remove_album", { id });
 export const openAlbumInSpotify = (id: string) =>
   invoke<void>("open_album_in_spotify", { id });
+
+/** A Spotify Connect device, as the device picker shows it. */
+export type DeviceChoice = {
+  name: string;
+  /** "Speaker", "TV", "Computer" and so on. */
+  kind: string;
+  /** The device playing, or last to play. */
+  isActive: boolean;
+  /** Spotify will take commands for it. */
+  canPlay: boolean;
+};
+
+/** What Spotify lists now, and the device you chose last. */
+export type Devices = { devices: DeviceChoice[]; remembered: string | null };
+
+/**
+ * What happened when you pressed Play, with the device list as Spotify gave
+ * it just before.
+ */
+export type PlayOutcome =
+  | { state: "playing"; devices: DeviceChoice[] }
+  /** Spotify isn't listing the device: it's asleep or offline. */
+  | { state: "deviceMissing"; devices: DeviceChoice[] };
+
+/** What Spotify is playing, anywhere. */
+export type NowPlaying = {
+  isPlaying: boolean;
+  device: string | null;
+  progressMs: number | null;
+  /** Null for an advert or anything else Spotify won't describe. */
+  track: {
+    title: string;
+    artist: string;
+    album: string | null;
+    albumId: string | null;
+    durationMs: number;
+  } | null;
+};
+
+export const getDevices = () => invoke<Devices>("get_devices");
+/** Remembers the device you chose, by name. */
+export const chooseDevice = (name: string) =>
+  invoke<void>("choose_device", { name });
+/** Plays the album on the named device, from the first track or `trackId`. */
+export const playAlbum = (id: string, device: string, trackId: string | null) =>
+  invoke<PlayOutcome>("play_album", { id, device, trackId });
+/** Null when Spotify isn't playing anything. */
+export const getPlayback = () => invoke<NowPlaying | null>("get_playback");
+export const pausePlayback = () => invoke<void>("pause_playback");
+export const resumePlayback = () => invoke<void>("resume_playback");
+export const nextTrack = () => invoke<void>("next_track");
+export const previousTrack = () => invoke<void>("previous_track");

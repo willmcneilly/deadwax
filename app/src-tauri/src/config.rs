@@ -15,6 +15,11 @@ pub struct Config {
     /// question 3). Not a secret.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spotify_client_id: Option<String>,
+    /// The name of the Spotify Connect device you last chose. Matched by
+    /// name, because Spotify's device IDs don't last (RFC-001, "Playing
+    /// music").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_device: Option<String>,
 }
 
 pub fn path(app_data_dir: &Path) -> PathBuf {
@@ -74,6 +79,7 @@ mod tests {
         let path = path(&dir.path().join("com.willmcneilly.deadwax"));
         let config = Config {
             spotify_client_id: Some(ID.into()),
+            last_device: Some("Living Room".into()),
         };
 
         save(&path, &config).unwrap();
@@ -83,6 +89,11 @@ mod tests {
             fs::read_to_string(&path)
                 .unwrap()
                 .contains("\"spotifyClientId\"")
+        );
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("\"lastDevice\": \"Living Room\"")
         );
     }
 

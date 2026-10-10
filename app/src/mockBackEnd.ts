@@ -24,10 +24,20 @@ export function backEnd(
 }
 
 /**
- * An empty collection. Development builds also ask whether the dev list has
- * albums to restore into it: here it has none.
+ * Nothing playing, and no devices. The playback bar is always on screen and
+ * the album page lists devices, so most tests need these.
+ */
+export const NOTHING_PLAYING = {
+  get_playback: () => null,
+  get_devices: () => ({ devices: [], remembered: null }),
+};
+
+/**
+ * An empty collection, with nothing playing. Development builds also ask
+ * whether the dev list has albums to restore into it: here it has none.
  */
 export const EMPTY_COLLECTION = {
   get_collection: () => [],
   dev_list_missing: () => 0,
+  ...NOTHING_PLAYING,
 };

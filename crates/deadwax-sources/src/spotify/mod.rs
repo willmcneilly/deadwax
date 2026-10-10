@@ -5,11 +5,12 @@ pub mod albums;
 pub mod http;
 pub mod loopback;
 pub mod pkce;
+pub mod playback;
 pub mod tokens;
 
 use std::time::Duration;
 
-use reqwest::StatusCode;
+use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
@@ -22,9 +23,8 @@ use pkce::Verifier;
 use tokens::{Cached, StoreError, TokenStore, Tokens};
 
 /// The permissions Deadwax asks for. The profile, search and albums need no
-/// scope. The playback scopes are for
-/// playing albums later in project 1 (DWX-6): asking now saves you approving
-/// Deadwax a second time.
+/// scope. The playback scopes are for seeing your devices and what's playing,
+/// and for playing albums on them.
 pub const SCOPES: &str =
     "user-read-playback-state user-modify-playback-state user-read-currently-playing";
 
@@ -85,6 +85,13 @@ pub enum SpotifyError {
     Unexpected {
         what: &'static str,
         status: StatusCode,
+    },
+    /// A reply we didn't expect, with Spotify's explanation.
+    #[error("Spotify replied {status} to {what}: {message}")]
+    Refused {
+        what: &'static str,
+        status: StatusCode,
+        message: String,
     },
 }
 
@@ -212,26 +219,49 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
         query: &[(&str, String)],
         what: &'static str,
     ) -> Result<T, SpotifyError> {
+        let response = self
+            .send_api(|url| self.http.get(url).query(query), path, what)
+            .await?;
+        Ok(response.json().await.map_err(HttpError::from)?)
+    }
+
+    /// Sends a Web API request with your access token, and returns the reply
+    /// if it succeeded. `build` makes the request for a URL, and may be called
+    /// twice: a token can stop working before it expires, so a `401` is
+    /// retried once with a refreshed one. `what` names it in errors.
+    async fn send_api(
+        &self,
+        build: impl Fn(&str) -> RequestBuilder,
+        path: &str,
+        what: &'static str,
+    ) -> Result<Response, SpotifyError> {
         let url = format!("{}{path}", self.endpoints.api);
-        let request = |token: String| self.http.get(&url).query(query).bearer_auth(token);
+        let request = |token: String| build(&url).bearer_auth(token);
         let mut response = self
             .http
             .send(request(self.access_token(false).await?))
             .await?;
-        // A token can stop working before it expires. Refresh once and retry.
         if response.status() == StatusCode::UNAUTHORIZED {
             response = self
                 .http
                 .send(request(self.access_token(true).await?))
                 .await?;
         }
-        if !response.status().is_success() {
-            return Err(SpotifyError::Unexpected {
-                what,
-                status: response.status(),
-            });
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
         }
-        Ok(response.json().await.map_err(HttpError::from)?)
+        // Spotify explains most failures, such as Premium being needed to
+        // play. Say what it said rather than just the status.
+        let error: Option<ApiError> = response.json().await.ok();
+        match error.map(|e| e.error.message).filter(|m| !m.is_empty()) {
+            Some(message) => Err(SpotifyError::Refused {
+                what,
+                status,
+                message,
+            }),
+            None => Err(SpotifyError::Unexpected { what, status }),
+        }
     }
 
     /// A working access token, refreshed first if it's about to expire (or
@@ -310,6 +340,18 @@ struct TokenReply {
 #[derive(Deserialize)]
 struct OAuthError {
     error: String,
+}
+
+/// The body of most Web API errors.
+#[derive(Deserialize)]
+struct ApiError {
+    error: ApiErrorDetail,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorDetail {
+    #[serde(default)]
+    message: String,
 }
 
 #[derive(Deserialize)]

@@ -56,6 +56,10 @@ impl<C: Clock> SpotifyHttp<C> {
         self.client.post(url)
     }
 
+    pub fn put(&self, url: &str) -> RequestBuilder {
+        self.client.put(url)
+    }
+
     /// Sends the request, waiting out any `429`s. Any other status is the
     /// caller's to handle.
     pub async fn send(&self, request: RequestBuilder) -> Result<Response, HttpError> {

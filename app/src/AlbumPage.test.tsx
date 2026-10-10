@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import type { AlbumCard, AlbumDetails } from "./api";
 import Library from "./Library";
-import { backEnd } from "./mockBackEnd";
+import { backEnd, NOTHING_PLAYING } from "./mockBackEnd";
 
 const IN_RAINBOWS: AlbumDetails = {
   id: "5vkqYmiPBYLaalcmjujWxK",
@@ -57,6 +57,7 @@ function collection(replies: Record<string, () => unknown> = {}) {
     dev_list_missing: () => 0,
     get_album: () => IN_RAINBOWS,
     refresh_album: () => null,
+    ...NOTHING_PLAYING,
     ...replies,
   });
 }

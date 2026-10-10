@@ -8,7 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import type { AlbumCard, SearchResults } from "./api";
 import Library from "./Library";
-import { backEnd, EMPTY_COLLECTION } from "./mockBackEnd";
+import { backEnd, EMPTY_COLLECTION, NOTHING_PLAYING } from "./mockBackEnd";
 
 const album = (n: number, extra: Partial<AlbumCard> = {}): AlbumCard => ({
   id: `album${n}`,
@@ -56,6 +56,7 @@ describe("Library", () => {
   it("shows the collection as a grid of Spotify's covers", async () => {
     backEnd({
       get_collection: () => [IN_RAINBOWS, album(2, { coverUrl: null })],
+      ...NOTHING_PLAYING,
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
@@ -212,6 +213,7 @@ describe("Library", () => {
   it("adds an album to the grid", async () => {
     let finish: (album: AlbumCard) => void = () => {};
     const calls = backEnd({
+      ...NOTHING_PLAYING,
       get_collection: () => [album(50)],
       search_albums: () => ({
         results: [{ album: IN_RAINBOWS, inCollection: false }],
