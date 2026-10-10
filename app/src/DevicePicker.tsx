@@ -21,7 +21,15 @@ function DevicePicker({
   onRefresh,
 }: Props) {
   if (devices === null) {
-    return <p className="device-note">Looking for devices…</p>;
+    if (refreshing) return <p className="device-note">Looking for devices…</p>;
+    // Listing them failed, and the error is shown above. Let you try again.
+    return (
+      <div className="device-picker">
+        <button type="button" className="secondary" onClick={onRefresh}>
+          Refresh devices
+        </button>
+      </div>
+    );
   }
   const listed =
     selected !== null && devices.some((device) => device.name === selected);

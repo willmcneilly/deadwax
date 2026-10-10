@@ -1428,6 +1428,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_restricted_device_with_an_id_is_still_refused() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let mut listed = fixture("devices.json");
+        listed["devices"][0]["is_restricted"] = true.into();
+        Mock::given(method("GET"))
+            .and(path("/v1/me/player/devices"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(listed))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+
+        let error = play(&spotify, &config_in(&dir), IN_RAINBOWS, "Living Room", None)
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            "Spotify won't let Deadwax control Living Room. Play from the Spotify app instead."
+        );
+        assert_eq!(
+            player_requests(&server).await,
+            ["GET /v1/me/player/devices"]
+        );
+    }
+
+    #[tokio::test]
     async fn a_failure_from_spotify_is_shown_and_nothing_is_remembered() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;

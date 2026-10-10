@@ -33,8 +33,8 @@ export const NOTHING_PLAYING = {
 };
 
 /**
- * An empty collection, with nothing playing. Development builds also ask whether the dev list has
- * albums to restore into it: here it has none.
+ * An empty collection, with nothing playing. Development builds also ask
+ * whether the dev list has albums to restore into it: here it has none.
  */
 export const EMPTY_COLLECTION = {
   get_collection: () => [],

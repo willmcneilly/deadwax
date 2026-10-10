@@ -165,12 +165,15 @@ describe("The device picker", () => {
     expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
   });
 
-  it("shows a failure to list the devices", async () => {
+  it("shows a failure to list the devices, and lets you try again", async () => {
+    let fail = true;
     albumPage(
       { devices: [], remembered: null },
       {
         get_devices: () => {
-          throw "Spotify replied 503 Service Unavailable to the list of devices";
+          if (fail)
+            throw "Spotify replied 503 Service Unavailable to the list of devices";
+          return { devices: [LIVING_ROOM], remembered: "Living Room" };
         },
       },
     );
@@ -179,6 +182,13 @@ describe("The device picker", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "503 Service Unavailable to the list of devices",
     );
+    expect(screen.queryByText("Looking for devices…")).not.toBeInTheDocument();
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh devices" }));
+
+    expect(await picker()).toHaveValue("Living Room");
+    expect(screen.getByRole("button", { name: "Play" })).toBeEnabled();
   });
 });
 
