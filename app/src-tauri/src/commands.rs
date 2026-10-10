@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use deadwax_core::collection::{self, Album, Collection};
+use deadwax_core::collection::{self, Album, Collected, Collection};
 use deadwax_sources::clock::{Clock, SystemClock};
 use deadwax_sources::spotify::albums::{AlbumSummary, is_spotify_id};
 use deadwax_sources::spotify::playback::{Device, Playback, StartAt};
@@ -24,6 +24,7 @@ use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{Mutex, RwLock, oneshot};
 
+use crate::artwork::ArtworkQueue;
 use crate::config;
 
 type Client = Spotify<SystemClock, KeychainStore>;
@@ -53,8 +54,11 @@ pub const EXPIRED_MESSAGE: &str = "Your Spotify sign-in has expired. Sign in aga
 
 pub struct AppState {
     config_path: PathBuf,
-    /// A plain mutex: it's never held across an `await`.
-    collection: std::sync::Mutex<Collection>,
+    /// A plain mutex: it's never held across an `await`. Shared with the
+    /// artwork queue's worker.
+    collection: Arc<std::sync::Mutex<Collection>>,
+    /// Looks for high-res covers in the background (DWX-7).
+    artwork: ArtworkQueue,
     spotify: RwLock<Option<Arc<Client>>>,
     /// Dropping this cancels the sign-in that's waiting for the browser, and
     /// closes its listener.
@@ -62,13 +66,18 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config_path: PathBuf, collection: Collection) -> Result<Self, String> {
+    pub fn new(
+        config_path: PathBuf,
+        collection: Arc<std::sync::Mutex<Collection>>,
+        artwork: ArtworkQueue,
+    ) -> Result<Self, String> {
         let config = config::load(&config_path)
             .map_err(|e| format!("Couldn't read Deadwax's config: {e}"))?;
         let spotify = config.spotify_client_id.map(client).transpose()?;
         Ok(Self {
             config_path,
-            collection: std::sync::Mutex::new(collection),
+            collection,
+            artwork,
             spotify: RwLock::new(spotify),
             waiting_sign_in: Mutex::new(None),
         })
@@ -326,10 +335,13 @@ async fn search<C: Clock, S: TokenStore>(
 
 /// Fetches the album from Spotify, adds it to your collection, and returns
 /// it for the grid. Adding one that's already there refreshes its cache.
+/// Its high-res cover is looked for in the background.
 #[tauri::command]
 pub async fn add_album(state: State<'_, AppState>, id: String) -> Result<AlbumCard, String> {
     let spotify = state.signed_in().await?;
-    add(&spotify, &state.collection, &id, SystemTime::now()).await
+    let card = add(&spotify, &state.collection, &id, SystemTime::now()).await?;
+    state.artwork.look_for(&card.id);
+    Ok(card)
 }
 
 async fn add<C: Clock, S: TokenStore>(
@@ -355,7 +367,8 @@ pub struct AlbumPage {
     pub title: String,
     pub artist: String,
     pub year: Option<u16>,
-    /// Spotify's largest cover, about 640 pixels.
+    /// The high-res cover once one has been found (DWX-7), otherwise
+    /// Spotify's largest, about 640 pixels.
     pub cover_url: Option<String>,
     pub tracks: Vec<AlbumTrack>,
 }
@@ -370,10 +383,14 @@ pub struct AlbumTrack {
     pub duration_ms: u64,
 }
 
-impl From<Album> for AlbumPage {
-    fn from(album: Album) -> Self {
+impl From<Collected> for AlbumPage {
+    fn from(Collected { album, artwork, .. }: Collected) -> Self {
+        let high_res = artwork.and_then(|artwork| artwork.cover);
         Self {
-            cover_url: album.largest_cover().map(|cover| cover.url.clone()),
+            cover_url: high_res
+                .as_ref()
+                .or(album.largest_cover())
+                .map(|cover| cover.url.clone()),
             id: album.spotify_id,
             title: album.title,
             artist: album.artist,
@@ -396,20 +413,28 @@ impl From<Album> for AlbumPage {
 const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
 
 /// The album page, from the cache. It never asks Spotify: `refresh_album`
-/// does that when the cache is old.
+/// does that when the cache is old. An album without an artwork result yet
+/// is queued to look for one, and `ARTWORK_FOUND` says when it's stored.
 #[tauri::command]
 pub fn get_album(state: State<'_, AppState>, id: String) -> Result<AlbumPage, String> {
-    album_page(&state.collection, &id)
+    let collected = collected(&state.collection, &id)?;
+    if collected.artwork.is_none() {
+        state.artwork.look_for(&id);
+    }
+    Ok(collected.into())
 }
 
-fn album_page(collection: &std::sync::Mutex<Collection>, id: &str) -> Result<AlbumPage, String> {
+fn collected(collection: &std::sync::Mutex<Collection>, id: &str) -> Result<Collected, String> {
     collection
         .lock()
         .expect("collection lock")
         .get(id)
         .map_err(collection_error)?
-        .map(|collected| collected.album.into())
         .ok_or_else(|| NOT_IN_COLLECTION.into())
+}
+
+fn album_page(collection: &std::sync::Mutex<Collection>, id: &str) -> Result<AlbumPage, String> {
+    collected(collection, id).map(AlbumPage::from)
 }
 
 /// Fetches the album from Spotify again if its cache is over a week old,
@@ -430,12 +455,7 @@ async fn refresh<C: Clock, S: TokenStore>(
     id: &str,
     now: SystemTime,
 ) -> Result<Option<AlbumPage>, String> {
-    let cached = collection
-        .lock()
-        .expect("collection lock")
-        .get(id)
-        .map_err(collection_error)?
-        .ok_or(NOT_IN_COLLECTION)?;
+    let cached = collected(collection, id)?;
     if !cached.is_stale(now) {
         return Ok(None);
     }
@@ -449,7 +469,8 @@ async fn refresh<C: Clock, S: TokenStore>(
         // Removed while it was being fetched.
         return Err(NOT_IN_COLLECTION.into());
     }
-    Ok(Some(album.into()))
+    // From the collection, which has the artwork too.
+    album_page(collection, id).map(Some)
 }
 
 /// Takes the album out of your collection. Removing one that isn't there is
@@ -1050,6 +1071,75 @@ mod tests {
             album_page(&empty_collection(), IN_RAINBOWS),
             Err(NOT_IN_COLLECTION.into())
         );
+    }
+
+    const HIGH_RES: &str = "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg";
+
+    fn found_on_itunes(collection: &std::sync::Mutex<Collection>) {
+        let artwork = collection::Artwork {
+            source: collection::ArtworkSource::Itunes,
+            cover: Some(collection::Cover {
+                url: HIGH_RES.into(),
+                width: Some(4000),
+                height: Some(4000),
+            }),
+        };
+        let stored = collection
+            .lock()
+            .unwrap()
+            .set_artwork(IN_RAINBOWS, &artwork, day(2))
+            .unwrap();
+        assert!(stored);
+    }
+
+    #[tokio::test]
+    async fn the_album_page_has_the_high_res_cover_and_the_grid_keeps_spotifys() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        found_on_itunes(&collection);
+
+        let page = album_page(&collection, IN_RAINBOWS).unwrap();
+        let grid = cards(&collection.lock().unwrap()).unwrap();
+
+        assert_eq!(page.cover_url.as_deref(), Some(HIGH_RES));
+        assert_eq!(grid[0].cover_url, in_rainbows_card().cover_url);
+    }
+
+    #[tokio::test]
+    async fn spotifys_cover_is_the_fallback_on_the_album_page() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let spotifys = collection::Artwork {
+            source: collection::ArtworkSource::Spotify,
+            cover: None,
+        };
+        collection
+            .lock()
+            .unwrap()
+            .set_artwork(IN_RAINBOWS, &spotifys, day(2))
+            .unwrap();
+
+        let page = album_page(&collection, IN_RAINBOWS).unwrap();
+
+        assert_eq!(page.cover_url, in_rainbows_card().cover_url);
+    }
+
+    #[tokio::test]
+    async fn a_refreshed_page_keeps_the_high_res_cover() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        found_on_itunes(&collection);
+
+        let page = refresh(&spotify, &collection, IN_RAINBOWS, day(30))
+            .await
+            .unwrap()
+            .expect("a stale cache is fetched again");
+
+        assert_eq!(page.title, "In Rainbows");
+        assert_eq!(page.cover_url.as_deref(), Some(HIGH_RES));
     }
 
     #[tokio::test]
