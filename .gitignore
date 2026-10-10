@@ -5,6 +5,10 @@
 node_modules/
 dist/
 
+# Deadwax's development database, one per checkout (RFC-001, "A dev list that
+# survives resets")
+.dev-data/
+
 # macOS
 .DS_Store
 

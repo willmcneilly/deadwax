@@ -2,26 +2,47 @@
 
 Deadwax is a curated album player. It shows only the albums Will has added to the collection, with great artwork, credits and notes, and plays them through Spotify. It's a Tauri 2 app: a Rust core with a React UI, the same stack as Uta. Spotify does the playing. Deadwax is a controller that sends playback to a Spotify Connect device (Sonos speakers, a TV, the Spotify desktop app). Built and tested on macOS only. The code is public on GitHub.
 
-The foundations are in RFC-001 (`docs/rfcs/`), which isn't written yet. Until it's accepted, the layout, commands and architecture below are placeholders, and the first ticket (DWX-1) fills them in.
+The foundations are in RFC-001 (`docs/rfcs/rfc-001-foundations.md`): a rough end-to-end player, built as a spike to learn what works. Rust owns the data and the network. The UI never calls Spotify or any other web service: it asks Rust through Tauri commands and draws what comes back.
 
 ## Layout
 
-To be set by RFC-001 and DWX-1. The plan is to mirror Uta:
-
 ```
-Cargo.toml            workspace
-crates/               the Rust core (no UI)
-app/                  Tauri app: React + TypeScript, Vite, npm
-app/src-tauri         the app's Rust side
-DESIGN.md             design tokens and the reasons for them
-docs/rfcs             RFCs (Notion is the source of truth once accepted)
-docs/plans            project plans: tickets, order, checkpoints
-.github/workflows     CI
+Cargo.toml              workspace (Rust 2024 edition), release profile
+rust-toolchain.toml     the pinned Rust version, with rustfmt and clippy
+crates/deadwax-core     the collection, the database and the dev list. No network.
+crates/deadwax-sources  the web clients: Spotify (sign-in, rate limits), iTunes, Deezer, MusicBrainz
+app/                    Tauri app: React + TypeScript, Vite, npm
+app/src                 the UI. `theme.css` holds the CSS variables
+app/src-tauri           the app's Rust side (the `deadwax-app` crate)
+docs/rfcs               RFCs (Notion is the source of truth once accepted)
+docs/plans              project plans: tickets, order, checkpoints
+.github/workflows       CI
+.dev-data/              a development build's database, one per checkout (ignored by git)
 ```
 
 ## Commands
 
-To be filled in by DWX-1. **Before opening a PR, run all of the checks listed here and fix everything they report.** CI runs the same set.
+Run everything from the repository root unless it says `app/`.
+
+```bash
+# Rust
+cargo fmt --all                                     # format
+cargo fmt --all --check                             # CI check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+# Frontend (in app/)
+npm ci
+npm run typecheck                                   # tsc -b
+npm run lint                                        # eslint, then stylelint
+npm test                                            # vitest, jsdom
+npm run tauri dev                                   # open the app with hot reload
+npm run tauri build -- --ci                         # release build: target/release/bundle/macos/Deadwax.app
+```
+
+`cargo build`/`clippy`/`test` compile the app crate in dev mode, so they don't need `app/dist`. Only `tauri build` needs the frontend built, and it does that itself.
+
+**Before opening a PR, run all of the above checks and fix everything they report.** CI runs the same set on `macos-15`.
 
 ## Spotify rules
 
@@ -41,8 +62,9 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 ## Design
 
-- `DESIGN.md` will be the source of truth for how Deadwax looks, as in Uta: tokens generated into the app, no colour written directly in the code.
-- When UI work needs something `DESIGN.md` doesn't cover, build it from the principles, mark the code `provisional: D-n`, log it in the **Design decisions** database in Notion, and list it in the PR. Will decides each between projects. The `work-ticket` skill has the steps.
+- **Project 1 has no `DESIGN.md`** (RFC-001, open question 2). The whole UI is provisional: project 2 starts `DESIGN.md` from what we learn.
+- Styling is plain CSS. Colours live only in the CSS variables in `app/src/theme.css`, and `npm run lint` fails on a colour written anywhere else in CSS.
+- No design decisions are logged in project 1, so skip the `work-ticket` skill's steps on design tokens and provisional design decisions (`provisional: D-n`).
 
 ## Working on tickets
 
