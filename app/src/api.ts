@@ -24,3 +24,26 @@ export const openSpotifyDashboard = () =>
 export function errorMessage(error: unknown): string {
   return typeof error === "string" ? error : String(error);
 }
+
+/** An album as the grid and the search results show it. */
+export type AlbumCard = {
+  id: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  /** Spotify's largest cover, about 640 pixels. */
+  coverUrl: string | null;
+};
+
+export type SearchResult = { album: AlbumCard; inCollection: boolean };
+
+export type SearchResults = {
+  results: SearchResult[];
+  /** The offset for "More", or null on the last page. */
+  nextOffset: number | null;
+};
+
+export const getCollection = () => invoke<AlbumCard[]>("get_collection");
+export const searchAlbums = (query: string, offset: number) =>
+  invoke<SearchResults>("search_albums", { query, offset });
+export const addAlbum = (id: string) => invoke<AlbumCard>("add_album", { id });

@@ -1,29 +1,11 @@
 import { emit } from "@tauri-apps/api/event";
-import { mockIPC } from "@tauri-apps/api/mocks";
-import type { InvokeArgs } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CHANGE_CLIENT_ID, type Session } from "./api";
 import App from "./App";
+import { backEnd } from "./mockBackEnd";
 
 const CLIENT_ID = "0123456789abcdef0123456789abcdef";
-
-type Call = { cmd: string; args?: InvokeArgs };
-
-/** A mocked back end: `replies` answers each command, and every call is logged. */
-function backEnd(replies: Record<string, (args?: InvokeArgs) => unknown>) {
-  const calls: Call[] = [];
-  mockIPC(
-    (cmd, args) => {
-      calls.push({ cmd, args });
-      const reply = replies[cmd];
-      if (!reply) throw new Error(`unexpected command ${cmd}`);
-      return reply(args);
-    },
-    { shouldMockEvents: true },
-  );
-  return calls;
-}
 
 const session = (s: Session) => () => s;
 
@@ -101,6 +83,7 @@ describe("App", () => {
     backEnd({
       get_session: session({ state: "signedOut", message: null }),
       sign_in: () => new Promise<Session>((resolve) => (finish = resolve)),
+      get_collection: () => [],
     });
     render(<App />);
 
@@ -162,7 +145,10 @@ describe("App", () => {
   });
 
   it("stays signed in across restarts", async () => {
-    backEnd({ get_session: session({ state: "signedIn", name: "Will" }) });
+    backEnd({
+      get_session: session({ state: "signedIn", name: "Will" }),
+      get_collection: () => [],
+    });
     render(<App />);
 
     expect(await screen.findByText("Signed in as Will")).toBeInTheDocument();
@@ -185,6 +171,7 @@ describe("App", () => {
     const calls = backEnd({
       get_session: session({ state: "signedIn", name: "Will" }),
       get_client_id: () => CLIENT_ID,
+      get_collection: () => [],
     });
     render(<App />);
     await screen.findByText("Signed in as Will");
@@ -204,6 +191,7 @@ describe("App", () => {
         if (fail) throw "couldn't reach Spotify";
         return { state: "signedIn", name: "Will" };
       },
+      get_collection: () => [],
     });
     render(<App />);
 

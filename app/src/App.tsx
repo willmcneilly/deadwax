@@ -7,6 +7,7 @@ import {
   getSession,
   type Session,
 } from "./api";
+import Library from "./Library";
 import Setup from "./Setup";
 import SignIn from "./SignIn";
 import "./App.css";
@@ -93,11 +94,7 @@ function render(
         case "signedOut":
           return <SignIn message={view.session.message} onSignedIn={show} />;
         case "signedIn":
-          return (
-            <section className="panel">
-              <p>Signed in as {view.session.name}</p>
-            </section>
-          );
+          return <Library name={view.session.name} onSignedOut={show} />;
       }
   }
 }
