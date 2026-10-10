@@ -4,11 +4,12 @@
 //!
 //! A return type passes if it's built only from plain values (strings,
 //! numbers, `bool`, `Option`, `Vec`, `Result`) and types defined in the same
-//! file (`commands.rs`, or `commands/dev.rs` for the Develop menu), and no type or field is named like a token or a secret. A
-//! type from anywhere else fails until it's added here on purpose. The
-//! token types in `deadwax-sources` also can't be serialised, so returning
-//! one wouldn't compile, but this catches a token copied into a `String`
-//! field too, as long as the field is named for what it holds.
+//! file (`commands.rs`, or `commands/dev.rs` for the Develop menu), and no
+//! type or field is named like a token or a secret. A type from anywhere else
+//! fails until it's added here on purpose. The token types in
+//! `deadwax-sources` also can't be serialised, so returning one wouldn't
+//! compile, but this catches a token copied into a `String` field too, as
+//! long as the field is named for what it holds.
 
 use std::collections::{BTreeSet, HashMap};
 

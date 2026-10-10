@@ -3,22 +3,30 @@
 # (RFC-001, "A dev list that survives resets"; DWX-5). Run it after
 # `npm run tauri build`, from the repository root. CI runs it on every PR.
 #
-# The Rust side is compiled out with `debug_assertions`, and the UI's with
-# `import.meta.env.DEV`. This looks for the strings they would bring with
-# them: in the release binary for Rust, and in `app/dist` for the UI (Tauri
-# compresses the UI into the binary, so it can't be searched there).
+# The Rust side (in deadwax-core and the app) is compiled out with
+# `debug_assertions`, and the UI's with `import.meta.env.DEV`. This looks for
+# the strings they would bring with them: in the release binary for Rust, and
+# in `app/dist` for the UI (Tauri compresses the UI into the binary, so it
+# can't be searched there).
 #
 # So the check can't pass by looking for strings that never existed, every
-# marker must also be in the source, and the UI's markers must be in a
-# development bundle built with the same Vite config.
+# marker must also be in a development build: the Rust markers in a debug
+# binary this script builds, and the UI's in a development bundle built with
+# the same Vite config.
 
 set -euo pipefail
 
 binary=target/release/bundle/macos/Deadwax.app/Contents/MacOS/deadwax-app
+debug_binary=target/debug/deadwax-app
 dist=app/dist
 
 # What the Rust side's dev list and Develop menu would leave in the binary.
 rust_markers=(
+  # deadwax-core's dev list and the collection's mirroring to it
+  "deadwax-core/src/dev_list.rs"
+  "couldn't use the dev list"
+  "the collection changed, but the dev list didn't"
+  # the app's Develop menu and commands
   "dev-list.json"
   "Reset collection"
   "Restore from dev list"
@@ -52,9 +60,12 @@ fail() {
   exit 1
 }
 
+# A debug binary, to show the Rust markers are there when they should be.
+cargo build -p deadwax-app --locked --quiet
+
 for marker in "${rust_markers[@]}"; do
-  grep -rqF -- "$marker" app/src-tauri/src crates ||
-    fail "\"$marker\" isn't in the Rust source any more: update this script"
+  grep -qaF -- "$marker" "$debug_binary" ||
+    fail "a debug build doesn't contain \"$marker\": update this script"
   if grep -qaF -- "$marker" "$binary"; then
     fail "the release binary contains \"$marker\""
   fi

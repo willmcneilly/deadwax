@@ -80,6 +80,24 @@ describe("The dev list", () => {
     expect(await offer()).toHaveTextContent("Restoring from the dev list…");
   });
 
+  it("restores once, however often it's asked while restoring", async () => {
+    const calls = backEnd({
+      get_collection: () => [],
+      dev_list_missing: () => 1,
+      restore_from_dev_list: () => new Promise(() => {}),
+    });
+    render(<Library name="Will" onSignedOut={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
+    expect(await offer()).toHaveTextContent("Restoring from the dev list…");
+    await emit(RESTORE_FROM_DEV_LIST);
+    await emit(RESTORE_FROM_DEV_LIST);
+
+    expect(
+      commands(calls).filter((c) => c === "restore_from_dev_list"),
+    ).toHaveLength(1);
+  });
+
   it("doesn't offer when the dev list has nothing to restore", async () => {
     const calls = devBackEnd([], { missing: 0 });
     render(<Library name="Will" onSignedOut={() => {}} />);

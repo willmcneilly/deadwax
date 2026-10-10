@@ -80,6 +80,8 @@ function DevList({ empty, onChanged, onFailed }: Props) {
   }, []);
 
   async function restore() {
+    // The menu can ask again while a restore is running: one is enough.
+    if (state.kind === "restoring") return;
     setState({ kind: "restoring" });
     try {
       const report = await restoreFromDevList();

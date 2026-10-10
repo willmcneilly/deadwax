@@ -9,7 +9,8 @@
 //! collection can't.
 //!
 //! In development builds the collection also mirrors every add and remove to
-//! the dev list (`crate::dev_list`), which survives resets.
+//! the dev list (`crate::dev_list`), which survives resets. All of that is
+//! compiled under `debug_assertions`, so release builds don't contain it.
 
 use std::collections::HashSet;
 use std::fs;
@@ -19,6 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
+#[cfg(debug_assertions)]
 use crate::dev_list::{DevList, DevListError};
 
 /// An album as Spotify describes it, which is what the cache holds.
@@ -93,6 +95,7 @@ pub enum CollectionError {
     Corrupt(#[from] serde_json::Error),
     #[error("the collection was made by a newer Deadwax (schema {0})")]
     TooNew(i64),
+    #[cfg(debug_assertions)]
     #[error("the collection changed, but the dev list didn't: {0}")]
     DevList(#[from] DevListError),
 }
@@ -121,6 +124,7 @@ const SCHEMA: &str = "
 pub struct Collection {
     db: Connection,
     /// The dev list to mirror adds and removes to, in development builds.
+    #[cfg(debug_assertions)]
     dev_list: Option<DevList>,
 }
 
@@ -149,17 +153,23 @@ impl Collection {
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),
         }
-        Ok(Self { db, dev_list: None })
+        Ok(Self {
+            db,
+            #[cfg(debug_assertions)]
+            dev_list: None,
+        })
     }
 
     /// Mirrors every add and remove from now on to `dev_list`. Development
     /// builds only.
+    #[cfg(debug_assertions)]
     pub fn with_dev_list(mut self, dev_list: DevList) -> Self {
         self.dev_list = Some(dev_list);
         self
     }
 
     /// The dev list this collection mirrors to, if any.
+    #[cfg(debug_assertions)]
     pub fn dev_list(&self) -> Option<&DevList> {
         self.dev_list.as_ref()
     }
@@ -186,13 +196,15 @@ impl Collection {
             params![album.spotify_id, millis(added_at)],
         )?;
         cache(&tx, album, fetched_at)?;
-        let added_at: i64 = tx.query_row(
-            "SELECT added_at FROM collection WHERE spotify_id = ?1",
-            [&album.spotify_id],
-            |row| row.get(0),
-        )?;
         tx.commit()?;
+        #[cfg(debug_assertions)]
         if let Some(dev_list) = &self.dev_list {
+            // The date in the collection, which an album already there keeps.
+            let added_at: i64 = self.db.query_row(
+                "SELECT added_at FROM collection WHERE spotify_id = ?1",
+                [&album.spotify_id],
+                |row| row.get(0),
+            )?;
             dev_list.added(&album.spotify_id, time(added_at))?;
         }
         Ok(if inserted == 1 {
@@ -212,6 +224,7 @@ impl Collection {
             [spotify_id],
         )?;
         tx.commit()?;
+        #[cfg(debug_assertions)]
         if let Some(dev_list) = &self.dev_list {
             dev_list.removed(spotify_id)?;
         }
@@ -541,6 +554,7 @@ mod tests {
         assert_eq!(cached, 0);
     }
 
+    #[cfg(debug_assertions)]
     mod with_a_dev_list {
         use super::*;
         use crate::dev_list::{self, DevList, Entry};

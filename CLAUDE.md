@@ -21,7 +21,7 @@ scripts                 checks CI runs that aren't cargo or npm commands
 .dev-data/              a development build's database, one per checkout (ignored by git)
 ```
 
-Development builds also keep a **dev list** in Deadwax's app-data folder (`~/Library/Application Support/com.willmcneilly.deadwax/dev-list.json`), shared by every checkout. It mirrors each add and remove, and the **Develop** menu resets the collection and restores it from the list. Everything about it is compiled only in development builds: in Rust under `#[cfg(debug_assertions)]` (`app/src-tauri/src/commands/dev.rs`), and in the UI behind `import.meta.env.DEV`. A fresh worktree starts with an empty collection and offers to restore.
+Development builds also keep a **dev list** in Deadwax's app-data folder (`~/Library/Application Support/com.willmcneilly.deadwax/dev-list.json`), shared by every checkout. It mirrors each add and remove, and the **Develop** menu resets the collection and restores it from the list. Everything about it is compiled only in development builds: in Rust under `#[cfg(debug_assertions)]` (`deadwax-core`'s `dev_list` and `app/src-tauri/src/commands/dev.rs`), and in the UI behind `import.meta.env.DEV`. A fresh worktree starts with an empty collection and offers to restore.
 
 ## Commands
 
