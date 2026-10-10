@@ -1,6 +1,7 @@
 //! Spotify: signing in with PKCE, keeping the tokens fresh, and the calls
 //! Deadwax makes. See RFC-001, "Signing in to Spotify".
 
+pub mod albums;
 pub mod http;
 pub mod loopback;
 pub mod pkce;
@@ -10,6 +11,7 @@ use std::time::Duration;
 
 use reqwest::StatusCode;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -19,8 +21,8 @@ use loopback::{CallbackError, Listener};
 use pkce::Verifier;
 use tokens::{Cached, StoreError, TokenStore, Tokens};
 
-/// The permissions Deadwax asks for. Only the profile is used so far, and
-/// `/v1/me` needs no scope for the display name. The playback scopes are for
+/// The permissions Deadwax asks for. The profile, search and albums need no
+/// scope. The playback scopes are for
 /// playing albums later in project 1 (DWX-6): asking now saves you approving
 /// Deadwax a second time.
 pub const SCOPES: &str =
@@ -74,6 +76,9 @@ pub enum SpotifyError {
     Http(#[from] HttpError),
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// Something that should have been a Spotify ID wasn't.
+    #[error("{0:?} isn't a Spotify album ID")]
+    NotAnId(String),
     /// A reply we didn't expect. Never includes the request, which may hold a
     /// token.
     #[error("Spotify replied {status} to {what}")]
@@ -190,39 +195,43 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
 
     /// Your Spotify profile, for the "Signed in as" line.
     pub async fn profile(&self) -> Result<Profile, SpotifyError> {
-        let url = format!("{}/v1/me", self.endpoints.api);
-        let mut response = self
-            .http
-            .send(
-                self.http
-                    .get(&url)
-                    .bearer_auth(self.access_token(false).await?),
-            )
-            .await?;
-        // A token can stop working before it expires. Refresh once and retry.
-        if response.status() == StatusCode::UNAUTHORIZED {
-            response = self
-                .http
-                .send(
-                    self.http
-                        .get(&url)
-                        .bearer_auth(self.access_token(true).await?),
-                )
-                .await?;
-        }
-        if !response.status().is_success() {
-            return Err(SpotifyError::Unexpected {
-                what: "your profile",
-                status: response.status(),
-            });
-        }
-        let me: Me = response.json().await.map_err(HttpError::from)?;
+        let me: Me = self.get("/v1/me", &[], "your profile").await?;
         Ok(Profile {
             name: me
                 .display_name
                 .filter(|name| !name.is_empty())
                 .unwrap_or(me.id),
         })
+    }
+
+    /// GETs `path` from the Web API with your access token, and reads the
+    /// JSON reply. `what` names it in errors.
+    async fn get<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        what: &'static str,
+    ) -> Result<T, SpotifyError> {
+        let url = format!("{}{path}", self.endpoints.api);
+        let request = |token: String| self.http.get(&url).query(query).bearer_auth(token);
+        let mut response = self
+            .http
+            .send(request(self.access_token(false).await?))
+            .await?;
+        // A token can stop working before it expires. Refresh once and retry.
+        if response.status() == StatusCode::UNAUTHORIZED {
+            response = self
+                .http
+                .send(request(self.access_token(true).await?))
+                .await?;
+        }
+        if !response.status().is_success() {
+            return Err(SpotifyError::Unexpected {
+                what,
+                status: response.status(),
+            });
+        }
+        Ok(response.json().await.map_err(HttpError::from)?)
     }
 
     /// A working access token, refreshed first if it's about to expire (or

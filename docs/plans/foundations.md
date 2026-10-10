@@ -56,7 +56,7 @@ Build the rough end-to-end player from RFC-001. You sign in with Spotify, search
 **Acceptance criteria**
 - [ ] `deadwax-core` stores the collection in SQLite (`rusqlite` 0.40, bundled): Spotify ID and date added. Beside it is a metadata cache: title, artist, year, tracklist, Spotify's cover URLs, UPC, and when it was fetched. Tests: add, remove, and adding the same album twice behave correctly and survive reopening the database.
 - [ ] Development builds keep the database in the checkout's `.dev-data/`, and release builds in the app-data folder. Tested with temporary folders.
-- [ ] Search returns albums in pages of 10, with cover, title, artist and year. "More" asks for the next offset. Albums already in the collection are marked. Tested against recorded responses.
+- [ ] Search returns albums in pages of 10, with cover, title, artist and year. "More" asks for the next offset. Albums already in the collection are marked. Tested against hand-written responses in the shape of Spotify's docs (amended from "recorded responses", Will's call on 2026-10-10).
 - [ ] "Add" fetches the album (one at a time, as Spotify now requires), stores it, and it appears in the grid. The grid uses Spotify's covers, shown as they are: no crop, blur or overlay.
 - [ ] UI tests for the search results and the grid run against the mocked back end.
 
