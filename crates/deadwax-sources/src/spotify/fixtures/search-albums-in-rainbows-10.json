@@ -1,0 +1,99 @@
+{
+  "albums": {
+    "href": "https://api.spotify.com/v1/search?offset=10&limit=10&query=in%20rainbows&type=album",
+    "limit": 10,
+    "next": null,
+    "offset": 10,
+    "previous": "https://api.spotify.com/v1/search?offset=0&limit=10&query=in%20rainbows&type=album",
+    "total": 13,
+    "items": [
+      {
+        "album_type": "album",
+        "total_tracks": 12,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/hfq16scwCLURvabvvByFen"
+        },
+        "href": "https://api.spotify.com/v1/albums/hfq16scwCLURvabvvByFen",
+        "id": "hfq16scwCLURvabvvByFen",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273bbe983a3fb19545be334ad95",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e02bbe983a3fb19545be334ad95",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00004851bbe983a3fb19545be334ad95",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "Somewhere Over the Rainbow",
+        "release_date": "1939-08-15",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:hfq16scwCLURvabvvByFen",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/PLV9FziIuh4reQBhC4H6qg"
+            },
+            "href": "https://api.spotify.com/v1/artists/PLV9FziIuh4reQBhC4H6qg",
+            "id": "PLV9FziIuh4reQBhC4H6qg",
+            "name": "Judy Garland",
+            "type": "artist",
+            "uri": "spotify:artist:PLV9FziIuh4reQBhC4H6qg"
+          }
+        ]
+      },
+      null,
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/DEtYlTegTlWJIKVzwgrryd"
+        },
+        "href": "https://api.spotify.com/v1/albums/DEtYlTegTlWJIKVzwgrryd",
+        "id": "DEtYlTegTlWJIKVzwgrryd",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b27334833356dc44c65568b90edc",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e0234833356dc44c65568b90edc",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000485134833356dc44c65568b90edc",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows (Tribute)",
+        "release_date": "0000",
+        "release_date_precision": "year",
+        "type": "album",
+        "uri": "spotify:album:DEtYlTegTlWJIKVzwgrryd",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/3icEGrpSXGw4v8zCIZXewF"
+            },
+            "href": "https://api.spotify.com/v1/artists/3icEGrpSXGw4v8zCIZXewF",
+            "id": "3icEGrpSXGw4v8zCIZXewF",
+            "name": "Unknown Tribute Band",
+            "type": "artist",
+            "uri": "spotify:artist:3icEGrpSXGw4v8zCIZXewF"
+          }
+        ]
+      }
+    ]
+  }
+}

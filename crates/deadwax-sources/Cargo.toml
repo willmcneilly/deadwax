@@ -7,6 +7,7 @@ publish = false
 description = "Deadwax's web clients: Spotify (with sign-in and rate limits), iTunes, Deezer and MusicBrainz."
 
 [dependencies]
+deadwax-core = { path = "../deadwax-core" }
 base64 = "0.23"
 keyring = "4"
 rand = "0.10"

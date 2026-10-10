@@ -1,0 +1,452 @@
+{
+  "albums": {
+    "href": "https://api.spotify.com/v1/search?offset=0&limit=10&query=in%20rainbows&type=album",
+    "limit": 10,
+    "next": "https://api.spotify.com/v1/search?offset=10&limit=10&query=in%20rainbows&type=album",
+    "offset": 0,
+    "previous": null,
+    "total": 13,
+    "items": [
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/5vkqYmiPBYLaalcmjujWxK"
+        },
+        "href": "https://api.spotify.com/v1/albums/5vkqYmiPBYLaalcmjujWxK",
+        "id": "5vkqYmiPBYLaalcmjujWxK",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273de3c04b5fc750b68899b20a9",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e02de3c04b5fc750b68899b20a9",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00004851de3c04b5fc750b68899b20a9",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows",
+        "release_date": "2007-12-28",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:5vkqYmiPBYLaalcmjujWxK",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb"
+            },
+            "href": "https://api.spotify.com/v1/artists/4Z8W4fKeB5YxbusRsdQVPb",
+            "id": "4Z8W4fKeB5YxbusRsdQVPb",
+            "name": "Radiohead",
+            "type": "artist",
+            "uri": "spotify:artist:4Z8W4fKeB5YxbusRsdQVPb"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 8,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/pLIix6MEOLeMa61EqJomTE"
+        },
+        "href": "https://api.spotify.com/v1/albums/pLIix6MEOLeMa61EqJomTE",
+        "id": "pLIix6MEOLeMa61EqJomTE",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b2731908fcdce4b314f68d9dcbd7",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e021908fcdce4b314f68d9dcbd7",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d000048511908fcdce4b314f68d9dcbd7",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows (Disk 2)",
+        "release_date": "2008",
+        "release_date_precision": "year",
+        "type": "album",
+        "uri": "spotify:album:pLIix6MEOLeMa61EqJomTE",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb"
+            },
+            "href": "https://api.spotify.com/v1/artists/4Z8W4fKeB5YxbusRsdQVPb",
+            "id": "4Z8W4fKeB5YxbusRsdQVPb",
+            "name": "Radiohead",
+            "type": "artist",
+            "uri": "spotify:artist:4Z8W4fKeB5YxbusRsdQVPb"
+          },
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/I1JEzO3joOj37HyVaQXekW"
+            },
+            "href": "https://api.spotify.com/v1/artists/I1JEzO3joOj37HyVaQXekW",
+            "id": "I1JEzO3joOj37HyVaQXekW",
+            "name": "Nigel Godrich",
+            "type": "artist",
+            "uri": "spotify:artist:I1JEzO3joOj37HyVaQXekW"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/DtLMulxluWx2MqtYygX0bK"
+        },
+        "href": "https://api.spotify.com/v1/albums/DtLMulxluWx2MqtYygX0bK",
+        "id": "DtLMulxluWx2MqtYygX0bK",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b27349787a5d33aa7e52a6e87316",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e0249787a5d33aa7e52a6e87316",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000485149787a5d33aa7e52a6e87316",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows From The Basement",
+        "release_date": "2008-01-01",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:DtLMulxluWx2MqtYygX0bK",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb"
+            },
+            "href": "https://api.spotify.com/v1/artists/4Z8W4fKeB5YxbusRsdQVPb",
+            "id": "4Z8W4fKeB5YxbusRsdQVPb",
+            "name": "Radiohead",
+            "type": "artist",
+            "uri": "spotify:artist:4Z8W4fKeB5YxbusRsdQVPb"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/uZ11Kl3rvZ0PfZNwLiAsHY"
+        },
+        "href": "https://api.spotify.com/v1/albums/uZ11Kl3rvZ0PfZNwLiAsHY",
+        "id": "uZ11Kl3rvZ0PfZNwLiAsHY",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b2738ebd9dd1d460fd71e9a72937",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e028ebd9dd1d460fd71e9a72937",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d000048518ebd9dd1d460fd71e9a72937",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows - Live",
+        "release_date": "2019-06-14",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:uZ11Kl3rvZ0PfZNwLiAsHY",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/5vR67b2rMQSkS3u9I5KKgT"
+            },
+            "href": "https://api.spotify.com/v1/artists/5vR67b2rMQSkS3u9I5KKgT",
+            "id": "5vR67b2rMQSkS3u9I5KKgT",
+            "name": "Various Artists",
+            "type": "artist",
+            "uri": "spotify:artist:5vR67b2rMQSkS3u9I5KKgT"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/cc5ZSG7m545BKdaEVhkGtp"
+        },
+        "href": "https://api.spotify.com/v1/albums/cc5ZSG7m545BKdaEVhkGtp",
+        "id": "cc5ZSG7m545BKdaEVhkGtp",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b2730d13a48f1b763357840fc187",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e020d13a48f1b763357840fc187",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d000048510d13a48f1b763357840fc187",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "Over The Rainbow",
+        "release_date": "2011-03-01",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:cc5ZSG7m545BKdaEVhkGtp",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/PnO1KrsheE2OEfwZeA5jbs"
+            },
+            "href": "https://api.spotify.com/v1/artists/PnO1KrsheE2OEfwZeA5jbs",
+            "id": "PnO1KrsheE2OEfwZeA5jbs",
+            "name": "Israel Kamakawiwo'ole",
+            "type": "artist",
+            "uri": "spotify:artist:PnO1KrsheE2OEfwZeA5jbs"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/rNHHBdEuX0a2dXichdeEc2"
+        },
+        "href": "https://api.spotify.com/v1/albums/rNHHBdEuX0a2dXichdeEc2",
+        "id": "rNHHBdEuX0a2dXichdeEc2",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b2732fa5a2bcc9b86ad340c251be",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e022fa5a2bcc9b86ad340c251be",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d000048512fa5a2bcc9b86ad340c251be",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "Rainbows",
+        "release_date": "2017-08-11",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:rNHHBdEuX0a2dXichdeEc2",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/BXA3hcMNWcyTLvJ47rGpct"
+            },
+            "href": "https://api.spotify.com/v1/artists/BXA3hcMNWcyTLvJ47rGpct",
+            "id": "BXA3hcMNWcyTLvJ47rGpct",
+            "name": "Kesha",
+            "type": "artist",
+            "uri": "spotify:artist:BXA3hcMNWcyTLvJ47rGpct"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/MPYIyOZcN4BdxOFWSuA8SA"
+        },
+        "href": "https://api.spotify.com/v1/albums/MPYIyOZcN4BdxOFWSuA8SA",
+        "id": "MPYIyOZcN4BdxOFWSuA8SA",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273e07682d7d40ab83e3c3a30f4",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e02e07682d7d40ab83e3c3a30f4",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00004851e07682d7d40ab83e3c3a30f4",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows (Piano Covers)",
+        "release_date": "2014-02-11",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:MPYIyOZcN4BdxOFWSuA8SA",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/aegMIc8mAsNqjSc3vux9i5"
+            },
+            "href": "https://api.spotify.com/v1/artists/aegMIc8mAsNqjSc3vux9i5",
+            "id": "aegMIc8mAsNqjSc3vux9i5",
+            "name": "Piano Tribute Players",
+            "type": "artist",
+            "uri": "spotify:artist:aegMIc8mAsNqjSc3vux9i5"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/pXycHfKgQ4yl0bv12hb2hR"
+        },
+        "href": "https://api.spotify.com/v1/albums/pXycHfKgQ4yl0bv12hb2hR",
+        "id": "pXycHfKgQ4yl0bv12hb2hR",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273f99217331a52757ec8bcbd2c",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e02f99217331a52757ec8bcbd2c",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00004851f99217331a52757ec8bcbd2c",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "Chasing Rainbows",
+        "release_date": "2015",
+        "release_date_precision": "year",
+        "type": "album",
+        "uri": "spotify:album:pXycHfKgQ4yl0bv12hb2hR",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/3yyD3HyP3MRJgN8ZGrBOUT"
+            },
+            "href": "https://api.spotify.com/v1/artists/3yyD3HyP3MRJgN8ZGrBOUT",
+            "id": "3yyD3HyP3MRJgN8ZGrBOUT",
+            "name": "Dani and Lizzy",
+            "type": "artist",
+            "uri": "spotify:artist:3yyD3HyP3MRJgN8ZGrBOUT"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/Gp7A1V9kASKWLR7HREjPz5"
+        },
+        "href": "https://api.spotify.com/v1/albums/Gp7A1V9kASKWLR7HREjPz5",
+        "id": "Gp7A1V9kASKWLR7HREjPz5",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273453ffe54864a79d86908fc65",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e02453ffe54864a79d86908fc65",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00004851453ffe54864a79d86908fc65",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "In Rainbows Revisited",
+        "release_date": "2012-10-30",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:Gp7A1V9kASKWLR7HREjPz5",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/p7tBqHtJvaYALubyNLOidO"
+            },
+            "href": "https://api.spotify.com/v1/artists/p7tBqHtJvaYALubyNLOidO",
+            "id": "p7tBqHtJvaYALubyNLOidO",
+            "name": "Lullaby Renditions",
+            "type": "artist",
+            "uri": "spotify:artist:p7tBqHtJvaYALubyNLOidO"
+          }
+        ]
+      },
+      {
+        "album_type": "album",
+        "total_tracks": 10,
+        "external_urls": {
+          "spotify": "https://open.spotify.com/album/KxpuEX3jASESMnDL150PJb"
+        },
+        "href": "https://api.spotify.com/v1/albums/KxpuEX3jASESMnDL150PJb",
+        "id": "KxpuEX3jASESMnDL150PJb",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273f2c1e77268768451851a5d22",
+            "height": 640,
+            "width": 640
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e02f2c1e77268768451851a5d22",
+            "height": 300,
+            "width": 300
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00004851f2c1e77268768451851a5d22",
+            "height": 64,
+            "width": 64
+          }
+        ],
+        "name": "Rainbows in the Dark",
+        "release_date": "1983-05-25",
+        "release_date_precision": "day",
+        "type": "album",
+        "uri": "spotify:album:KxpuEX3jASESMnDL150PJb",
+        "artists": [
+          {
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/OvDwR6wMTrVFbLd9Rb9xqO"
+            },
+            "href": "https://api.spotify.com/v1/artists/OvDwR6wMTrVFbLd9Rb9xqO",
+            "id": "OvDwR6wMTrVFbLd9Rb9xqO",
+            "name": "Dio",
+            "type": "artist",
+            "uri": "spotify:artist:OvDwR6wMTrVFbLd9Rb9xqO"
+          }
+        ]
+      }
+    ]
+  }
+}
