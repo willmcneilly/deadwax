@@ -6,9 +6,11 @@
 //! for the browser to arrive with the authorisation code.
 
 use std::io;
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use url::Url;
 
 /// The path in the redirect URI. Spotify matches it exactly, so it's also
@@ -49,54 +51,67 @@ impl Listener {
     /// `state` is `expected_state`. Other requests (a browser asking for
     /// `/favicon.ico`) get a 404 and the wait goes on. The browser is shown a
     /// page saying whether it worked, either way.
+    ///
+    /// Connections are read side by side, because browsers open spare
+    /// connections ahead of time that may never send anything. Waiting on
+    /// one of those would miss the redirect.
     pub async fn wait_for_code(self, expected_state: &str) -> Result<String, CallbackError> {
+        let (requests, mut arrived) = mpsc::channel(8);
         loop {
-            let (mut stream, _) = self.listener.accept().await?;
-            let Some(target) = read_request_target(&mut stream).await? else {
-                respond(
-                    &mut stream,
-                    "400 Bad Request",
-                    "That wasn't a request Deadwax understands.",
-                )
-                .await;
-                continue;
-            };
-            let Ok(url) = Url::parse(&format!("http://127.0.0.1{target}")) else {
-                respond(
-                    &mut stream,
-                    "400 Bad Request",
-                    "That wasn't a request Deadwax understands.",
-                )
-                .await;
-                continue;
-            };
-            if url.path() != CALLBACK_PATH {
-                respond(&mut stream, "404 Not Found", "Nothing here.").await;
-                continue;
-            }
-
-            let result = parse_callback(&url, expected_state);
-            match &result {
-                Ok(_) => {
-                    respond(
-                        &mut stream,
-                        "200 OK",
-                        "You're signed in to Spotify. You can close this tab and go back to Deadwax.",
-                    )
-                    .await
+            tokio::select! {
+                accepted = self.listener.accept() => {
+                    let (stream, _) = accepted?;
+                    let requests = requests.clone();
+                    tokio::spawn(async move {
+                        if let Some(request) = read_request(stream).await {
+                            let _ = requests.send(request).await;
+                        }
+                    });
                 }
-                Err(_) => {
-                    respond(
-                        &mut stream,
-                        "400 Bad Request",
-                        "Deadwax couldn't finish signing in. Close this tab and try again from Deadwax.",
-                    )
-                    .await
+                Some((stream, target)) = arrived.recv() => {
+                    if let Some(result) = answer(stream, target, expected_state).await {
+                        return result;
+                    }
                 }
             }
-            return result;
         }
     }
+}
+
+/// Answers one request. Returns the sign-in's result if it was the
+/// redirect, or `None` if the wait should go on.
+async fn answer(
+    mut stream: TcpStream,
+    target: Option<String>,
+    expected_state: &str,
+) -> Option<Result<String, CallbackError>> {
+    let url = target.and_then(|target| Url::parse(&format!("http://127.0.0.1{target}")).ok());
+    let Some(url) = url else {
+        respond(
+            &mut stream,
+            "400 Bad Request",
+            "That wasn't a request Deadwax understands.",
+        )
+        .await;
+        return None;
+    };
+    if url.path() != CALLBACK_PATH {
+        respond(&mut stream, "404 Not Found", "Nothing here.").await;
+        return None;
+    }
+    let result = parse_callback(&url, expected_state);
+    let (status, message) = match result {
+        Ok(_) => (
+            "200 OK",
+            "You're signed in to Spotify. You can close this tab and go back to Deadwax.",
+        ),
+        Err(_) => (
+            "400 Bad Request",
+            "Deadwax couldn't finish signing in. Close this tab and try again from Deadwax.",
+        ),
+    };
+    respond(&mut stream, status, message).await;
+    Some(result)
 }
 
 fn parse_callback(url: &Url, expected_state: &str) -> Result<String, CallbackError> {
@@ -118,25 +133,33 @@ fn parse_callback(url: &Url, expected_state: &str) -> Result<String, CallbackErr
         .ok_or(CallbackError::MissingCode)
 }
 
-/// Reads the request head and returns its target (`/callback?code=…`), or
-/// `None` if it isn't an HTTP `GET`.
-async fn read_request_target(stream: &mut TcpStream) -> io::Result<Option<String>> {
+/// How long a connection gets to send its request before it's dropped.
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Reads the request head. Returns the connection and the request target
+/// (`/callback?code=…`), or no target if it isn't an HTTP `GET`. Returns
+/// nothing at all if the connection fails or stays silent.
+async fn read_request(mut stream: TcpStream) -> Option<(TcpStream, Option<String>)> {
     // The redirect is a single short GET. 8 KiB is far more than it needs.
     let mut buffer = vec![0u8; 8192];
     let mut len = 0;
     while !buffer[..len].windows(4).any(|w| w == b"\r\n\r\n") && len < buffer.len() {
-        let read = stream.read(&mut buffer[len..]).await?;
+        let read = tokio::time::timeout(READ_TIMEOUT, stream.read(&mut buffer[len..]))
+            .await
+            .ok()?
+            .ok()?;
         if read == 0 {
-            break;
+            return None;
         }
         len += read;
     }
     let head = String::from_utf8_lossy(&buffer[..len]);
     let mut parts = head.lines().next().unwrap_or("").split_whitespace();
-    Ok(match (parts.next(), parts.next()) {
+    let target = match (parts.next(), parts.next()) {
         (Some("GET"), Some(target)) if target.starts_with('/') => Some(target.to_owned()),
         _ => None,
-    })
+    };
+    Some((stream, target))
 }
 
 /// The browser may already have gone, so a failed write is ignored.
@@ -231,6 +254,19 @@ mod tests {
             waiting.await.unwrap(),
             Err(CallbackError::Denied(error)) if error == "access_denied"
         ));
+    }
+
+    #[tokio::test]
+    async fn is_not_held_up_by_a_connection_that_sends_nothing() {
+        let listener = Listener::bind().await.unwrap();
+        let port = listener.port;
+        let waiting = tokio::spawn(listener.wait_for_code("s"));
+
+        // A browser's spare connection, opened ahead of time and left idle.
+        let _idle = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        get(port, "/callback?code=c&state=s").await;
+
+        assert_eq!(waiting.await.unwrap().unwrap(), "c");
     }
 
     #[tokio::test]
