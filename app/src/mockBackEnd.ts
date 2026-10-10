@@ -22,3 +22,12 @@ export function backEnd(
   );
   return calls;
 }
+
+/**
+ * An empty collection. Development builds also ask whether the dev list has
+ * albums to restore into it: here it has none.
+ */
+export const EMPTY_COLLECTION = {
+  get_collection: () => [],
+  dev_list_missing: () => 0,
+};

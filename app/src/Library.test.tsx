@@ -8,7 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import type { AlbumCard, SearchResults } from "./api";
 import Library from "./Library";
-import { backEnd } from "./mockBackEnd";
+import { backEnd, EMPTY_COLLECTION } from "./mockBackEnd";
 
 const album = (n: number, extra: Partial<AlbumCard> = {}): AlbumCard => ({
   id: `album${n}`,
@@ -84,7 +84,7 @@ describe("Library", () => {
   });
 
   it("says so when the collection is empty", async () => {
-    backEnd({ get_collection: () => [] });
+    backEnd({ ...EMPTY_COLLECTION });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
     expect(
@@ -96,7 +96,7 @@ describe("Library", () => {
 
   it("searches ten at a time, with cover, title, artist and year", async () => {
     const calls = backEnd({
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
       search_albums: (args) => {
         const { offset } = args as { offset: number };
         return page(offset, offset === 10);
@@ -135,7 +135,7 @@ describe("Library", () => {
 
   it("shows an album once when the next page repeats it", async () => {
     backEnd({
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
       search_albums: (args) => {
         const { offset } = args as { offset: number };
         if (offset === 0) return page(0);
@@ -160,7 +160,7 @@ describe("Library", () => {
   it("keeps an album's mark when More finishes after its Add", async () => {
     let finishMore: (results: SearchResults) => void = () => {};
     backEnd({
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
       search_albums: (args) => {
         const { offset } = args as { offset: number };
         if (offset === 0) return page(0);
@@ -188,7 +188,7 @@ describe("Library", () => {
 
   it("marks the albums already in your collection", async () => {
     backEnd({
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
       search_albums: () => page(0),
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
@@ -248,7 +248,7 @@ describe("Library", () => {
 
   it("shows a failed search", async () => {
     backEnd({
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
       get_session: () => ({ state: "signedIn", name: "Will" }),
       search_albums: () => {
         throw "couldn't reach Spotify";
@@ -268,7 +268,7 @@ describe("Library", () => {
       "Your Spotify sign-in has expired. Sign in again to carry on.";
     const onSignedOut = vi.fn();
     backEnd({
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
       get_session: () => ({ state: "signedOut", message: null }),
       search_albums: () => {
         throw message;

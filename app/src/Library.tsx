@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   errorMessage,
   getCollection,
@@ -6,6 +6,7 @@ import {
   type AlbumCard,
   type Session,
 } from "./api";
+import DevList from "./DevList";
 import Grid from "./Grid";
 import Search from "./Search";
 import "./Library.css";
@@ -21,9 +22,11 @@ function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     getCollection().then(setAlbums, (e: unknown) => setError(errorMessage(e)));
   }, []);
+
+  useEffect(load, [load]);
 
   const added = (album: AlbumCard) =>
     setAlbums((current) => [
@@ -59,6 +62,13 @@ function Library({ name, onSignedOut }: Props) {
         <p className="error" role="alert">
           {error}
         </p>
+      )}
+      {import.meta.env.DEV && (
+        <DevList
+          empty={albums?.length === 0}
+          onChanged={load}
+          onFailed={failed}
+        />
       )}
       {albums && <Grid albums={albums} />}
     </div>

@@ -143,3 +143,21 @@
 .empty {
   color: var(--ink-muted);
 }
+
+/* The dev list's offer and reports (development builds only). */
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space);
+  padding: calc(var(--space) * 1.5) calc(var(--space) * 2);
+  margin-bottom: calc(var(--space) * 3);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.notice p,
+.notice ul {
+  flex-basis: 100%;
+  margin: 0;
+}

@@ -69,3 +69,6 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci
       - run: npm run tauri build -- --ci -- --locked
+      # Release builds must not contain the dev list or the Develop menu.
+      - run: scripts/check-release-has-no-dev-list.sh
+        working-directory: .

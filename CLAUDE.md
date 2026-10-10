@@ -16,9 +16,12 @@ app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
+scripts                 checks CI runs that aren't cargo or npm commands
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
 ```
+
+Development builds also keep a **dev list** in Deadwax's app-data folder (`~/Library/Application Support/com.willmcneilly.deadwax/dev-list.json`), shared by every checkout. It mirrors each add and remove, and the **Develop** menu resets the collection and restores it from the list. Everything about it is compiled only in development builds: in Rust under `#[cfg(debug_assertions)]` (`app/src-tauri/src/commands/dev.rs`), and in the UI behind `import.meta.env.DEV`. A fresh worktree starts with an empty collection and offers to restore.
 
 ## Commands
 
@@ -38,6 +41,9 @@ npm run lint                                        # eslint, then stylelint
 npm test                                            # vitest, jsdom
 npm run tauri dev                                   # open the app with hot reload
 npm run tauri build -- --ci -- --locked             # release build: target/release/bundle/macos/Deadwax.app
+
+# After a release build (from the root)
+scripts/check-release-has-no-dev-list.sh            # the release build has no dev list or Develop menu
 ```
 
 `cargo build`/`clippy`/`test` compile the app crate in dev mode, so they don't need `app/dist`. Only `tauri build` needs the frontend built, and it does that itself.
