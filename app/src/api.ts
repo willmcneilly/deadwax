@@ -62,10 +62,19 @@ export type AlbumDetails = {
   title: string;
   artist: string;
   year: number | null;
-  /** Spotify's largest cover, about 640 pixels. */
+  /**
+   * The high-res cover once one has been found, otherwise Spotify's largest,
+   * about 640 pixels.
+   */
   coverUrl: string | null;
   tracks: AlbumTrack[];
 };
+
+/**
+ * The event Rust sends, with the album's ID, when it has stored the album's
+ * high-res cover (app/src-tauri/src/artwork.rs).
+ */
+export const ARTWORK_FOUND = "artwork-found";
 
 /** The album page, from the cache. */
 export const getAlbum = (id: string) =>

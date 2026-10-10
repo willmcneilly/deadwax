@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Proves a release build of Deadwax contains no dev list and no Develop menu
-# (RFC-001, "A dev list that survives resets"; DWX-5). Run it after
+# (RFC-001, "A dev list that survives resets"; DWX-5), including the Develop
+# menu's Artwork report (DWX-7). Run it after
 # `npm run tauri build`, from the repository root. CI runs it on every PR.
 #
 # The Rust side (in deadwax-core and the app) is compiled out with
@@ -35,6 +36,11 @@ rust_markers=(
   "dev_list_missing"
   "restore_from_dev_list"
   "commands/dev.rs"
+  # the Develop menu's Artwork report
+  "Artwork report"
+  "artwork-report"
+  "artwork_report"
+  "Not looked up yet"
 )
 
 # What the UI's dev list would leave in the bundle.
@@ -43,6 +49,8 @@ ui_markers=(
   "restore_from_dev_list"
   "reset_collection"
   "from the dev list"
+  "artwork_report"
+  "Artwork report"
 )
 
 failed=0

@@ -168,6 +168,25 @@
   margin: 0;
 }
 
+/* The Develop menu's Artwork report: development builds only. */
+.artwork-report h2 {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.artwork-report table {
+  flex-basis: 100%;
+  border-collapse: collapse;
+}
+
+.artwork-report th,
+.artwork-report td {
+  padding: calc(var(--space) / 2) var(--space);
+  text-align: left;
+  border-bottom: 1px solid var(--ink-muted);
+}
+
 /* Room for the playback bar, which sits over the bottom of the window. */
 .library {
   padding-bottom: calc(var(--space) * 12);

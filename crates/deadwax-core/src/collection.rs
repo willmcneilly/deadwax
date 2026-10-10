@@ -8,6 +8,11 @@
 //! while, so the cache can always be thrown away and fetched again. The
 //! collection can't.
 //!
+//! A third table, `artwork`, holds the high-res cover found for each album
+//! (DWX-7): only its URL, where it came from and its size, never the image.
+//! It's found in the background, so an album can be in the collection
+//! without one for a while.
+//!
 //! In development builds the collection also mirrors every add and remove to
 //! the dev list (`crate::dev_list`), which survives resets. All of that is
 //! compiled under `debug_assertions`, so release builds don't contain it.
@@ -67,6 +72,45 @@ pub fn largest(covers: &[Cover]) -> Option<&Cover> {
     covers.iter().max_by_key(|cover| cover.width.unwrap_or(0))
 }
 
+/// Where an album's cover came from (RFC-001, "High-res artwork, as an
+/// experiment"), in the order they're tried.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ArtworkSource {
+    Itunes,
+    Deezer,
+    MusicBrainz,
+    /// No other source had it, so it's Spotify's own cover.
+    Spotify,
+}
+
+impl ArtworkSource {
+    pub const ALL: [ArtworkSource; 4] =
+        [Self::Itunes, Self::Deezer, Self::MusicBrainz, Self::Spotify];
+
+    /// The name stored in the database.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Itunes => "itunes",
+            Self::Deezer => "deezer",
+            Self::MusicBrainz => "musicbrainz",
+            Self::Spotify => "spotify",
+        }
+    }
+
+    fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|source| source.as_str() == name)
+    }
+}
+
+/// The result of looking for an album's high-res cover: the winning image's
+/// URL and pixel size, and where it came from. Never the image itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Artwork {
+    pub source: ArtworkSource,
+    /// `None` only when nothing had a cover, not even Spotify.
+    pub cover: Option<Cover>,
+}
+
 /// How long the cache is good for. Spotify's terms say to keep cached
 /// metadata reasonably up to date, so opening an album whose cache is older
 /// fetches it again (RFC-001, "The collection").
@@ -79,6 +123,8 @@ pub struct Collected {
     pub added_at: SystemTime,
     /// When the cached metadata was fetched from Spotify.
     pub fetched_at: SystemTime,
+    /// The high-res cover, once it's been looked for.
+    pub artwork: Option<Artwork>,
 }
 
 impl Collected {
@@ -109,13 +155,15 @@ pub enum CollectionError {
     Corrupt(#[from] serde_json::Error),
     #[error("the collection was made by a newer Deadwax (schema {0})")]
     TooNew(i64),
+    #[error("the collection's artwork has an unknown source {0:?}")]
+    UnknownSource(String),
     #[cfg(debug_assertions)]
     #[error("the collection changed, but the dev list didn't: {0}")]
     DevList(#[from] DevListError),
 }
 
 /// The schema version this code writes, in SQLite's `user_version`.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA: &str = "
     CREATE TABLE collection (
@@ -132,6 +180,18 @@ const SCHEMA: &str = "
         covers     TEXT NOT NULL,    -- JSON: [Cover]
         upc        TEXT,
         fetched_at INTEGER NOT NULL  -- Unix milliseconds
+    ) STRICT;
+";
+
+/// Schema 2 (DWX-7): the artwork found for each album.
+const ARTWORK: &str = "
+    CREATE TABLE artwork (
+        spotify_id TEXT PRIMARY KEY NOT NULL,
+        source     TEXT NOT NULL,    -- ArtworkSource::as_str
+        url        TEXT,             -- NULL when nothing had a cover
+        width      INTEGER,
+        height     INTEGER,
+        found_at   INTEGER NOT NULL  -- Unix milliseconds
     ) STRICT;
 ";
 
@@ -162,7 +222,15 @@ impl Collection {
         match version {
             0 => {
                 db.execute_batch(SCHEMA)?;
+                db.execute_batch(ARTWORK)?;
                 db.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            }
+            1 => {
+                // In one transaction, so a crash can't leave the table without
+                // the version that says it's there.
+                db.execute_batch(&format!(
+                    "BEGIN; {ARTWORK} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+                ))?;
             }
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),
@@ -248,8 +316,34 @@ impl Collection {
         Ok(collected)
     }
 
-    /// Takes the album out of the collection, and forgets its cache. Returns
-    /// whether it was there.
+    /// Records the artwork found for the album at `now`, if the album is
+    /// still in the collection. Returns whether it was.
+    pub fn set_artwork(
+        &mut self,
+        spotify_id: &str,
+        artwork: &Artwork,
+        now: SystemTime,
+    ) -> Result<bool, CollectionError> {
+        let cover = artwork.cover.as_ref();
+        let stored = self.db.execute(
+            "INSERT OR REPLACE INTO artwork
+                 (spotify_id, source, url, width, height, found_at)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6
+             WHERE EXISTS (SELECT 1 FROM collection WHERE spotify_id = ?1)",
+            params![
+                spotify_id,
+                artwork.source.as_str(),
+                cover.map(|c| &c.url),
+                cover.and_then(|c| c.width),
+                cover.and_then(|c| c.height),
+                millis(now),
+            ],
+        )?;
+        Ok(stored == 1)
+    }
+
+    /// Takes the album out of the collection, and forgets its cache and
+    /// artwork. Returns whether it was there.
     pub fn remove(&mut self, spotify_id: &str) -> Result<bool, CollectionError> {
         let tx = self.db.transaction()?;
         let removed = tx.execute("DELETE FROM collection WHERE spotify_id = ?1", [spotify_id])?;
@@ -257,6 +351,7 @@ impl Collection {
             "DELETE FROM album_cache WHERE spotify_id = ?1",
             [spotify_id],
         )?;
+        tx.execute("DELETE FROM artwork WHERE spotify_id = ?1", [spotify_id])?;
         tx.commit()?;
         #[cfg(debug_assertions)]
         if let Some(dev_list) = &self.dev_list {
@@ -265,11 +360,12 @@ impl Collection {
         Ok(removed == 1)
     }
 
-    /// Empties the collection and its cache. The dev list is left alone: it's
-    /// what you restore from afterwards.
+    /// Empties the collection, its cache and its artwork. The dev list is
+    /// left alone: it's what you restore from afterwards.
     pub fn clear(&mut self) -> Result<(), CollectionError> {
-        self.db
-            .execute_batch("DELETE FROM collection; DELETE FROM album_cache;")?;
+        self.db.execute_batch(
+            "DELETE FROM collection; DELETE FROM album_cache; DELETE FROM artwork;",
+        )?;
         Ok(())
     }
 
@@ -277,11 +373,22 @@ impl Collection {
     pub fn albums(&self) -> Result<Vec<Collected>, CollectionError> {
         let mut statement = self.db.prepare(
             "SELECT c.spotify_id, c.added_at, a.title, a.artist, a.year, a.tracks,
-                    a.covers, a.upc, a.fetched_at
+                    a.covers, a.upc, a.fetched_at,
+                    w.source, w.url, w.width, w.height
              FROM collection c JOIN album_cache a USING (spotify_id)
+             LEFT JOIN artwork w USING (spotify_id)
              ORDER BY c.added_at DESC, c.rowid DESC",
         )?;
         let rows = statement.query_map([], |row| {
+            let url: Option<String> = row.get(10)?;
+            let cover = match url {
+                Some(url) => Some(Cover {
+                    url,
+                    width: row.get(11)?,
+                    height: row.get(12)?,
+                }),
+                None => None,
+            };
             Ok((
                 Album {
                     spotify_id: row.get(0)?,
@@ -296,16 +403,26 @@ impl Collection {
                 row.get::<_, String>(5)?,
                 row.get::<_, String>(6)?,
                 row.get::<_, i64>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                cover,
             ))
         })?;
         rows.map(|row| {
-            let (mut album, added_at, tracks, covers, fetched_at) = row?;
+            let (mut album, added_at, tracks, covers, fetched_at, source, cover) = row?;
             album.tracks = serde_json::from_str(&tracks)?;
             album.covers = serde_json::from_str(&covers)?;
+            let artwork = source
+                .map(|name| {
+                    ArtworkSource::parse(&name)
+                        .map(|source| Artwork { source, cover })
+                        .ok_or(CollectionError::UnknownSource(name))
+                })
+                .transpose()?;
             Ok(Collected {
                 album,
                 added_at: time(added_at),
                 fetched_at: time(fetched_at),
+                artwork,
             })
         })
         .collect()
@@ -447,6 +564,7 @@ mod tests {
                 album: in_rainbows,
                 added_at: day(1),
                 fetched_at: day(1),
+                artwork: None,
             }]
         );
         assert!(collection.contains("in-rainbows").unwrap());
@@ -485,6 +603,7 @@ mod tests {
                 album: renamed,
                 added_at: day(1),
                 fetched_at: day(5),
+                artwork: None,
             }]
         );
     }
@@ -556,7 +675,7 @@ mod tests {
 
         assert!(matches!(
             Collection::open(&path),
-            Err(CollectionError::TooNew(2))
+            Err(CollectionError::TooNew(3))
         ));
     }
 
@@ -690,6 +809,7 @@ mod tests {
                 album: renamed,
                 added_at: day(1),
                 fetched_at: day(9),
+                artwork: None,
             }
         );
     }
@@ -716,6 +836,7 @@ mod tests {
             album: album("a", "A"),
             added_at: day(1),
             fetched_at: day(1),
+            artwork: None,
         };
 
         assert!(!collected.is_stale(day(1)));
@@ -733,5 +854,138 @@ mod tests {
         assert_eq!(a.largest_cover().unwrap().width, Some(640));
         a.covers.clear();
         assert_eq!(a.largest_cover(), None);
+    }
+
+    fn itunes() -> Artwork {
+        Artwork {
+            source: ArtworkSource::Itunes,
+            cover: Some(Cover {
+                url: "https://is1-ssl.mzstatic.com/image/thumb/a/10000x10000bb.jpg".into(),
+                width: Some(4000),
+                height: Some(4000),
+            }),
+        }
+    }
+
+    #[test]
+    fn stores_only_the_artworks_url_source_and_size() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        assert_eq!(collection.get("a").unwrap().unwrap().artwork, None);
+
+        assert!(collection.set_artwork("a", &itunes(), day(2)).unwrap());
+
+        assert_eq!(
+            collection.get("a").unwrap().unwrap().artwork,
+            Some(itunes())
+        );
+        let columns: Vec<String> = collection
+            .db
+            .prepare("SELECT name FROM pragma_table_info('artwork')")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            columns,
+            ["spotify_id", "source", "url", "width", "height", "found_at"]
+        );
+    }
+
+    #[test]
+    fn stores_spotifys_cover_and_no_cover_at_all() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.add(&album("b", "B"), day(1)).unwrap();
+        let spotify = Artwork {
+            source: ArtworkSource::Spotify,
+            cover: Some(Cover {
+                url: "https://i.scdn.co/image/a-640".into(),
+                width: None,
+                height: None,
+            }),
+        };
+        let nothing = Artwork {
+            source: ArtworkSource::Spotify,
+            cover: None,
+        };
+
+        collection.set_artwork("a", &spotify, day(2)).unwrap();
+        collection.set_artwork("b", &nothing, day(2)).unwrap();
+
+        assert_eq!(collection.get("a").unwrap().unwrap().artwork, Some(spotify));
+        assert_eq!(collection.get("b").unwrap().unwrap().artwork, Some(nothing));
+    }
+
+    #[test]
+    fn artwork_for_an_album_not_in_the_collection_isnt_stored() {
+        let mut collection = Collection::open_in_memory().unwrap();
+
+        assert!(!collection.set_artwork("a", &itunes(), day(2)).unwrap());
+
+        collection.add(&album("a", "A"), day(3)).unwrap();
+        assert_eq!(collection.get("a").unwrap().unwrap().artwork, None);
+    }
+
+    #[test]
+    fn removing_or_clearing_forgets_the_artwork() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        for id in ["a", "b"] {
+            collection.add(&album(id, id), day(1)).unwrap();
+            collection.set_artwork(id, &itunes(), day(1)).unwrap();
+        }
+        let artwork = |c: &Collection| -> i64 {
+            c.db.query_row("SELECT count(*) FROM artwork", [], |row| row.get(0))
+                .unwrap()
+        };
+
+        collection.remove("a").unwrap();
+        assert_eq!(artwork(&collection), 1);
+        collection.clear().unwrap();
+        assert_eq!(artwork(&collection), 0);
+    }
+
+    #[test]
+    fn refreshing_the_cache_keeps_the_artwork() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.set_artwork("a", &itunes(), day(1)).unwrap();
+
+        collection.refresh(&album("a", "A"), day(9)).unwrap();
+
+        assert_eq!(
+            collection.get("a").unwrap().unwrap().artwork,
+            Some(itunes())
+        );
+    }
+
+    #[test]
+    fn a_schema_1_database_gains_the_artwork_table_and_keeps_its_albums() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(SCHEMA).unwrap();
+            db.pragma_update(None, "user_version", 1).unwrap();
+            let tx = db.unchecked_transaction().unwrap();
+            tx.execute(
+                "INSERT INTO collection (spotify_id, added_at) VALUES ('a', ?1)",
+                [millis(day(1))],
+            )
+            .unwrap();
+            cache(&tx, &album("a", "A"), day(1)).unwrap();
+            tx.commit().unwrap();
+        }
+
+        let mut collection = Collection::open(&path).unwrap();
+
+        assert_eq!(ids(&collection), ["a"]);
+        assert!(collection.set_artwork("a", &itunes(), day(2)).unwrap());
+        let version: i64 = collection
+            .db
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
     }
 }

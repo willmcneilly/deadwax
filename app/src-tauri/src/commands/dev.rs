@@ -1,12 +1,13 @@
-//! The Develop menu's commands: resetting the collection and restoring it
-//! from the dev list. See RFC-001, "A dev list that survives resets".
+//! The Develop menu's commands: resetting the collection, restoring it from
+//! the dev list, and the Artwork report. See RFC-001, "A dev list that
+//! survives resets" and "High-res artwork, as an experiment".
 //!
 //! Development builds only: `commands.rs` compiles this module under
 //! `debug_assertions`, so release builds don't contain it.
 
 use std::time::SystemTime;
 
-use deadwax_core::collection::Collection;
+use deadwax_core::collection::{ArtworkSource, Collection};
 use deadwax_core::dev_list::Entry;
 use deadwax_sources::clock::Clock;
 use deadwax_sources::spotify::tokens::TokenStore;
@@ -15,10 +16,12 @@ use serde::Serialize;
 use tauri::State;
 
 use super::{AppState, EXPIRED_MESSAGE, collection_error, spotify_error};
+use crate::artwork::ArtworkQueue;
 
 /// The events the Develop menu's items send the UI.
 pub const RESET_COLLECTION: &str = "reset-collection";
 pub const RESTORE_FROM_DEV_LIST: &str = "restore-from-dev-list";
+pub const ARTWORK_REPORT: &str = "artwork-report";
 
 /// What restoring did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -73,10 +76,29 @@ pub fn reset_collection(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Adds back every album in the dev list that isn't in the collection,
 /// fetching each from Spotify one at a time, with its original date added.
+/// Their high-res covers are looked for in the background.
 #[tauri::command]
 pub async fn restore_from_dev_list(state: State<'_, AppState>) -> Result<RestoreReport, String> {
     let spotify = state.signed_in().await?;
-    restore(&spotify, &state.collection, SystemTime::now()).await
+    restore_and_look_for(
+        &spotify,
+        &state.collection,
+        &state.artwork,
+        SystemTime::now(),
+    )
+    .await
+}
+
+/// Restores, then queues every album without a high-res cover result.
+async fn restore_and_look_for<C: Clock, S: TokenStore>(
+    spotify: &Spotify<C, S>,
+    collection: &std::sync::Mutex<Collection>,
+    artwork: &ArtworkQueue,
+    now: SystemTime,
+) -> Result<RestoreReport, String> {
+    let report = restore(spotify, collection, now).await?;
+    artwork.look_for_missing(collection)?;
+    Ok(report)
 }
 
 async fn restore<C: Clock, S: TokenStore>(
@@ -111,10 +133,106 @@ async fn restore<C: Clock, S: TokenStore>(
     Ok(report)
 }
 
+/// Where every album's cover came from, and how big it is: the measure of
+/// the artwork experiment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtworkReport {
+    /// The collection's albums, the most recently added first.
+    pub albums: Vec<ArtworkRow>,
+    /// Albums per source, in the order they're tried, then the albums not
+    /// looked up yet.
+    pub totals: Vec<ArtworkTotal>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtworkRow {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    /// "iTunes", "Deezer", "MusicBrainz", "Spotify", or `NOT_LOOKED_UP`.
+    pub source: String,
+    pub url: Option<String>,
+    /// In pixels. `None` when it couldn't be read, or there's no cover.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtworkTotal {
+    pub source: String,
+    pub albums: u32,
+}
+
+/// An album whose lookup hasn't finished, or failed and will run again when
+/// its page opens.
+pub const NOT_LOOKED_UP: &str = "Not looked up yet";
+
+fn source_name(source: ArtworkSource) -> &'static str {
+    match source {
+        ArtworkSource::Itunes => "iTunes",
+        ArtworkSource::Deezer => "Deezer",
+        ArtworkSource::MusicBrainz => "MusicBrainz",
+        ArtworkSource::Spotify => "Spotify",
+    }
+}
+
+/// The Artwork report, for the Develop menu.
+#[tauri::command]
+pub fn artwork_report(state: State<'_, AppState>) -> Result<ArtworkReport, String> {
+    report(&state.collection.lock().expect("collection lock"))
+}
+
+fn report(collection: &Collection) -> Result<ArtworkReport, String> {
+    let albums: Vec<ArtworkRow> = collection
+        .albums()
+        .map_err(collection_error)?
+        .into_iter()
+        .map(|collected| {
+            let source = collected
+                .artwork
+                .as_ref()
+                .map_or(NOT_LOOKED_UP, |artwork| source_name(artwork.source));
+            let cover = collected.artwork.and_then(|artwork| artwork.cover);
+            ArtworkRow {
+                id: collected.album.spotify_id,
+                title: collected.album.title,
+                artist: collected.album.artist,
+                source: source.into(),
+                width: cover.as_ref().and_then(|c| c.width),
+                height: cover.as_ref().and_then(|c| c.height),
+                url: cover.map(|c| c.url),
+            }
+        })
+        .collect();
+    let count = |name: &str| {
+        let n = albums.iter().filter(|row| row.source == name).count();
+        u32::try_from(n).unwrap_or(u32::MAX)
+    };
+    let mut totals: Vec<ArtworkTotal> = ArtworkSource::ALL
+        .into_iter()
+        .map(|source| ArtworkTotal {
+            source: source_name(source).into(),
+            albums: count(source_name(source)),
+        })
+        .collect();
+    let not_looked_up = count(NOT_LOOKED_UP);
+    if not_looked_up > 0 {
+        totals.push(ArtworkTotal {
+            source: NOT_LOOKED_UP.into(),
+            albums: not_looked_up,
+        });
+    }
+    Ok(ArtworkReport { albums, totals })
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
+    use deadwax_core::collection::{Artwork, Cover};
     use deadwax_core::dev_list::{self, DevList};
     use deadwax_sources::clock::SystemClock;
     use deadwax_sources::spotify::tokens::MemoryStore;
@@ -225,6 +343,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restoring_queues_every_restored_album_to_look_for_its_artwork() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        mount_ok_computer(&server).await;
+        let (_root, collection) =
+            collection_with_dev_list(&[(IN_RAINBOWS, day(1)), (OK_COMPUTER, day(3))]);
+        let (artwork, mut queued) = ArtworkQueue::unstarted();
+
+        restore_and_look_for(&spotify, &collection, &artwork, day(10))
+            .await
+            .unwrap();
+
+        let mut queued = ArtworkQueue::queued(&mut queued);
+        queued.sort();
+        assert_eq!(queued, [IN_RAINBOWS, OK_COMPUTER]);
+    }
+
+    #[tokio::test]
     async fn only_fetches_the_albums_the_collection_is_missing() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
@@ -285,6 +421,145 @@ mod tests {
         collection.lock().unwrap().clear().unwrap();
 
         assert_eq!(missing(&collection).unwrap().len(), 1);
+    }
+
+    fn album(id: &str, title: &str) -> deadwax_core::collection::Album {
+        deadwax_core::collection::Album {
+            spotify_id: id.into(),
+            title: title.into(),
+            artist: "Radiohead".into(),
+            year: None,
+            tracks: Vec::new(),
+            covers: Vec::new(),
+            upc: None,
+        }
+    }
+
+    fn cover(url: &str, size: Option<u32>) -> Option<Cover> {
+        Some(Cover {
+            url: url.into(),
+            width: size,
+            height: size,
+        })
+    }
+
+    #[test]
+    fn the_artwork_report_lists_every_album_with_its_source_and_size_and_totals_by_source() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        for (n, id) in ["a", "b", "c", "d", "e"].into_iter().enumerate() {
+            collection
+                .add(&album(id, &id.to_uppercase()), day(n as u64))
+                .unwrap();
+        }
+        for (id, source, cover) in [
+            (
+                "a",
+                ArtworkSource::Itunes,
+                cover("https://itunes/a", Some(4000)),
+            ),
+            ("b", ArtworkSource::Itunes, cover("https://itunes/b", None)),
+            (
+                "c",
+                ArtworkSource::Spotify,
+                cover("https://spotify/c", Some(640)),
+            ),
+            ("d", ArtworkSource::Spotify, None),
+        ] {
+            collection
+                .set_artwork(id, &Artwork { source, cover }, day(9))
+                .unwrap();
+        }
+
+        let report = report(&collection).unwrap();
+
+        let rows: Vec<_> = report
+            .albums
+            .iter()
+            .map(|r| {
+                (
+                    r.title.as_str(),
+                    r.source.as_str(),
+                    r.url.as_deref(),
+                    r.width,
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("E", NOT_LOOKED_UP, None, None),
+                ("D", "Spotify", None, None),
+                ("C", "Spotify", Some("https://spotify/c"), Some(640)),
+                ("B", "iTunes", Some("https://itunes/b"), None),
+                ("A", "iTunes", Some("https://itunes/a"), Some(4000)),
+            ]
+        );
+        let totals: Vec<_> = report
+            .totals
+            .iter()
+            .map(|t| (t.source.as_str(), t.albums))
+            .collect();
+        assert_eq!(
+            totals,
+            [
+                ("iTunes", 2),
+                ("Deezer", 0),
+                ("MusicBrainz", 0),
+                ("Spotify", 2),
+                (NOT_LOOKED_UP, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_artwork_report_only_counts_albums_not_looked_up_when_there_are_some() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        collection
+            .set_artwork(
+                "a",
+                &Artwork {
+                    source: ArtworkSource::Deezer,
+                    cover: cover("https://deezer/a", Some(1000)),
+                },
+                day(1),
+            )
+            .unwrap();
+
+        let totals = report(&collection).unwrap().totals;
+
+        assert_eq!(totals.len(), 4);
+        assert_eq!(totals[1].albums, 1);
+    }
+
+    /// The JSON `app/src/ArtworkReport.tsx` expects. Change both together.
+    #[test]
+    fn the_artwork_report_serialises_as_the_ui_expects() {
+        let report = ArtworkReport {
+            albums: vec![ArtworkRow {
+                id: "a".into(),
+                title: "A".into(),
+                artist: "Radiohead".into(),
+                source: "iTunes".into(),
+                url: Some("https://itunes/a".into()),
+                width: Some(4000),
+                height: Some(3998),
+            }],
+            totals: vec![ArtworkTotal {
+                source: "iTunes".into(),
+                albums: 1,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&report).unwrap(),
+            json!({
+                "albums": [{
+                    "id": "a", "title": "A", "artist": "Radiohead", "source": "iTunes",
+                    "url": "https://itunes/a", "width": 4000, "height": 3998,
+                }],
+                "totals": [{"source": "iTunes", "albums": 1}],
+            })
+        );
     }
 
     #[test]

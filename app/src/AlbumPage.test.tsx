@@ -5,8 +5,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it } from "vitest";
-import type { AlbumCard, AlbumDetails } from "./api";
+import { ARTWORK_FOUND, type AlbumCard, type AlbumDetails } from "./api";
 import Library from "./Library";
 import { backEnd, NOTHING_PLAYING } from "./mockBackEnd";
 
@@ -132,6 +133,37 @@ describe("The album page", () => {
         "listitem",
       ),
     ).toHaveLength(1);
+  });
+
+  it("swaps in the high-res cover when Rust finds it, and the grid keeps Spotify's", async () => {
+    const HIGH_RES =
+      "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg";
+    let found = false;
+    const calls = collection({
+      get_album: () =>
+        found ? { ...IN_RAINBOWS, coverUrl: HIGH_RES } : IN_RAINBOWS,
+    });
+
+    await openInRainbows();
+    const cover = () =>
+      screen.getByRole("img", { name: "Cover of In Rainbows" });
+    expect(cover()).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
+
+    // Another album's artwork changes nothing.
+    await emit(ARTWORK_FOUND, OTHER.id);
+    expect(calls.filter((c) => c.cmd === "get_album")).toHaveLength(1);
+
+    found = true;
+    await emit(ARTWORK_FOUND, IN_RAINBOWS.id);
+    await waitFor(() => expect(cover()).toHaveAttribute("src", HIGH_RES));
+
+    fireEvent.click(screen.getByRole("button", { name: "← Your collection" }));
+    const inGrid = await within(
+      await screen.findByRole("list", {
+        name: "Your collection",
+      }),
+    ).findByRole("img", { name: "Cover of In Rainbows" });
+    expect(inGrid).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
   });
 
   it("keeps the cached page when fetching it again fails", async () => {
