@@ -339,8 +339,26 @@ async fn search<C: Clock, S: TokenStore>(
 #[tauri::command]
 pub async fn add_album(state: State<'_, AppState>, id: String) -> Result<AlbumCard, String> {
     let spotify = state.signed_in().await?;
-    let card = add(&spotify, &state.collection, &id, SystemTime::now()).await?;
-    state.artwork.look_for(&card.id);
+    add_and_look_for(
+        &spotify,
+        &state.collection,
+        &state.artwork,
+        &id,
+        SystemTime::now(),
+    )
+    .await
+}
+
+/// Adds the album, then queues it to look for its high-res cover.
+async fn add_and_look_for<C: Clock, S: TokenStore>(
+    spotify: &Spotify<C, S>,
+    collection: &std::sync::Mutex<Collection>,
+    artwork: &ArtworkQueue,
+    id: &str,
+    now: SystemTime,
+) -> Result<AlbumCard, String> {
+    let card = add(spotify, collection, id, now).await?;
+    artwork.look_for(&card.id);
     Ok(card)
 }
 
@@ -417,9 +435,17 @@ const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
 /// is queued to look for one, and `ARTWORK_FOUND` says when it's stored.
 #[tauri::command]
 pub fn get_album(state: State<'_, AppState>, id: String) -> Result<AlbumPage, String> {
-    let collected = collected(&state.collection, &id)?;
+    open_album(&state.collection, &state.artwork, &id)
+}
+
+fn open_album(
+    collection: &std::sync::Mutex<Collection>,
+    artwork: &ArtworkQueue,
+    id: &str,
+) -> Result<AlbumPage, String> {
+    let collected = collected(collection, id)?;
     if collected.artwork.is_none() {
-        state.artwork.look_for(&id);
+        artwork.look_for(id);
     }
     Ok(collected.into())
 }
@@ -1071,6 +1097,56 @@ mod tests {
             album_page(&empty_collection(), IN_RAINBOWS),
             Err(NOT_IN_COLLECTION.into())
         );
+    }
+
+    #[tokio::test]
+    async fn adding_an_album_queues_it_to_look_for_its_artwork() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = empty_collection();
+        let (artwork, mut queued) = ArtworkQueue::unstarted();
+
+        add_and_look_for(&spotify, &collection, &artwork, IN_RAINBOWS, day(1))
+            .await
+            .unwrap();
+
+        assert_eq!(ArtworkQueue::queued(&mut queued), [IN_RAINBOWS]);
+    }
+
+    #[tokio::test]
+    async fn an_album_that_couldnt_be_added_isnt_queued() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let (artwork, mut queued) = ArtworkQueue::unstarted();
+
+        let added = add_and_look_for(
+            &spotify,
+            &empty_collection(),
+            &artwork,
+            "0000000000000000000000",
+            day(1),
+        )
+        .await;
+
+        assert!(added.is_err());
+        assert!(ArtworkQueue::queued(&mut queued).is_empty());
+    }
+
+    #[tokio::test]
+    async fn opening_an_album_without_artwork_queues_it_and_one_with_artwork_doesnt() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let (artwork, mut queued) = ArtworkQueue::unstarted();
+
+        open_album(&collection, &artwork, IN_RAINBOWS).unwrap();
+        assert_eq!(ArtworkQueue::queued(&mut queued), [IN_RAINBOWS]);
+
+        found_on_itunes(&collection);
+        let (artwork, mut queued) = ArtworkQueue::unstarted();
+        let page = open_album(&collection, &artwork, IN_RAINBOWS).unwrap();
+        assert!(ArtworkQueue::queued(&mut queued).is_empty());
+        assert_eq!(page.cover_url.as_deref(), Some(HIGH_RES));
     }
 
     const HIGH_RES: &str = "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg";

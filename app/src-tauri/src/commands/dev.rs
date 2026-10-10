@@ -16,6 +16,7 @@ use serde::Serialize;
 use tauri::State;
 
 use super::{AppState, EXPIRED_MESSAGE, collection_error, spotify_error};
+use crate::artwork::ArtworkQueue;
 
 /// The events the Develop menu's items send the UI.
 pub const RESET_COLLECTION: &str = "reset-collection";
@@ -79,8 +80,24 @@ pub fn reset_collection(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub async fn restore_from_dev_list(state: State<'_, AppState>) -> Result<RestoreReport, String> {
     let spotify = state.signed_in().await?;
-    let report = restore(&spotify, &state.collection, SystemTime::now()).await?;
-    state.artwork.look_for_missing(&state.collection)?;
+    restore_and_look_for(
+        &spotify,
+        &state.collection,
+        &state.artwork,
+        SystemTime::now(),
+    )
+    .await
+}
+
+/// Restores, then queues every album without a high-res cover result.
+async fn restore_and_look_for<C: Clock, S: TokenStore>(
+    spotify: &Spotify<C, S>,
+    collection: &std::sync::Mutex<Collection>,
+    artwork: &ArtworkQueue,
+    now: SystemTime,
+) -> Result<RestoreReport, String> {
+    let report = restore(spotify, collection, now).await?;
+    artwork.look_for_missing(collection)?;
     Ok(report)
 }
 
@@ -323,6 +340,24 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn restoring_queues_every_restored_album_to_look_for_its_artwork() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        mount_ok_computer(&server).await;
+        let (_root, collection) =
+            collection_with_dev_list(&[(IN_RAINBOWS, day(1)), (OK_COMPUTER, day(3))]);
+        let (artwork, mut queued) = ArtworkQueue::unstarted();
+
+        restore_and_look_for(&spotify, &collection, &artwork, day(10))
+            .await
+            .unwrap();
+
+        let mut queued = ArtworkQueue::queued(&mut queued);
+        queued.sort();
+        assert_eq!(queued, [IN_RAINBOWS, OK_COMPUTER]);
     }
 
     #[tokio::test]

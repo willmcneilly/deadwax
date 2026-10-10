@@ -53,6 +53,24 @@ impl ArtworkQueue {
         Self { sender, pending }
     }
 
+    /// A queue with no worker, for tests: they read what was queued from the
+    /// receiver.
+    #[cfg(test)]
+    pub fn unstarted() -> (Self, mpsc::UnboundedReceiver<String>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let queue = Self {
+            sender,
+            pending: Arc::new(Mutex::new(HashSet::new())),
+        };
+        (queue, receiver)
+    }
+
+    /// What has been queued so far, for tests of an `unstarted` queue.
+    #[cfg(test)]
+    pub fn queued(receiver: &mut mpsc::UnboundedReceiver<String>) -> Vec<String> {
+        std::iter::from_fn(|| receiver.try_recv().ok()).collect()
+    }
+
     /// Queues the album, unless it's already queued.
     pub fn look_for(&self, id: &str) {
         if self
@@ -256,8 +274,34 @@ mod tests {
         assert_eq!(artwork, None);
     }
 
+    #[test]
+    fn an_album_already_queued_isnt_queued_again() {
+        let (queue, mut receiver) = ArtworkQueue::unstarted();
+
+        queue.look_for("a");
+        queue.look_for("b");
+        queue.look_for("a");
+
+        assert_eq!(ArtworkQueue::queued(&mut receiver), ["a", "b"]);
+    }
+
+    #[test]
+    fn queues_only_the_albums_without_a_result() {
+        let collection = collection(&["a", "b"]);
+        collection
+            .lock()
+            .unwrap()
+            .set_artwork("a", &spotifys("a"), SystemTime::now())
+            .unwrap();
+        let (queue, mut receiver) = ArtworkQueue::unstarted();
+
+        queue.look_for_missing(&collection).unwrap();
+
+        assert_eq!(ArtworkQueue::queued(&mut receiver), ["b"]);
+    }
+
     #[tokio::test]
-    async fn the_queue_looks_up_each_album_once_in_the_background_and_says_so() {
+    async fn the_queue_looks_up_albums_in_the_background_and_says_so() {
         let server = MockServer::start().await;
         let finder = finds_nothing(&server).await;
         let collection = collection(&["a", "b"]);
