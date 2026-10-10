@@ -226,8 +226,11 @@ impl Collection {
                 db.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             }
             1 => {
-                db.execute_batch(ARTWORK)?;
-                db.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+                // In one transaction, so a crash can't leave the table without
+                // the version that says it's there.
+                db.execute_batch(&format!(
+                    "BEGIN; {ARTWORK} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+                ))?;
             }
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),

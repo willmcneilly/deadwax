@@ -123,6 +123,9 @@ impl<C: Clock + Clone> Finder<C> {
         Self {
             client: reqwest::Client::builder()
                 .user_agent(USER_AGENT)
+                // One stalled request mustn't hold up the queue behind it.
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
                 .build()
                 .expect("a plain HTTP client builds"),
             endpoints,
