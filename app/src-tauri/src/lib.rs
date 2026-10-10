@@ -4,10 +4,10 @@ mod command_types;
 mod commands;
 mod config;
 
+use std::sync::{Arc, Mutex};
+
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{Emitter, Manager};
-
-use std::sync::{Arc, Mutex};
 
 use artwork::{ARTWORK_FOUND, ArtworkQueue};
 use commands::AppState;
