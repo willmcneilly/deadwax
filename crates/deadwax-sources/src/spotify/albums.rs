@@ -108,7 +108,7 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
 
 /// Spotify IDs are 22 base-62 characters. Checking keeps anything else out
 /// of the request's path.
-fn is_spotify_id(id: &str) -> bool {
+pub fn is_spotify_id(id: &str) -> bool {
     id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
 

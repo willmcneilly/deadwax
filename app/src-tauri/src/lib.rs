@@ -113,6 +113,10 @@ pub fn run() {
             commands::get_collection,
             commands::search_albums,
             commands::add_album,
+            commands::get_album,
+            commands::refresh_album,
+            commands::remove_album,
+            commands::open_album_in_spotify,
             #[cfg(debug_assertions)]
             commands::dev::dev_list_missing,
             #[cfg(debug_assertions)]

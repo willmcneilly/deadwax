@@ -67,6 +67,11 @@ pub fn largest(covers: &[Cover]) -> Option<&Cover> {
     covers.iter().max_by_key(|cover| cover.width.unwrap_or(0))
 }
 
+/// How long the cache is good for. Spotify's terms say to keep cached
+/// metadata reasonably up to date, so opening an album whose cache is older
+/// fetches it again (RFC-001, "The collection").
+pub const CACHE_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+
 /// An album in the collection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Collected {
@@ -74,6 +79,15 @@ pub struct Collected {
     pub added_at: SystemTime,
     /// When the cached metadata was fetched from Spotify.
     pub fetched_at: SystemTime,
+}
+
+impl Collected {
+    /// Whether the cache is over `CACHE_LIFETIME` old at `now`. A fetch
+    /// that seems to be in the future (the clock went back) isn't.
+    pub fn is_stale(&self, now: SystemTime) -> bool {
+        now.duration_since(self.fetched_at)
+            .is_ok_and(|age| age > CACHE_LIFETIME)
+    }
 }
 
 /// What adding an album did.
@@ -212,6 +226,26 @@ impl Collection {
         } else {
             Added::AlreadyThere
         })
+    }
+
+    /// Replaces the cached metadata with `album`, fetched at `now`, if the
+    /// album is still in the collection. Returns whether it was: one removed
+    /// while it was being fetched stays removed.
+    pub fn refresh(&mut self, album: &Album, now: SystemTime) -> Result<bool, CollectionError> {
+        let tx = self.db.transaction()?;
+        let collected = tx
+            .query_row(
+                "SELECT 1 FROM collection WHERE spotify_id = ?1",
+                [&album.spotify_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if collected {
+            cache(&tx, album, now)?;
+        }
+        tx.commit()?;
+        Ok(collected)
     }
 
     /// Takes the album out of the collection, and forgets its cache. Returns
@@ -640,6 +674,55 @@ mod tests {
                 .collect();
             assert_eq!(files, ["deadwax.sqlite3"]);
         }
+    }
+
+    #[test]
+    fn refreshing_replaces_the_cache_and_keeps_the_date_added() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        let renamed = album("a", "A (Remastered)");
+
+        assert!(collection.refresh(&renamed, day(9)).unwrap());
+
+        assert_eq!(
+            collection.get("a").unwrap().unwrap(),
+            Collected {
+                album: renamed,
+                added_at: day(1),
+                fetched_at: day(9),
+            }
+        );
+    }
+
+    #[test]
+    fn refreshing_an_album_not_in_the_collection_doesnt_add_it() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.remove("a").unwrap();
+
+        assert!(!collection.refresh(&album("a", "A"), day(2)).unwrap());
+
+        assert!(collection.albums().unwrap().is_empty());
+        let cached: i64 = collection
+            .db
+            .query_row("SELECT count(*) FROM album_cache", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(cached, 0);
+    }
+
+    #[test]
+    fn the_cache_goes_stale_after_a_week() {
+        let collected = Collected {
+            album: album("a", "A"),
+            added_at: day(1),
+            fetched_at: day(1),
+        };
+
+        assert!(!collected.is_stale(day(1)));
+        assert!(!collected.is_stale(day(8)));
+        assert!(collected.is_stale(day(8) + Duration::from_millis(1)));
+        // The clock went back: not stale.
+        assert!(!collected.is_stale(day(0)));
     }
 
     #[test]
