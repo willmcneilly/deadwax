@@ -28,8 +28,8 @@ Run everything from the repository root unless it says `app/`.
 # Rust
 cargo fmt --all                                     # format
 cargo fmt --all --check                             # CI check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
 
 # Frontend (in app/)
 npm ci
@@ -37,7 +37,7 @@ npm run typecheck                                   # tsc -b
 npm run lint                                        # eslint, then stylelint
 npm test                                            # vitest, jsdom
 npm run tauri dev                                   # open the app with hot reload
-npm run tauri build -- --ci                         # release build: target/release/bundle/macos/Deadwax.app
+npm run tauri build -- --ci -- --locked             # release build: target/release/bundle/macos/Deadwax.app
 ```
 
 `cargo build`/`clippy`/`test` compile the app crate in dev mode, so they don't need `app/dist`. Only `tauri build` needs the frontend built, and it does that itself.
@@ -63,7 +63,7 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 ## Design
 
 - **Project 1 has no `DESIGN.md`** (RFC-001, open question 2). The whole UI is provisional: project 2 starts `DESIGN.md` from what we learn.
-- Styling is plain CSS. Colours live only in the CSS variables in `app/src/theme.css`, and `npm run lint` fails on a colour written anywhere else in CSS.
+- Styling is plain CSS. Colours live only in the CSS variables in `app/src/theme.css`, never in other CSS or an inline `style`. `npm run lint` fails on a colour written in any other CSS file, and on a hex or colour-function value in a `style` prop (it can't catch named colours there, so don't write them).
 - No design decisions are logged in project 1, so skip the `work-ticket` skill's steps on design tokens and provisional design decisions (`provisional: D-n`).
 
 ## Working on tickets
