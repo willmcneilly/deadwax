@@ -15,7 +15,7 @@ use std::time::SystemTime;
 
 use deadwax_core::collection::{self, Album, Collection};
 use deadwax_sources::clock::{Clock, SystemClock};
-use deadwax_sources::spotify::albums::AlbumSummary;
+use deadwax_sources::spotify::albums::{AlbumSummary, is_spotify_id};
 use deadwax_sources::spotify::tokens::{KeychainStore, TokenStore};
 use deadwax_sources::spotify::{Endpoints, Spotify, SpotifyError};
 use serde::Serialize;
@@ -346,6 +346,142 @@ async fn add<C: Clock, S: TokenStore>(
     Ok(album.into())
 }
 
+/// An album as the album page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumPage {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub year: Option<u16>,
+    /// Spotify's largest cover, about 640 pixels.
+    pub cover_url: Option<String>,
+    pub tracks: Vec<AlbumTrack>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumTrack {
+    pub id: String,
+    pub disc: u32,
+    pub number: u32,
+    pub title: String,
+    pub duration_ms: u64,
+}
+
+impl From<Album> for AlbumPage {
+    fn from(album: Album) -> Self {
+        Self {
+            cover_url: album.largest_cover().map(|cover| cover.url.clone()),
+            id: album.spotify_id,
+            title: album.title,
+            artist: album.artist,
+            year: album.year,
+            tracks: album
+                .tracks
+                .into_iter()
+                .map(|track| AlbumTrack {
+                    id: track.spotify_id,
+                    disc: track.disc,
+                    number: track.number,
+                    title: track.title,
+                    duration_ms: track.duration_ms,
+                })
+                .collect(),
+        }
+    }
+}
+
+const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
+
+/// The album page, from the cache. It never asks Spotify: `refresh_album`
+/// does that when the cache is old.
+#[tauri::command]
+pub fn get_album(state: State<'_, AppState>, id: String) -> Result<AlbumPage, String> {
+    album_page(&state.collection, &id)
+}
+
+fn album_page(collection: &std::sync::Mutex<Collection>, id: &str) -> Result<AlbumPage, String> {
+    collection
+        .lock()
+        .expect("collection lock")
+        .get(id)
+        .map_err(collection_error)?
+        .map(|collected| collected.album.into())
+        .ok_or_else(|| NOT_IN_COLLECTION.into())
+}
+
+/// Fetches the album from Spotify again if its cache is over a week old,
+/// and returns the updated page. `None` if the cache was fresh enough, so
+/// nothing was fetched.
+#[tauri::command]
+pub async fn refresh_album(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<AlbumPage>, String> {
+    let spotify = state.signed_in().await?;
+    refresh(&spotify, &state.collection, &id, SystemTime::now()).await
+}
+
+async fn refresh<C: Clock, S: TokenStore>(
+    spotify: &Spotify<C, S>,
+    collection: &std::sync::Mutex<Collection>,
+    id: &str,
+    now: SystemTime,
+) -> Result<Option<AlbumPage>, String> {
+    let cached = collection
+        .lock()
+        .expect("collection lock")
+        .get(id)
+        .map_err(collection_error)?
+        .ok_or(NOT_IN_COLLECTION)?;
+    if !cached.is_stale(now) {
+        return Ok(None);
+    }
+    let album = spotify.album(id).await.map_err(spotify_error)?;
+    let collected = collection
+        .lock()
+        .expect("collection lock")
+        .refresh(&album, now)
+        .map_err(collection_error)?;
+    if !collected {
+        // Removed while it was being fetched.
+        return Err(NOT_IN_COLLECTION.into());
+    }
+    Ok(Some(album.into()))
+}
+
+/// Takes the album out of your collection. Removing one that isn't there is
+/// fine.
+#[tauri::command]
+pub fn remove_album(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state
+        .collection
+        .lock()
+        .expect("collection lock")
+        .remove(&id)
+        .map_err(collection_error)?;
+    Ok(())
+}
+
+/// The album's page on Spotify. Spotify's developer policy wants every album
+/// page to link back to it (RFC-001, "Spotify's attribution rules").
+fn spotify_album_url(id: &str) -> Result<String, String> {
+    // Spotify IDs are base 62, so nothing in one can change the URL.
+    if !is_spotify_id(id) {
+        return Err(format!("\"{id}\" isn't a Spotify album ID."));
+    }
+    Ok(format!("https://open.spotify.com/album/{id}"))
+}
+
+/// Opens the album on Spotify, in your browser or the Spotify app.
+#[tauri::command]
+pub fn open_album_in_spotify(app: AppHandle, id: String) -> Result<(), String> {
+    app.opener()
+        .open_url(spotify_album_url(&id)?, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use deadwax_sources::spotify::pkce::Verifier;
@@ -629,6 +765,208 @@ mod tests {
         assert_eq!(
             search(&spotify, &empty_collection(), "in rainbows", 0).await,
             Err(EXPIRED_MESSAGE.into())
+        );
+    }
+
+    const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+    /// A fixed point in time: these tests' clock.
+    fn day(n: u32) -> SystemTime {
+        SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_790_000_000) + DAY * n
+    }
+
+    /// A collection holding In Rainbows, cached at `fetched` under an older
+    /// title, so a refresh shows.
+    async fn collection_with_in_rainbows(
+        spotify: &Spotify<SystemClock, MemoryStore>,
+        fetched: SystemTime,
+    ) -> std::sync::Mutex<Collection> {
+        let mut album = spotify.album(IN_RAINBOWS).await.unwrap();
+        album.title = "In Rainbows (old title)".into();
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album, fetched).unwrap();
+        std::sync::Mutex::new(collection)
+    }
+
+    async fn albums_fetched(server: &MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path().starts_with("/v1/albums"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn the_album_page_comes_from_the_cache() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let before = albums_fetched(&server).await;
+
+        let page = album_page(&collection, IN_RAINBOWS).unwrap();
+
+        assert_eq!(page.title, "In Rainbows (old title)");
+        assert_eq!(page.artist, "Radiohead");
+        assert_eq!(page.year, Some(2007));
+        assert_eq!(page.cover_url, in_rainbows_card().cover_url);
+        assert_eq!(page.tracks.len(), 10);
+        assert_eq!(
+            page.tracks[0],
+            AlbumTrack {
+                id: page.tracks[0].id.clone(),
+                disc: 1,
+                number: 1,
+                title: "15 Step".into(),
+                duration_ms: 237_293,
+            }
+        );
+        assert_eq!(albums_fetched(&server).await, before);
+    }
+
+    #[test]
+    fn an_album_not_in_the_collection_has_no_page() {
+        assert_eq!(
+            album_page(&empty_collection(), IN_RAINBOWS),
+            Err(NOT_IN_COLLECTION.into())
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cache_up_to_a_week_old_isnt_fetched_again() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let before = albums_fetched(&server).await;
+
+        assert_eq!(
+            refresh(&spotify, &collection, IN_RAINBOWS, day(8)).await,
+            Ok(None)
+        );
+
+        assert_eq!(albums_fetched(&server).await, before);
+        let cached = collection
+            .lock()
+            .unwrap()
+            .get(IN_RAINBOWS)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.fetched_at, day(1));
+    }
+
+    #[tokio::test]
+    async fn a_cache_over_a_week_old_is_fetched_again_and_updates_the_page() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let before = albums_fetched(&server).await;
+        let now = day(8) + std::time::Duration::from_secs(1);
+
+        let page = refresh(&spotify, &collection, IN_RAINBOWS, now)
+            .await
+            .unwrap()
+            .expect("a stale cache is fetched again");
+
+        assert_eq!(page.title, "In Rainbows");
+        assert_eq!(page.tracks.len(), 10);
+        assert_eq!(albums_fetched(&server).await, before + 1);
+        let cached = collection
+            .lock()
+            .unwrap()
+            .get(IN_RAINBOWS)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.album.title, "In Rainbows");
+        assert_eq!((cached.added_at, cached.fetched_at), (day(1), now));
+        // Fresh again: opening it straight after asks Spotify nothing.
+        assert_eq!(
+            refresh(&spotify, &collection, IN_RAINBOWS, now).await,
+            Ok(None)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_refresh_keeps_the_cache() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/albums/{IN_RAINBOWS}")))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let error = refresh(&spotify, &collection, IN_RAINBOWS, day(30))
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("503"), "{error}");
+        let cached = collection
+            .lock()
+            .unwrap()
+            .get(IN_RAINBOWS)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.album.title, "In Rainbows (old title)");
+        assert_eq!(cached.fetched_at, day(1));
+    }
+
+    #[tokio::test]
+    async fn refreshing_an_album_not_in_the_collection_asks_spotify_nothing() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let before = albums_fetched(&server).await;
+
+        assert_eq!(
+            refresh(&spotify, &empty_collection(), IN_RAINBOWS, day(30)).await,
+            Err(NOT_IN_COLLECTION.into())
+        );
+        assert_eq!(albums_fetched(&server).await, before);
+    }
+
+    #[test]
+    fn open_in_spotify_links_to_the_album_and_nothing_else() {
+        assert_eq!(
+            spotify_album_url(IN_RAINBOWS),
+            Ok(format!("https://open.spotify.com/album/{IN_RAINBOWS}"))
+        );
+        for id in ["", "../../evil", "5vkqYmiPBYLaalcmjujWx?", "short"] {
+            assert!(spotify_album_url(id).is_err(), "{id}");
+        }
+    }
+
+    /// The JSON `app/src/api.ts` expects. Change both together.
+    #[test]
+    fn album_pages_serialise_as_the_ui_expects() {
+        let page = AlbumPage {
+            id: IN_RAINBOWS.into(),
+            title: "In Rainbows".into(),
+            artist: "Radiohead".into(),
+            year: Some(2007),
+            cover_url: None,
+            tracks: vec![AlbumTrack {
+                id: "t".into(),
+                disc: 1,
+                number: 1,
+                title: "15 Step".into(),
+                duration_ms: 237_293,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&page).unwrap(),
+            json!({
+                "id": IN_RAINBOWS,
+                "title": "In Rainbows",
+                "artist": "Radiohead",
+                "year": 2007,
+                "coverUrl": null,
+                "tracks": [{
+                    "id": "t", "disc": 1, "number": 1, "title": "15 Step",
+                    "durationMs": 237_293,
+                }],
+            })
         );
     }
 

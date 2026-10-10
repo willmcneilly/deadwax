@@ -105,9 +105,15 @@
   gap: calc(var(--space) * 3);
 }
 
-.grid-album {
+/* Each album opens its page. More specific than `.library button`. */
+.library .grid-album {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
 }
 
 .grid-cover {

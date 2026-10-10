@@ -76,7 +76,12 @@ describe("Library", () => {
     expect(cover).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
     expect(cover).not.toHaveAttribute("style");
     expect(cover.children).toHaveLength(0);
-    expect(cover.parentElement).toBe(items[0]);
+    // Inside the button that opens the album, with nothing else around it.
+    expect(cover.parentElement).toBe(
+      within(items[0]).getByRole("button", {
+        name: "Open In Rainbows by Radiohead",
+      }),
+    );
 
     expect(
       within(items[1]).getByRole("img", { name: "No cover" }),
