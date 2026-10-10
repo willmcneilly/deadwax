@@ -1,5 +1,7 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import {
+  ARTWORK_FOUND,
   errorMessage,
   getAlbum,
   openAlbumInSpotify,
@@ -28,7 +30,7 @@ type Props = {
 /**
  * One album: the cover, title, artist, year and tracklist, from the cache.
  * A cache over a week old is fetched again, and the page updates when it
- * arrives.
+ * arrives. So does the cover, when Rust finds a high-res one.
  */
 function AlbumPage({ id, onBack, onRemoved, onPlayed, onFailed }: Props) {
   const [album, setAlbum] = useState<AlbumDetails | null>(null);
@@ -64,6 +66,27 @@ function AlbumPage({ id, onBack, onRemoved, onPlayed, onFailed }: Props) {
     })();
     return () => {
       current = false;
+    };
+  }, [id]);
+
+  // Rust looks for the high-res cover in the background, and says when it
+  // has stored one.
+  useEffect(() => {
+    let current = true;
+    const unlisten = listen<string>(ARTWORK_FOUND, (event) => {
+      if (event.payload !== id) return;
+      getAlbum(id).then(
+        (found) => {
+          if (current) setAlbum(found);
+        },
+        (e: unknown) => {
+          if (current) failed.current(e);
+        },
+      );
+    });
+    return () => {
+      current = false;
+      void unlisten.then((stop) => stop());
     };
   }, [id]);
 

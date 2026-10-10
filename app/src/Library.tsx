@@ -7,6 +7,7 @@ import {
   type Session,
 } from "./api";
 import AlbumPage from "./AlbumPage";
+import ArtworkReport from "./ArtworkReport";
 import DevList from "./DevList";
 import Grid from "./Grid";
 import PlaybackBar from "./PlaybackBar";
@@ -91,6 +92,7 @@ function Library({ name, onSignedOut }: Props) {
           {error}
         </p>
       )}
+      {import.meta.env.DEV && <ArtworkReport onFailed={failed} />}
       {open !== null ? (
         <AlbumPage
           key={open}
