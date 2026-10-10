@@ -38,11 +38,26 @@ function PlaybackBar({ started, onFailed }: Props) {
   const [polledAt, setPolledAt] = useState(0);
   const [nowPlaying, setNowPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The last control or now playing call that failed. Now playing covers the
+   * Library's alert, so it shows this itself.
+   */
+  const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const openButton = useRef<HTMLButtonElement>(null);
+  /** Set when now playing closes, to put focus back on its button. */
+  const refocus = useRef(false);
   const failed = useRef(onFailed);
   useEffect(() => {
     failed.current = onFailed;
   });
+
+  useEffect(() => {
+    if (!nowPlaying && refocus.current) {
+      refocus.current = false;
+      openButton.current?.focus();
+    }
+  }, [nowPlaying]);
 
   useEffect(() => {
     let stopped = false;
@@ -70,14 +85,21 @@ function PlaybackBar({ started, onFailed }: Props) {
     };
   }, [started]);
 
+  /** Passes a failure on, and keeps it for now playing to show. */
+  function report(e: unknown) {
+    setFailure(errorMessage(e));
+    failed.current(e);
+  }
+
   /** Sends a control to Spotify. The next poll shows what it did. */
   async function control(send: () => Promise<void>, then?: () => void) {
     setBusy(true);
     try {
       await send();
+      setFailure(null);
       then?.();
     } catch (e) {
-      failed.current(e);
+      report(e);
     } finally {
       setBusy(false);
     }
@@ -86,10 +108,27 @@ function PlaybackBar({ started, onFailed }: Props) {
   const track = playback?.track ?? null;
   const playing = playback?.isPlaying ?? false;
   // Shown straight away: Spotify can take a moment to report the change.
-  const toggled = () =>
-    setPlayback((current) =>
-      current ? { ...current, isPlaying: !current.isPlaying } : current,
-    );
+  // The progress so far becomes the new starting point, so now playing's bar
+  // stops or starts where it is instead of jumping back to the last poll.
+  const toggled = () => {
+    const at = Date.now();
+    setPlayback((current) => {
+      if (!current) return current;
+      const counted =
+        current.isPlaying && current.progressMs !== null
+          ? current.progressMs + Math.max(0, at - polledAt)
+          : current.progressMs;
+      return {
+        ...current,
+        isPlaying: !current.isPlaying,
+        progressMs:
+          counted === null || !current.track
+            ? counted
+            : Math.min(counted, current.track.durationMs),
+      };
+    });
+    setPolledAt(at);
+  };
 
   const controls = (
     <div className="playback-controls">
@@ -130,9 +169,13 @@ function PlaybackBar({ started, onFailed }: Props) {
         playback={playback}
         polledAt={polledAt}
         error={error}
+        failure={failure}
         controls={controls}
-        onClose={() => setNowPlaying(false)}
-        onFailed={(e) => failed.current(e)}
+        onClose={() => {
+          refocus.current = true;
+          setNowPlaying(false);
+        }}
+        onFailed={report}
       />
     );
   }
@@ -162,9 +205,13 @@ function PlaybackBar({ started, onFailed }: Props) {
         )}
       </div>
       <button
+        ref={openButton}
         type="button"
         className="secondary playback-open"
-        onClick={() => setNowPlaying(true)}
+        onClick={() => {
+          setFailure(null);
+          setNowPlaying(true);
+        }}
         disabled={track === null}
       >
         Now playing

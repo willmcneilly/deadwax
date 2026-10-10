@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NowPlaying } from "./api";
 import { backEnd } from "./mockBackEnd";
@@ -225,5 +225,85 @@ describe("Now playing", () => {
       "Couldn't change fullscreen: no window",
     );
     expect(nowPlaying()).toBeInTheDocument();
+  });
+  it("shows a failed control inside now playing, which covers everything else", async () => {
+    const failed = vi.fn();
+    spotify(() => playing("Nude"), {
+      next_track: () => {
+        throw "Spotify replied 404 Not Found to skipping to the next track: Device not found";
+      },
+    });
+    render(<PlaybackBar started={0} onFailed={failed} />);
+    await wait(0);
+    fireEvent.click(screen.getByRole("button", { name: "Now playing" }));
+    await wait(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next track" }));
+    await wait(0);
+
+    expect(within(nowPlaying()).getByRole("alert")).toHaveTextContent(
+      "Spotify replied 404 Not Found to skipping to the next track: Device not found",
+    );
+    // Passed on too, in case it means the sign-in has expired.
+    expect(failed).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a failure to open the album in Spotify inside now playing", async () => {
+    spotify(() => playing("Nude"), {
+      open_album_in_spotify: () => {
+        throw "Couldn't open Spotify";
+      },
+    });
+    await open();
+
+    fireEvent.click(screen.getByRole("link", { name: "Open in Spotify" }));
+    await wait(0);
+
+    expect(within(nowPlaying()).getByRole("alert")).toHaveTextContent(
+      "Couldn't open Spotify",
+    );
+  });
+
+  it("stops and starts the progress bar where it is on pause and resume", async () => {
+    spotify(() => playing("Nude"), {
+      pause_playback: () => null,
+      resume_playback: () => null,
+    });
+    await open();
+    await wait(1000);
+    expect(elapsed()).toBe(61_000);
+
+    // Spotify's next answer is still to come, and still says playing.
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    await wait(0);
+    expect(elapsed()).toBe(61_000);
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    await wait(0);
+    expect(elapsed()).toBe(61_000);
+    await wait(100);
+    expect(elapsed()).toBe(61_100);
+  });
+
+  it("takes the covered page out of the tab order, and gives focus back on leaving", async () => {
+    spotify(() => playing("Nude"));
+    const { container } = render(
+      <PlaybackBar started={0} onFailed={() => {}} />,
+    );
+    await wait(0);
+    fireEvent.click(screen.getByRole("button", { name: "Now playing" }));
+    await wait(0);
+
+    expect(nowPlaying()).toHaveAttribute("aria-modal", "true");
+    expect(container).toHaveAttribute("inert");
+    expect(
+      screen.getByRole("button", { name: "Leave now playing" }),
+    ).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await wait(0);
+
+    expect(container).not.toHaveAttribute("inert");
+    expect(screen.getByRole("button", { name: "Now playing" })).toHaveFocus();
   });
 });

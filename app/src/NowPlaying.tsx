@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   openAlbumInSpotify,
   setNowPlayingFullscreen,
@@ -20,6 +21,8 @@ type Props = {
   polledAt: number;
   /** Why Spotify couldn't say what's playing, if it couldn't. */
   error: string | null;
+  /** The last control, link or fullscreen call that failed, if one did. */
+  failure: string | null;
   /** The playback bar's controls. */
   controls: ReactNode;
   onClose: () => void;
@@ -36,6 +39,7 @@ function NowPlaying({
   playback,
   polledAt,
   error,
+  failure,
   controls,
   onClose,
   onFailed,
@@ -47,6 +51,19 @@ function NowPlaying({
     close.current = onClose;
   });
   const leave = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+
+  // Everything else on the page is covered, so it's taken out of the tab
+  // order and the accessibility tree until now playing closes.
+  useEffect(() => {
+    const covered = [...document.body.children].filter(
+      (element) => element !== dialog.current && !element.hasAttribute("inert"),
+    );
+    for (const element of covered) element.setAttribute("inert", "");
+    return () => {
+      for (const element of covered) element.removeAttribute("inert");
+    };
+  }, []);
 
   useEffect(() => {
     setNowPlayingFullscreen(true).catch((e: unknown) => failed.current(e));
@@ -63,8 +80,15 @@ function NowPlaying({
 
   const track = playback?.track ?? null;
 
-  return (
-    <div className="now-playing" role="dialog" aria-label="Now playing">
+  // On the body, outside the app, so the rest of the page can be made inert.
+  return createPortal(
+    <div
+      ref={dialog}
+      className="now-playing"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Now playing"
+    >
       <button
         ref={leave}
         type="button"
@@ -73,6 +97,11 @@ function NowPlaying({
       >
         Leave now playing
       </button>
+      {failure !== null && (
+        <p className="error now-playing-failure" role="alert">
+          {failure}
+        </p>
+      )}
       {track === null ? (
         <p className="now-playing-quiet" aria-live="polite">
           {error !== null
@@ -124,7 +153,8 @@ function NowPlaying({
           </div>
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
