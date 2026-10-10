@@ -209,6 +209,7 @@ mod tests {
         let endpoints = Endpoints {
             accounts: server.uri(),
             api: server.uri(),
+            redirect_port: 0,
         };
         let spotify = Spotify::new("id".into(), SystemClock, MemoryStore::default(), endpoints);
         spotify

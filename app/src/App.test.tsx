@@ -40,7 +40,9 @@ describe("App", () => {
         name: "Connect Deadwax to Spotify",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("http://127.0.0.1/callback")).toBeInTheDocument();
+    expect(
+      screen.getByText("http://127.0.0.1:43117/callback"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Cancel" }),
     ).not.toBeInTheDocument();

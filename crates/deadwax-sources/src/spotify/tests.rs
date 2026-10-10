@@ -19,6 +19,7 @@ fn spotify(server: &MockServer) -> (Spotify<FakeClock, MemoryStore>, FakeClock) 
     let endpoints = Endpoints {
         accounts: server.uri(),
         api: server.uri(),
+        redirect_port: 0,
     };
     let spotify = Spotify::new(
         "client-id".into(),

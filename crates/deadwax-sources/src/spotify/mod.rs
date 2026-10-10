@@ -32,13 +32,16 @@ const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// An access token this close to expiring is refreshed before use.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 
-/// Where Spotify lives. Tests point these at a local fake server.
+/// Where Spotify lives, and where it sends you back to. Tests point these at
+/// a local fake server and any free port.
 #[derive(Clone, Debug)]
 pub struct Endpoints {
     /// Sign-in and tokens: `https://accounts.spotify.com`.
     pub accounts: String,
     /// The Web API: `https://api.spotify.com`.
     pub api: String,
+    /// The port the sign-in listener uses: `loopback::REDIRECT_PORT`.
+    pub redirect_port: u16,
 }
 
 impl Default for Endpoints {
@@ -46,6 +49,7 @@ impl Default for Endpoints {
         Self {
             accounts: "https://accounts.spotify.com".into(),
             api: "https://api.spotify.com".into(),
+            redirect_port: loopback::REDIRECT_PORT,
         }
     }
 }
@@ -123,7 +127,7 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
         &self,
         open_browser: impl FnOnce(&str) -> Result<(), String>,
     ) -> Result<(), SpotifyError> {
-        let listener = Listener::bind().await.map_err(CallbackError::Io)?;
+        let listener = Listener::bind(self.endpoints.redirect_port).await?;
         let redirect_uri = listener.redirect_uri();
         let verifier = Verifier::generate();
         let state = pkce::generate_state();

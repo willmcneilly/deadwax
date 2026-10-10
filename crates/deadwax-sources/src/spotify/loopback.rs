@@ -1,8 +1,9 @@
 //! The one-shot listener that catches Spotify's redirect after sign-in.
 //!
-//! Spotify only allows `http://127.0.0.1:<port>` for a desktop app's redirect,
-//! and the port can be picked at runtime if the app registered the address
-//! without one. So we bind a free port, put it in the redirect URI, and wait
+//! Spotify only allows `http://127.0.0.1:<port>` for a desktop app's redirect.
+//! Its docs say the port can be left out when registering and picked at
+//! runtime, but its dashboard refuses an address without a port. So Deadwax
+//! listens on one fixed port, `REDIRECT_PORT`, that you register, and waits
 //! for the browser to arrive with the authorisation code.
 
 use std::io;
@@ -17,6 +18,15 @@ use url::Url;
 /// what the setup screen tells you to register.
 pub const CALLBACK_PATH: &str = "/callback";
 
+/// The port in the redirect URI you register with Spotify:
+/// `http://127.0.0.1:43117/callback`. An obscure one, so it's unlikely to be
+/// in use.
+pub const REDIRECT_PORT: u16 = 43117;
+
+/// How long to keep trying a port that's in use. A sign-in that was just
+/// cancelled may take a moment to let go of it.
+const PORT_WAIT: Duration = Duration::from_secs(2);
+
 /// What the redirect ended in, apart from success.
 #[derive(Debug, thiserror::Error)]
 pub enum CallbackError {
@@ -26,19 +36,38 @@ pub enum CallbackError {
     Denied(String),
     #[error("the redirect had no authorisation code")]
     MissingCode,
+    #[error(
+        "another app is using port {0}, which Deadwax needs to finish signing in. \
+         Quit it and try again"
+    )]
+    PortInUse(u16),
     #[error("the sign-in listener failed: {0}")]
     Io(#[from] io::Error),
 }
 
-/// A listener on `127.0.0.1` at a port the OS picked.
+/// A listener on `127.0.0.1`.
 pub struct Listener {
     listener: TcpListener,
     port: u16,
 }
 
 impl Listener {
-    pub async fn bind() -> io::Result<Self> {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+    /// Listens on `port` (`REDIRECT_PORT`, or 0 for any free port in
+    /// tests). If the port is in use, keeps trying for a moment first.
+    pub async fn bind(port: u16) -> Result<Self, CallbackError> {
+        let deadline = tokio::time::Instant::now() + PORT_WAIT;
+        let listener = loop {
+            match TcpListener::bind(("127.0.0.1", port)).await {
+                Ok(listener) => break listener,
+                Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
+                    if tokio::time::Instant::now() >= deadline {
+                        return Err(CallbackError::PortInUse(port));
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
         let port = listener.local_addr()?.port();
         Ok(Self { listener, port })
     }
@@ -193,15 +222,40 @@ mod tests {
 
     #[tokio::test]
     async fn redirect_uri_is_loopback_on_the_bound_port() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let uri = listener.redirect_uri();
         assert_eq!(uri, format!("http://127.0.0.1:{}/callback", listener.port));
         assert_ne!(listener.port, 0);
     }
 
     #[tokio::test]
+    async fn a_port_in_use_is_reported_plainly() {
+        let taken = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = taken.local_addr().unwrap().port();
+
+        let error = Listener::bind(port).await.err().unwrap();
+
+        assert!(matches!(error, CallbackError::PortInUse(p) if p == port));
+        assert!(error.to_string().contains(&port.to_string()));
+    }
+
+    #[tokio::test]
+    async fn waits_for_a_port_that_is_let_go_of_shortly() {
+        let taken = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = taken.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            drop(taken);
+        });
+
+        let listener = Listener::bind(port).await.unwrap();
+
+        assert_eq!(listener.port, port);
+    }
+
+    #[tokio::test]
     async fn extracts_the_code_and_tells_the_browser_to_close_the_tab() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let port = listener.port;
         let waiting = tokio::spawn(listener.wait_for_code("expected-state"));
 
@@ -214,7 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_a_reply_whose_state_does_not_match() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let port = listener.port;
         let waiting = tokio::spawn(listener.wait_for_code("expected-state"));
 
@@ -230,7 +284,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_a_reply_with_no_state() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let port = listener.port;
         let waiting = tokio::spawn(listener.wait_for_code("expected-state"));
 
@@ -244,7 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn reports_a_denied_sign_in() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let port = listener.port;
         let waiting = tokio::spawn(listener.wait_for_code("s"));
 
@@ -258,7 +312,7 @@ mod tests {
 
     #[tokio::test]
     async fn is_not_held_up_by_a_connection_that_sends_nothing() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let port = listener.port;
         let waiting = tokio::spawn(listener.wait_for_code("s"));
 
@@ -271,7 +325,7 @@ mod tests {
 
     #[tokio::test]
     async fn ignores_other_requests_until_the_redirect_arrives() {
-        let listener = Listener::bind().await.unwrap();
+        let listener = Listener::bind(0).await.unwrap();
         let port = listener.port;
         let waiting = tokio::spawn(listener.wait_for_code("s"));
 

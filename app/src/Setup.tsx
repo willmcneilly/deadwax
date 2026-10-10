@@ -57,8 +57,8 @@ function Setup({ current, onSaved, onCancel }: Props) {
         </li>
         <li>Create an app. Any name and description will do.</li>
         <li>
-          Add this redirect URI, exactly, with no port:{" "}
-          <code>http://127.0.0.1/callback</code>
+          Add this redirect URI, exactly, and click Add:{" "}
+          <code>http://127.0.0.1:43117/callback</code>
         </li>
         <li>Tick Web API, agree to the terms and save.</li>
         <li>Copy the app's Client ID and paste it below.</li>
