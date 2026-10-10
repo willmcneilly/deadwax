@@ -25,6 +25,10 @@
       "album_type": "album",
       "id": "5vkqYmiPBYLaalcmjujWxK",
       "name": "In Rainbows",
+      "images": [
+        { "url": "https://i.scdn.co/image/ab67616d0000b273de3c04b5fc750b68899b20a9", "width": 640, "height": 640 },
+        { "url": "https://i.scdn.co/image/ab67616d00001e02de3c04b5fc750b68899b20a9", "width": 300, "height": 300 }
+      ],
       "release_date": "2007-12-28",
       "uri": "spotify:album:5vkqYmiPBYLaalcmjujWxK"
     },

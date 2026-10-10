@@ -124,6 +124,11 @@ export type NowPlaying = {
     album: string | null;
     albumId: string | null;
     durationMs: number;
+    /**
+     * The album's high-res cover if it's in the collection and one has been
+     * found, otherwise Spotify's largest, about 640 pixels.
+     */
+    coverUrl: string | null;
   } | null;
 };
 
@@ -140,3 +145,6 @@ export const pausePlayback = () => invoke<void>("pause_playback");
 export const resumePlayback = () => invoke<void>("resume_playback");
 export const nextTrack = () => invoke<void>("next_track");
 export const previousTrack = () => invoke<void>("previous_track");
+/** Fills the screen without the animation into a new Space, or stops. */
+export const setNowPlayingFullscreen = (fullscreen: boolean) =>
+  invoke<void>("set_now_playing_fullscreen", { fullscreen });

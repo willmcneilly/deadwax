@@ -17,6 +17,7 @@ const playing = (
     album: "In Rainbows",
     albumId: "5vkqYmiPBYLaalcmjujWxK",
     durationMs: 255_386,
+    coverUrl: null,
   },
   ...more,
 });

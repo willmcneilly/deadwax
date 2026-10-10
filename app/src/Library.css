@@ -18,7 +18,9 @@
   margin: 0;
 }
 
-.library button {
+/* Now playing sits outside the library, on the body, so it's named too. */
+.library button,
+.now-playing button {
   font: inherit;
   padding: calc(var(--space) * 0.75) calc(var(--space) * 1.5);
   border: none;
@@ -28,12 +30,14 @@
   cursor: pointer;
 }
 
-.library button:disabled {
+.library button:disabled,
+.now-playing button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.library button.secondary {
+.library button.secondary,
+.now-playing button.secondary {
   background: none;
   color: var(--ink);
   border: 1px solid var(--ink-muted);
@@ -221,4 +225,8 @@
 .playback-meta,
 .playback-quiet {
   color: var(--ink-muted);
+}
+
+.playback-open {
+  margin-left: auto;
 }

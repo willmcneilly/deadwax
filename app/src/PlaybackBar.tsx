@@ -6,8 +6,9 @@ import {
   pausePlayback,
   previousTrack,
   resumePlayback,
-  type NowPlaying,
+  type NowPlaying as Playback,
 } from "./api";
+import NowPlaying from "./NowPlaying";
 
 /**
  * How often the bar asks Spotify what's playing. Spotify doesn't push
@@ -22,22 +23,41 @@ type Props = {
 };
 
 /**
- * What Spotify is playing, with play/pause, next and previous. While the
- * window is showing, it asks Spotify every couple of seconds. It waits for
- * each answer before scheduling the next, so a slow reply (or a wait for a
- * rate limit) never stacks requests up.
+ * What Spotify is playing, with play/pause, next and previous, and a button
+ * that opens now playing over everything. While the window is showing, it
+ * asks Spotify every couple of seconds, for itself or for now playing. It
+ * waits for each answer before scheduling the next, so a slow reply (or a
+ * wait for a rate limit) never stacks requests up.
  */
 function PlaybackBar({ started, onFailed }: Props) {
   /** Undefined until Spotify first answers. Null when nothing is playing. */
-  const [playback, setPlayback] = useState<NowPlaying | null | undefined>(
+  const [playback, setPlayback] = useState<Playback | null | undefined>(
     undefined,
   );
+  /** When `playback` arrived, so now playing can move the progress on. */
+  const [polledAt, setPolledAt] = useState(0);
+  const [nowPlaying, setNowPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The last control or now playing call that failed. Now playing covers the
+   * Library's alert, so it shows this itself.
+   */
+  const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const openButton = useRef<HTMLButtonElement>(null);
+  /** Set when now playing closes, to put focus back on its button. */
+  const refocus = useRef(false);
   const failed = useRef(onFailed);
   useEffect(() => {
     failed.current = onFailed;
   });
+
+  useEffect(() => {
+    if (!nowPlaying && refocus.current) {
+      refocus.current = false;
+      openButton.current?.focus();
+    }
+  }, [nowPlaying]);
 
   useEffect(() => {
     let stopped = false;
@@ -49,6 +69,7 @@ function PlaybackBar({ started, onFailed }: Props) {
           const now = await getPlayback();
           if (stopped) return;
           setPlayback(now);
+          setPolledAt(Date.now());
           setError(null);
         } catch (e) {
           if (stopped) return;
@@ -64,14 +85,21 @@ function PlaybackBar({ started, onFailed }: Props) {
     };
   }, [started]);
 
+  /** Passes a failure on, and keeps it for now playing to show. */
+  function report(e: unknown) {
+    setFailure(errorMessage(e));
+    failed.current(e);
+  }
+
   /** Sends a control to Spotify. The next poll shows what it did. */
   async function control(send: () => Promise<void>, then?: () => void) {
     setBusy(true);
     try {
       await send();
+      setFailure(null);
       then?.();
     } catch (e) {
-      failed.current(e);
+      report(e);
     } finally {
       setBusy(false);
     }
@@ -80,43 +108,81 @@ function PlaybackBar({ started, onFailed }: Props) {
   const track = playback?.track ?? null;
   const playing = playback?.isPlaying ?? false;
   // Shown straight away: Spotify can take a moment to report the change.
-  const toggled = () =>
-    setPlayback((current) =>
-      current ? { ...current, isPlaying: !current.isPlaying } : current,
+  // The progress so far becomes the new starting point, so now playing's bar
+  // stops or starts where it is instead of jumping back to the last poll.
+  const toggled = () => {
+    const at = Date.now();
+    setPlayback((current) => {
+      if (!current) return current;
+      const counted =
+        current.isPlaying && current.progressMs !== null
+          ? current.progressMs + Math.max(0, at - polledAt)
+          : current.progressMs;
+      return {
+        ...current,
+        isPlaying: !current.isPlaying,
+        progressMs:
+          counted === null || !current.track
+            ? counted
+            : Math.min(counted, current.track.durationMs),
+      };
+    });
+    setPolledAt(at);
+  };
+
+  const controls = (
+    <div className="playback-controls">
+      <button
+        type="button"
+        className="secondary"
+        aria-label="Previous track"
+        onClick={() => void control(previousTrack)}
+        disabled={busy || !playback}
+      >
+        ⏮
+      </button>
+      <button
+        type="button"
+        aria-label={playing ? "Pause" : "Resume"}
+        onClick={() =>
+          void control(playing ? pausePlayback : resumePlayback, toggled)
+        }
+        disabled={busy || !playback}
+      >
+        {playing ? "⏸" : "▶"}
+      </button>
+      <button
+        type="button"
+        className="secondary"
+        aria-label="Next track"
+        onClick={() => void control(nextTrack)}
+        disabled={busy || !playback}
+      >
+        ⏭
+      </button>
+    </div>
+  );
+
+  if (nowPlaying) {
+    return (
+      <NowPlaying
+        playback={playback}
+        polledAt={polledAt}
+        error={error}
+        failure={failure}
+        controls={controls}
+        onClose={() => {
+          refocus.current = true;
+          setNowPlaying(false);
+        }}
+        onFailed={report}
+      />
     );
+  }
 
   return (
     <section className="playback-bar" aria-label="Playback">
-      <div className="playback-controls">
-        <button
-          type="button"
-          className="secondary"
-          aria-label="Previous track"
-          onClick={() => void control(previousTrack)}
-          disabled={busy || !playback}
-        >
-          ⏮
-        </button>
-        <button
-          type="button"
-          aria-label={playing ? "Pause" : "Resume"}
-          onClick={() =>
-            void control(playing ? pausePlayback : resumePlayback, toggled)
-          }
-          disabled={busy || !playback}
-        >
-          {playing ? "⏸" : "▶"}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          aria-label="Next track"
-          onClick={() => void control(nextTrack)}
-          disabled={busy || !playback}
-        >
-          ⏭
-        </button>
-      </div>
+      {controls}
       <div className="playback-now" aria-live="polite">
         {error !== null ? (
           <span className="error">Couldn't check what's playing: {error}</span>
@@ -138,6 +204,18 @@ function PlaybackBar({ started, onFailed }: Props) {
           </>
         )}
       </div>
+      <button
+        ref={openButton}
+        type="button"
+        className="secondary playback-open"
+        onClick={() => {
+          setFailure(null);
+          setNowPlaying(true);
+        }}
+        disabled={track === null}
+      >
+        Now playing
+      </button>
     </section>
   );
 }

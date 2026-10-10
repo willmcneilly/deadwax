@@ -139,7 +139,7 @@ fn year(release_date: &str) -> Option<u16> {
         .filter(|&year| year > 0)
 }
 
-fn cover(image: Image) -> Cover {
+pub(super) fn cover(image: Image) -> Cover {
     Cover {
         url: image.url,
         width: image.width,
@@ -203,7 +203,7 @@ struct Artist {
 }
 
 #[derive(Deserialize)]
-struct Image {
+pub(super) struct Image {
     url: String,
     width: Option<u32>,
     height: Option<u32>,

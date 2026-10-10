@@ -9,7 +9,9 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use super::albums::is_spotify_id;
+use deadwax_core::collection::Cover;
+
+use super::albums::{Image, cover, is_spotify_id};
 use super::http::HttpError;
 use super::{Spotify, SpotifyError};
 use crate::clock::Clock;
@@ -64,6 +66,8 @@ pub struct PlayingTrack {
 pub struct PlayingAlbum {
     pub spotify_id: String,
     pub title: String,
+    /// Spotify's covers, largest first, as Spotify lists them.
+    pub covers: Vec<Cover>,
 }
 
 impl<C: Clock, S: TokenStore> Spotify<C, S> {
@@ -159,6 +163,7 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
                     album: item.album.map(|album| PlayingAlbum {
                         spotify_id: album.id,
                         title: album.name,
+                        covers: album.images.into_iter().map(cover).collect(),
                     }),
                     duration_ms: item.duration_ms,
                 })
@@ -279,6 +284,8 @@ struct PlayerArtist {
 struct PlayerAlbum {
     id: String,
     name: String,
+    #[serde(default)]
+    images: Vec<Image>,
 }
 
 #[cfg(test)]
@@ -503,6 +510,18 @@ mod tests {
                     album: Some(PlayingAlbum {
                         spotify_id: IN_RAINBOWS.into(),
                         title: "In Rainbows".into(),
+                        covers: vec![
+                            Cover {
+                                url: "https://i.scdn.co/image/ab67616d0000b273de3c04b5fc750b68899b20a9".into(),
+                                width: Some(640),
+                                height: Some(640),
+                            },
+                            Cover {
+                                url: "https://i.scdn.co/image/ab67616d00001e02de3c04b5fc750b68899b20a9".into(),
+                                width: Some(300),
+                                height: Some(300),
+                            },
+                        ],
                     }),
                     duration_ms: 255_386,
                 }),
