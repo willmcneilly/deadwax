@@ -47,3 +47,35 @@ export const getCollection = () => invoke<AlbumCard[]>("get_collection");
 export const searchAlbums = (query: string, offset: number) =>
   invoke<SearchResults>("search_albums", { query, offset });
 export const addAlbum = (id: string) => invoke<AlbumCard>("add_album", { id });
+
+export type AlbumTrack = {
+  id: string;
+  disc: number;
+  number: number;
+  title: string;
+  durationMs: number;
+};
+
+/** An album as the album page shows it (`AlbumPage` in commands.rs). */
+export type AlbumDetails = {
+  id: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  /** Spotify's largest cover, about 640 pixels. */
+  coverUrl: string | null;
+  tracks: AlbumTrack[];
+};
+
+/** The album page, from the cache. */
+export const getAlbum = (id: string) =>
+  invoke<AlbumDetails>("get_album", { id });
+/**
+ * Fetches the album again if its cache is over a week old. Null if it was
+ * fresh enough, so nothing changed.
+ */
+export const refreshAlbum = (id: string) =>
+  invoke<AlbumDetails | null>("refresh_album", { id });
+export const removeAlbum = (id: string) => invoke<void>("remove_album", { id });
+export const openAlbumInSpotify = (id: string) =>
+  invoke<void>("open_album_in_spotify", { id });

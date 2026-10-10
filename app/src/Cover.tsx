@@ -1,6 +1,9 @@
 import type { AlbumCard } from "./api";
 
-type Props = { album: AlbumCard; className: string };
+type Props = {
+  album: Pick<AlbumCard, "title" | "coverUrl">;
+  className: string;
+};
 
 /**
  * Spotify's cover, shown as it is: Spotify's developer policy allows no
