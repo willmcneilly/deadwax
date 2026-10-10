@@ -20,7 +20,7 @@ use deadwax_sources::spotify::playback::{Device, Playback, StartAt};
 use deadwax_sources::spotify::tokens::{KeychainStore, TokenStore};
 use deadwax_sources::spotify::{Endpoints, Spotify, SpotifyError};
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{Mutex, RwLock, oneshot};
 
@@ -579,7 +579,7 @@ pub enum PlayOutcome {
     },
 }
 
-/// What Spotify is playing, for the playback bar.
+/// What Spotify is playing, for the playback bar and now playing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NowPlaying {
@@ -598,28 +598,51 @@ pub struct NowPlayingTrack {
     pub album: Option<String>,
     pub album_id: Option<String>,
     pub duration_ms: u64,
+    /// The album's high-res cover if it's in the collection and one has been
+    /// found (DWX-7), otherwise Spotify's largest, about 640 pixels.
+    pub cover_url: Option<String>,
 }
 
-impl From<Playback> for NowPlaying {
-    fn from(playback: Playback) -> Self {
-        Self {
-            is_playing: playback.is_playing,
-            device: playback.device,
-            progress_ms: playback.progress_ms,
-            track: playback.track.map(|track| {
-                let (album, album_id) = match track.album {
-                    Some(album) => (Some(album.title), Some(album.spotify_id)),
-                    None => (None, None),
-                };
-                NowPlayingTrack {
+/// What's playing, with the high-res cover from the collection when it has
+/// one. An album played from elsewhere may not be in the collection, so
+/// Spotify's cover is the fallback.
+fn now_playing(playback: Playback, collection: &std::sync::Mutex<Collection>) -> NowPlaying {
+    NowPlaying {
+        is_playing: playback.is_playing,
+        device: playback.device,
+        progress_ms: playback.progress_ms,
+        track: playback.track.map(|track| {
+            let Some(album) = track.album else {
+                return NowPlayingTrack {
                     title: track.title,
                     artist: track.artist,
-                    album,
-                    album_id,
+                    album: None,
+                    album_id: None,
                     duration_ms: track.duration_ms,
-                }
-            }),
-        }
+                    cover_url: None,
+                };
+            };
+            let high_res = collection
+                .lock()
+                .expect("collection lock")
+                .get(&album.spotify_id)
+                // Only the cover depends on this, and Spotify's will do.
+                .ok()
+                .flatten()
+                .and_then(|collected| collected.artwork)
+                .and_then(|artwork| artwork.cover);
+            NowPlayingTrack {
+                title: track.title,
+                artist: track.artist,
+                cover_url: high_res
+                    .as_ref()
+                    .or(collection::largest(&album.covers))
+                    .map(|cover| cover.url.clone()),
+                album: Some(album.title),
+                album_id: Some(album.spotify_id),
+                duration_ms: track.duration_ms,
+            }
+        }),
     }
 }
 
@@ -721,7 +744,17 @@ pub async fn get_playback(state: State<'_, AppState>) -> Result<Option<NowPlayin
         .playback()
         .await
         .map_err(spotify_error)?
-        .map(NowPlaying::from))
+        .map(|playback| now_playing(playback, &state.collection)))
+}
+
+/// Opens or leaves now playing's fullscreen. It's macOS's "simple"
+/// fullscreen, which fills the screen without the animation into a new
+/// Space (RFC-001, "Now playing").
+#[tauri::command]
+pub fn set_now_playing_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<(), String> {
+    window
+        .set_simple_fullscreen(fullscreen)
+        .map_err(|e| format!("Couldn't change fullscreen: {e}"))
 }
 
 #[tauri::command]
@@ -1695,6 +1728,87 @@ mod tests {
         assert_eq!(saved.last_device.as_deref(), Some("Living Room"));
     }
 
+    const SPOTIFY_640: &str = "https://i.scdn.co/image/640.jpg";
+
+    fn playing_in_rainbows() -> Playback {
+        use deadwax_sources::spotify::playback::{PlayingAlbum, PlayingTrack};
+        Playback {
+            is_playing: true,
+            device: Some("Living Room".into()),
+            progress_ms: Some(61_480),
+            track: Some(PlayingTrack {
+                spotify_id: Some("6O4dsyobpDXX1WxHRP3bzk".into()),
+                title: "Nude".into(),
+                artist: "Radiohead".into(),
+                album: Some(PlayingAlbum {
+                    spotify_id: IN_RAINBOWS.into(),
+                    title: "In Rainbows".into(),
+                    covers: vec![
+                        collection::Cover {
+                            url: "https://i.scdn.co/image/300.jpg".into(),
+                            width: Some(300),
+                            height: Some(300),
+                        },
+                        collection::Cover {
+                            url: SPOTIFY_640.into(),
+                            width: Some(640),
+                            height: Some(640),
+                        },
+                    ],
+                }),
+                duration_ms: 255_386,
+            }),
+        }
+    }
+
+    fn cover_now(playback: Playback, collection: &std::sync::Mutex<Collection>) -> Option<String> {
+        now_playing(playback, collection).track?.cover_url
+    }
+
+    #[tokio::test]
+    async fn now_playing_has_the_high_res_cover_of_an_album_in_the_collection() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        found_on_itunes(&collection);
+
+        assert_eq!(
+            cover_now(playing_in_rainbows(), &collection).as_deref(),
+            Some(HIGH_RES)
+        );
+    }
+
+    #[tokio::test]
+    async fn now_playing_falls_back_to_spotifys_largest_cover() {
+        // In the collection, but no high-res cover found yet.
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        assert_eq!(
+            cover_now(playing_in_rainbows(), &collection).as_deref(),
+            Some(SPOTIFY_640)
+        );
+
+        // Played from elsewhere, and not in the collection at all.
+        assert_eq!(
+            cover_now(playing_in_rainbows(), &empty_collection()).as_deref(),
+            Some(SPOTIFY_640)
+        );
+    }
+
+    #[test]
+    fn now_playing_without_an_album_has_no_cover() {
+        let mut playback = playing_in_rainbows();
+        playback.track.as_mut().unwrap().album = None;
+
+        let now = now_playing(playback, &empty_collection());
+
+        let track = now.track.unwrap();
+        assert_eq!(track.title, "Nude");
+        assert_eq!(track.album_id, None);
+        assert_eq!(track.cover_url, None);
+    }
+
     /// The JSON `app/src/api.ts` expects. Change both together.
     #[test]
     fn playback_serialises_as_the_ui_expects() {
@@ -1740,6 +1854,7 @@ mod tests {
                     album: Some("In Rainbows".into()),
                     album_id: Some(IN_RAINBOWS.into()),
                     duration_ms: 255_386,
+                    cover_url: Some(HIGH_RES.into()),
                 }),
             })
             .unwrap(),
@@ -1753,6 +1868,7 @@ mod tests {
                     "album": "In Rainbows",
                     "albumId": IN_RAINBOWS,
                     "durationMs": 255_386,
+                    "coverUrl": HIGH_RES,
                 },
             })
         );
