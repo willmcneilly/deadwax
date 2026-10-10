@@ -3,8 +3,13 @@
 //! Every type a command returns is defined here, from plain values, so the
 //! test in `command_types.rs` can check that none of them can carry a token.
 //! Errors are plain sentences for the UI to show.
+//!
+//! The Develop menu's commands are in `dev`, in development builds only.
 
-use std::path::{Path, PathBuf};
+#[cfg(debug_assertions)]
+pub mod dev;
+
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -56,16 +61,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config_path: PathBuf, database_path: &Path) -> Result<Self, String> {
+    pub fn new(config_path: PathBuf, collection: Collection) -> Result<Self, String> {
         let config = config::load(&config_path)
             .map_err(|e| format!("Couldn't read Deadwax's config: {e}"))?;
         let spotify = config.spotify_client_id.map(client).transpose()?;
-        let collection = Collection::open(database_path).map_err(|e| {
-            format!(
-                "Couldn't open the collection at {}: {e}",
-                database_path.display()
-            )
-        })?;
         Ok(Self {
             config_path,
             collection: std::sync::Mutex::new(collection),
@@ -359,7 +358,7 @@ mod tests {
 
     /// A client against a fake Spotify whose sign-in gives a token that has
     /// already expired, and whose token refresh replies `refresh`.
-    async fn signed_in_with_expired_token(
+    pub(super) async fn signed_in_with_expired_token(
         server: &MockServer,
         refresh: ResponseTemplate,
     ) -> Spotify<SystemClock, MemoryStore> {
@@ -469,10 +468,10 @@ mod tests {
     }
 
     const FIXTURES: &str = "../../crates/deadwax-sources/src/spotify/fixtures";
-    const IN_RAINBOWS: &str = "5vkqYmiPBYLaalcmjujWxK";
+    pub(super) const IN_RAINBOWS: &str = "5vkqYmiPBYLaalcmjujWxK";
 
-    fn fixture(name: &str) -> serde_json::Value {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+    pub(super) fn fixture(name: &str) -> serde_json::Value {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(FIXTURES)
             .join(name);
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
@@ -480,7 +479,7 @@ mod tests {
 
     /// Signed in to a fake Spotify that answers search and the album with the
     /// hand-written fixtures in `deadwax-sources`.
-    async fn fake_spotify(server: &MockServer) -> Spotify<SystemClock, MemoryStore> {
+    pub(super) async fn fake_spotify(server: &MockServer) -> Spotify<SystemClock, MemoryStore> {
         let fresh = ResponseTemplate::new(200)
             .set_body_json(json!({"access_token": "fresh", "expires_in": 3600}));
         let spotify = signed_in_with_expired_token(server, fresh).await;

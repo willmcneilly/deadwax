@@ -3,8 +3,8 @@
 //! if any of those types could carry a token.
 //!
 //! A return type passes if it's built only from plain values (strings,
-//! numbers, `bool`, `Option`, `Vec`, `Result`) and types defined in
-//! `commands.rs`, and no type or field is named like a token or a secret. A
+//! numbers, `bool`, `Option`, `Vec`, `Result`) and types defined in the same
+//! file (`commands.rs`, or `commands/dev.rs` for the Develop menu), and no type or field is named like a token or a secret. A
 //! type from anywhere else fails until it's added here on purpose. The
 //! token types in `deadwax-sources` also can't be serialised, so returning
 //! one wouldn't compile, but this catches a token copied into a `String`
@@ -15,6 +15,8 @@ use std::collections::{BTreeSet, HashMap};
 use syn::{Fields, GenericArgument, Item, PathArguments, ReturnType, Type};
 
 const COMMANDS: &str = include_str!("commands.rs");
+/// The Develop menu's commands, in development builds only.
+const DEV_COMMANDS: &str = include_str!("commands/dev.rs");
 const LIB: &str = include_str!("lib.rs");
 
 /// Types that hold plain values, or wrap the types inside them.
@@ -76,15 +78,37 @@ fn parse(source: &str) -> (Vec<Command>, HashMap<String, Item>) {
     (commands, types)
 }
 
-/// The commands `lib.rs` registers with `generate_handler!`.
+/// The commands `lib.rs` registers with `generate_handler!`, including the
+/// ones behind a `#[cfg]`.
 fn registered() -> BTreeSet<String> {
     let start = LIB
         .find("generate_handler![")
         .expect("lib.rs registers commands");
     let list = &LIB[start + "generate_handler![".len()..];
-    let list = &list[..list.find(']').unwrap()];
-    list.split(',')
-        .map(|entry| entry.trim().rsplit("::").next().unwrap().to_owned())
+    // The list ends at the `]` that closes it, not one closing a `#[cfg]`.
+    let mut depth = 0;
+    let end = list
+        .char_indices()
+        .find_map(|(i, c)| match c {
+            '[' => {
+                depth += 1;
+                None
+            }
+            ']' if depth == 0 => Some(i),
+            ']' => {
+                depth -= 1;
+                None
+            }
+            _ => None,
+        })
+        .unwrap();
+    list[..end]
+        .split(',')
+        .map(|entry| {
+            // Drop any attributes before the path.
+            let path = entry.trim().rsplit(']').next().unwrap();
+            path.trim().rsplit("::").next().unwrap().to_owned()
+        })
         .filter(|name| !name.is_empty())
         .collect()
 }
@@ -158,19 +182,24 @@ fn problems(source: &str) -> Vec<String> {
 
 #[test]
 fn no_command_can_return_a_token() {
-    let (commands, _) = parse(COMMANDS);
-    let names: Vec<&str> = commands.iter().map(|c| c.name.as_str()).collect();
-    // The list this test checks, so a failure shows what it looked at.
-    println!("commands: {names:?}");
-    assert!(!commands.is_empty());
+    for source in [COMMANDS, DEV_COMMANDS] {
+        let (commands, _) = parse(source);
+        let names: Vec<&str> = commands.iter().map(|c| c.name.as_str()).collect();
+        // The list this test checks, so a failure shows what it looked at.
+        println!("commands: {names:?}");
+        assert!(!commands.is_empty());
 
-    assert_eq!(problems(COMMANDS), Vec::<String>::new());
+        assert_eq!(problems(source), Vec::<String>::new());
+    }
 }
 
 #[test]
 fn every_registered_command_is_checked() {
-    let (commands, _) = parse(COMMANDS);
-    let defined: BTreeSet<String> = commands.into_iter().map(|c| c.name).collect();
+    let defined: BTreeSet<String> = [COMMANDS, DEV_COMMANDS]
+        .into_iter()
+        .flat_map(|source| parse(source).0)
+        .map(|c| c.name)
+        .collect();
     assert_eq!(registered(), defined);
 }
 
