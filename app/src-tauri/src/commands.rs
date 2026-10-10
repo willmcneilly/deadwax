@@ -285,6 +285,18 @@ mod tests {
         );
     }
 
+    /// The redirect URI you register is the one sign-in uses, and the one the
+    /// setup screen tells you to register.
+    #[test]
+    fn sign_in_uses_the_redirect_uri_the_setup_screen_shows() {
+        use deadwax_sources::spotify::loopback::REDIRECT_PORT;
+
+        assert_eq!(REDIRECT_PORT, 43117);
+        assert_eq!(Endpoints::default().redirect_port, REDIRECT_PORT);
+        let setup = include_str!("../../src/Setup.tsx");
+        assert!(setup.contains(&format!("http://127.0.0.1:{REDIRECT_PORT}/callback")));
+    }
+
     /// The JSON `app/src/api.ts` expects. Change both together.
     #[test]
     fn sessions_serialise_as_the_ui_expects() {

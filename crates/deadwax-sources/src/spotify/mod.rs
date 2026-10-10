@@ -121,7 +121,7 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
         Ok(self.store.clear()?)
     }
 
-    /// The whole sign-in: listens on a free port, opens Spotify's approval
+    /// The whole sign-in: listens on the redirect port, opens Spotify's approval
     /// page with `open_browser`, waits for the redirect, swaps the code for
     /// tokens and saves them.
     pub async fn sign_in(
