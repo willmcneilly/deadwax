@@ -7,6 +7,7 @@ use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
 use commands::AppState;
+use deadwax_core::collection::Collection;
 use deadwax_core::location::{self, Build};
 
 /// The menu item that opens the setup screen, and the event it sends the UI.
@@ -24,14 +25,54 @@ fn build() -> Build {
     Build::Release
 }
 
+/// Opens this build's collection. A development build's mirrors every add
+/// and remove to the dev list, shared by every checkout.
+fn open_collection(app_data: &std::path::Path) -> Result<Collection, String> {
+    let database = location::database_path(&build(), app_data);
+    let collection = Collection::open(&database).map_err(|e| {
+        format!(
+            "Couldn't open the collection at {}: {e}",
+            database.display()
+        )
+    })?;
+    #[cfg(debug_assertions)]
+    let collection = {
+        use deadwax_core::dev_list::{self, DevList};
+        collection.with_dev_list(DevList::new(dev_list::path(app_data)))
+    };
+    Ok(collection)
+}
+
+/// The Develop menu, in development builds only. Its items tell the UI,
+/// which does the work so it can show progress and errors.
+#[cfg(debug_assertions)]
+fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    use commands::dev::{RESET_COLLECTION, RESTORE_FROM_DEV_LIST};
+    let reset = MenuItem::with_id(
+        handle,
+        RESET_COLLECTION,
+        "Reset collection",
+        true,
+        None::<&str>,
+    )?;
+    let restore = MenuItem::with_id(
+        handle,
+        RESTORE_FROM_DEV_LIST,
+        "Restore from dev list",
+        true,
+        None::<&str>,
+    )?;
+    Submenu::with_items(handle, "Develop", true, &[&reset, &restore])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
-            let database = location::database_path(&build(), &app_data);
-            app.manage(AppState::new(config::path(&app_data), &database)?);
+            let collection = open_collection(&app_data)?;
+            app.manage(AppState::new(config::path(&app_data), collection)?);
 
             let handle = app.handle();
             let menu = Menu::default(handle)?;
@@ -43,12 +84,23 @@ pub fn run() {
                 None::<&str>,
             )?;
             menu.append(&Submenu::with_items(handle, "Spotify", true, &[&change])?)?;
+            #[cfg(debug_assertions)]
+            menu.append(&develop_menu(handle)?)?;
             app.set_menu(menu)?;
             Ok(())
         })
         .on_menu_event(|app, event| {
-            if event.id() == CHANGE_CLIENT_ID {
-                let _ = app.emit(CHANGE_CLIENT_ID, ());
+            let id = event.id().as_ref();
+            #[cfg(debug_assertions)]
+            let forwarded = [
+                CHANGE_CLIENT_ID,
+                commands::dev::RESET_COLLECTION,
+                commands::dev::RESTORE_FROM_DEV_LIST,
+            ];
+            #[cfg(not(debug_assertions))]
+            let forwarded = [CHANGE_CLIENT_ID];
+            if forwarded.contains(&id) {
+                let _ = app.emit(id, ());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -61,6 +113,12 @@ pub fn run() {
             commands::get_collection,
             commands::search_albums,
             commands::add_album,
+            #[cfg(debug_assertions)]
+            commands::dev::dev_list_missing,
+            #[cfg(debug_assertions)]
+            commands::dev::reset_collection,
+            #[cfg(debug_assertions)]
+            commands::dev::restore_from_dev_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

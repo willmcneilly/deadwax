@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CHANGE_CLIENT_ID, type Session } from "./api";
 import App from "./App";
-import { backEnd } from "./mockBackEnd";
+import { backEnd, EMPTY_COLLECTION } from "./mockBackEnd";
 
 const CLIENT_ID = "0123456789abcdef0123456789abcdef";
 
@@ -83,7 +83,7 @@ describe("App", () => {
     backEnd({
       get_session: session({ state: "signedOut", message: null }),
       sign_in: () => new Promise<Session>((resolve) => (finish = resolve)),
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
     });
     render(<App />);
 
@@ -147,7 +147,7 @@ describe("App", () => {
   it("stays signed in across restarts", async () => {
     backEnd({
       get_session: session({ state: "signedIn", name: "Will" }),
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
     });
     render(<App />);
 
@@ -171,7 +171,7 @@ describe("App", () => {
     const calls = backEnd({
       get_session: session({ state: "signedIn", name: "Will" }),
       get_client_id: () => CLIENT_ID,
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
     });
     render(<App />);
     await screen.findByText("Signed in as Will");
@@ -191,7 +191,7 @@ describe("App", () => {
         if (fail) throw "couldn't reach Spotify";
         return { state: "signedIn", name: "Will" };
       },
-      get_collection: () => [],
+      ...EMPTY_COLLECTION,
     });
     render(<App />);
 

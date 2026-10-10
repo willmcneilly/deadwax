@@ -7,6 +7,10 @@
 //! when it was fetched. Spotify's terms allow caching metadata only for a
 //! while, so the cache can always be thrown away and fetched again. The
 //! collection can't.
+//!
+//! In development builds the collection also mirrors every add and remove to
+//! the dev list (`crate::dev_list`), which survives resets. All of that is
+//! compiled under `debug_assertions`, so release builds don't contain it.
 
 use std::collections::HashSet;
 use std::fs;
@@ -15,6 +19,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
+
+#[cfg(debug_assertions)]
+use crate::dev_list::{DevList, DevListError};
 
 /// An album as Spotify describes it, which is what the cache holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +95,9 @@ pub enum CollectionError {
     Corrupt(#[from] serde_json::Error),
     #[error("the collection was made by a newer Deadwax (schema {0})")]
     TooNew(i64),
+    #[cfg(debug_assertions)]
+    #[error("the collection changed, but the dev list didn't: {0}")]
+    DevList(#[from] DevListError),
 }
 
 /// The schema version this code writes, in SQLite's `user_version`.
@@ -113,6 +123,9 @@ const SCHEMA: &str = "
 
 pub struct Collection {
     db: Connection,
+    /// The dev list to mirror adds and removes to, in development builds.
+    #[cfg(debug_assertions)]
+    dev_list: Option<DevList>,
 }
 
 impl Collection {
@@ -140,20 +153,60 @@ impl Collection {
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),
         }
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            #[cfg(debug_assertions)]
+            dev_list: None,
+        })
+    }
+
+    /// Mirrors every add and remove from now on to `dev_list`. Development
+    /// builds only.
+    #[cfg(debug_assertions)]
+    pub fn with_dev_list(mut self, dev_list: DevList) -> Self {
+        self.dev_list = Some(dev_list);
+        self
+    }
+
+    /// The dev list this collection mirrors to, if any.
+    #[cfg(debug_assertions)]
+    pub fn dev_list(&self) -> Option<&DevList> {
+        self.dev_list.as_ref()
     }
 
     /// Adds `album` to the collection at `now`, and caches what we know
     /// about it.
     pub fn add(&mut self, album: &Album, now: SystemTime) -> Result<Added, CollectionError> {
+        self.add_at(album, now, now)
+    }
+
+    /// Adds `album` as if it had been added at `added_at`, with metadata
+    /// fetched at `fetched_at`. Restoring from the dev list uses it to keep
+    /// the original dates.
+    pub fn add_at(
+        &mut self,
+        album: &Album,
+        added_at: SystemTime,
+        fetched_at: SystemTime,
+    ) -> Result<Added, CollectionError> {
         let tx = self.db.transaction()?;
         let inserted = tx.execute(
             "INSERT INTO collection (spotify_id, added_at) VALUES (?1, ?2)
              ON CONFLICT (spotify_id) DO NOTHING",
-            params![album.spotify_id, millis(now)],
+            params![album.spotify_id, millis(added_at)],
         )?;
-        cache(&tx, album, now)?;
+        cache(&tx, album, fetched_at)?;
         tx.commit()?;
+        #[cfg(debug_assertions)]
+        if let Some(dev_list) = &self.dev_list {
+            // The date in the collection, which an album already there keeps.
+            let added_at: i64 = self.db.query_row(
+                "SELECT added_at FROM collection WHERE spotify_id = ?1",
+                [&album.spotify_id],
+                |row| row.get(0),
+            )?;
+            dev_list.added(&album.spotify_id, time(added_at))?;
+        }
         Ok(if inserted == 1 {
             Added::New
         } else {
@@ -171,7 +224,19 @@ impl Collection {
             [spotify_id],
         )?;
         tx.commit()?;
+        #[cfg(debug_assertions)]
+        if let Some(dev_list) = &self.dev_list {
+            dev_list.removed(spotify_id)?;
+        }
         Ok(removed == 1)
+    }
+
+    /// Empties the collection and its cache. The dev list is left alone: it's
+    /// what you restore from afterwards.
+    pub fn clear(&mut self) -> Result<(), CollectionError> {
+        self.db
+            .execute_batch("DELETE FROM collection; DELETE FROM album_cache;")?;
+        Ok(())
     }
 
     /// Every album in the collection, the most recently added first.
@@ -262,12 +327,12 @@ fn cache(tx: &Transaction, album: &Album, now: SystemTime) -> Result<(), Collect
     Ok(())
 }
 
-fn millis(time: SystemTime) -> i64 {
+pub(crate) fn millis(time: SystemTime) -> i64 {
     let since = time.duration_since(UNIX_EPOCH).unwrap_or_default();
     i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
 }
 
-fn time(millis: i64) -> SystemTime {
+pub(crate) fn time(millis: i64) -> SystemTime {
     UNIX_EPOCH + Duration::from_millis(u64::try_from(millis).unwrap_or(0))
 }
 
@@ -459,6 +524,122 @@ mod tests {
             Collection::open(&path),
             Err(CollectionError::TooNew(2))
         ));
+    }
+
+    #[test]
+    fn adding_at_a_date_keeps_that_date() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("b", "B"), day(5)).unwrap();
+
+        collection.add_at(&album("a", "A"), day(1), day(9)).unwrap();
+
+        let a = collection.get("a").unwrap().unwrap();
+        assert_eq!((a.added_at, a.fetched_at), (day(1), day(9)));
+        assert_eq!(ids(&collection), ["b", "a"]);
+    }
+
+    #[test]
+    fn clearing_empties_the_collection_and_its_cache() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.add(&album("b", "B"), day(2)).unwrap();
+
+        collection.clear().unwrap();
+
+        assert!(collection.albums().unwrap().is_empty());
+        let cached: i64 = collection
+            .db
+            .query_row("SELECT count(*) FROM album_cache", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(cached, 0);
+    }
+
+    #[cfg(debug_assertions)]
+    mod with_a_dev_list {
+        use super::*;
+        use crate::dev_list::{self, DevList, Entry};
+
+        /// A collection in a temporary checkout, mirroring to a dev list in a
+        /// temporary `Application Support`, as a development build does.
+        fn collection() -> (tempfile::TempDir, Collection) {
+            let root = tempfile::tempdir().unwrap();
+            let database = root.path().join("deadwax/.dev-data/deadwax.sqlite3");
+            let app_data = root
+                .path()
+                .join("Application Support/com.willmcneilly.deadwax");
+            let collection = Collection::open(&database)
+                .unwrap()
+                .with_dev_list(DevList::new(dev_list::path(&app_data)));
+            (root, collection)
+        }
+
+        fn listed(collection: &Collection) -> Vec<(String, SystemTime)> {
+            collection
+                .dev_list()
+                .unwrap()
+                .albums()
+                .unwrap()
+                .into_iter()
+                .map(
+                    |Entry {
+                         spotify_id,
+                         added_at,
+                     }| (spotify_id, added_at),
+                )
+                .collect()
+        }
+
+        #[test]
+        fn every_add_and_remove_updates_the_dev_list() {
+            let (_root, mut collection) = collection();
+
+            collection.add(&album("a", "A"), day(1)).unwrap();
+            collection.add(&album("b", "B"), day(2)).unwrap();
+            assert_eq!(
+                listed(&collection),
+                [("a".into(), day(1)), ("b".into(), day(2))]
+            );
+
+            collection.remove("a").unwrap();
+            assert_eq!(listed(&collection), [("b".into(), day(2))]);
+        }
+
+        #[test]
+        fn adding_again_keeps_the_date_in_the_collection() {
+            let (_root, mut collection) = collection();
+            collection.add(&album("a", "A"), day(1)).unwrap();
+
+            collection.add(&album("a", "A again"), day(4)).unwrap();
+
+            assert_eq!(listed(&collection), [("a".into(), day(1))]);
+        }
+
+        #[test]
+        fn clearing_leaves_the_dev_list_alone() {
+            let (_root, mut collection) = collection();
+            collection.add(&album("a", "A"), day(1)).unwrap();
+
+            collection.clear().unwrap();
+
+            assert!(collection.albums().unwrap().is_empty());
+            assert_eq!(listed(&collection), [("a".into(), day(1))]);
+        }
+
+        #[test]
+        fn a_collection_without_one_writes_nothing_outside_its_database() {
+            let root = tempfile::tempdir().unwrap();
+            let database = root.path().join("deadwax.sqlite3");
+            let mut collection = Collection::open(&database).unwrap();
+
+            collection.add(&album("a", "A"), day(1)).unwrap();
+            collection.remove("a").unwrap();
+
+            let files: Vec<_> = std::fs::read_dir(root.path())
+                .unwrap()
+                .map(|f| f.unwrap().file_name())
+                .collect();
+            assert_eq!(files, ["deadwax.sqlite3"]);
+        }
     }
 
     #[test]
