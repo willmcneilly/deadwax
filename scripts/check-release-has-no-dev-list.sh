@@ -63,7 +63,7 @@ done
 # A development bundle, to show the UI's markers are there when they should be.
 dev_dist=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/deadwax-dev-dist.XXXXXX")
 trap 'rm -rf "$dev_dist"' EXIT
-(cd app && npx vite build --mode development --outDir "$dev_dist" --emptyOutDir --logLevel error)
+(cd app && NODE_ENV=development npx vite build --mode development --outDir "$dev_dist" --emptyOutDir --logLevel error)
 
 for marker in "${ui_markers[@]}"; do
   grep -rqF -- "$marker" "$dev_dist" ||
