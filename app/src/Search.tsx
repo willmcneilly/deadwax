@@ -55,9 +55,15 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
     try {
       const page = await searchAlbums(results.query, results.nextOffset);
       if (current !== latest.current) return;
+      // Spotify's ranking can shift between pages, so an album already
+      // shown may come back. Show it once.
+      const shown = new Set(results.results.map((r) => r.album.id));
       setResults({
         query: results.query,
-        results: [...results.results, ...page.results],
+        results: [
+          ...results.results,
+          ...page.results.filter((r) => !shown.has(r.album.id)),
+        ],
         nextOffset: page.nextOffset,
       });
     } catch (e) {

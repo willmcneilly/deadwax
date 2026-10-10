@@ -133,6 +133,30 @@ describe("Library", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows an album once when the next page repeats it", async () => {
+    backEnd({
+      get_collection: () => [],
+      search_albums: (args) => {
+        const { offset } = args as { offset: number };
+        if (offset === 0) return page(0);
+        // Spotify's ranking shifted: album 9 comes back on the next page.
+        const next = page(10, true);
+        next.results[0] = { album: album(9), inCollection: false };
+        return next;
+      },
+    });
+    render(<Library name="Will" onSignedOut={() => {}} />);
+
+    searchFor("album");
+    await waitFor(() => expect(results()).toHaveLength(10));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    await waitFor(() => expect(results()).toHaveLength(12));
+    expect(
+      results().filter((r) => r.textContent?.includes("Album 9")),
+    ).toHaveLength(1);
+  });
+
   it("marks the albums already in your collection", async () => {
     backEnd({
       get_collection: () => [],
