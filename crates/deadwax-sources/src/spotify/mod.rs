@@ -17,7 +17,7 @@ use crate::clock::Clock;
 use http::{HttpError, SpotifyHttp};
 use loopback::{CallbackError, Listener};
 use pkce::Verifier;
-use tokens::{StoreError, TokenStore, Tokens};
+use tokens::{Cached, StoreError, TokenStore, Tokens};
 
 /// The permissions Deadwax asks for. Only the profile is used so far, and
 /// `/v1/me` needs no scope for the display name. The playback scopes are for
@@ -92,7 +92,8 @@ pub struct Profile {
 
 pub struct Spotify<C, S> {
     http: SpotifyHttp<C>,
-    store: S,
+    /// The store, read once per run (see `Cached`).
+    store: Cached<S>,
     client_id: String,
     endpoints: Endpoints,
     /// Held while checking and refreshing the token, so two calls don't both
@@ -105,7 +106,7 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
     pub fn new(client_id: String, clock: C, store: S, endpoints: Endpoints) -> Self {
         Self {
             http: SpotifyHttp::new(clock),
-            store,
+            store: Cached::new(store),
             client_id,
             endpoints,
             refresh_lock: Mutex::new(()),

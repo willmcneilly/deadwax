@@ -151,6 +151,52 @@ fn keychain_error(error: keyring::Error) -> StoreError {
     StoreError(format!("Keychain: {error}"))
 }
 
+/// Keeps the tokens in memory after the first read, so a run reads the
+/// Keychain once. On an unsigned dev build, macOS asks before every Keychain
+/// read until you click Always Allow, so fewer reads means fewer prompts.
+/// Saves and clears go through to the store as usual.
+pub(crate) struct Cached<S> {
+    inner: S,
+    /// `None` until the first read.
+    tokens: Mutex<Option<Option<Tokens>>>,
+}
+
+impl<S> Cached<S> {
+    pub(crate) fn new(inner: S) -> Self {
+        Self {
+            inner,
+            tokens: Mutex::new(None),
+        }
+    }
+}
+
+impl<S: TokenStore> TokenStore for Cached<S> {
+    fn load(&self) -> Result<Option<Tokens>, StoreError> {
+        // Held across the read, so two callers can't both read the store.
+        let mut cached = self.tokens.lock().unwrap();
+        if let Some(tokens) = cached.as_ref() {
+            return Ok(tokens.clone());
+        }
+        let tokens = self.inner.load()?;
+        *cached = Some(tokens.clone());
+        Ok(tokens)
+    }
+
+    fn save(&self, tokens: &Tokens) -> Result<(), StoreError> {
+        let mut cached = self.tokens.lock().unwrap();
+        self.inner.save(tokens)?;
+        *cached = Some(Some(tokens.clone()));
+        Ok(())
+    }
+
+    fn clear(&self) -> Result<(), StoreError> {
+        let mut cached = self.tokens.lock().unwrap();
+        self.inner.clear()?;
+        *cached = Some(None);
+        Ok(())
+    }
+}
+
 /// A store that only lives in memory. Tests use it, never the real Keychain.
 #[derive(Default)]
 pub struct MemoryStore {
@@ -203,6 +249,47 @@ mod tests {
         store.clear().unwrap();
         assert_eq!(store.load().unwrap(), None);
         store.clear().unwrap();
+    }
+
+    /// Counts reads of the store underneath.
+    #[derive(Default)]
+    struct Counting {
+        store: MemoryStore,
+        loads: std::sync::atomic::AtomicUsize,
+    }
+
+    impl TokenStore for &'static Counting {
+        fn load(&self) -> Result<Option<Tokens>, StoreError> {
+            self.loads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.store.load()
+        }
+        fn save(&self, tokens: &Tokens) -> Result<(), StoreError> {
+            self.store.save(tokens)
+        }
+        fn clear(&self) -> Result<(), StoreError> {
+            self.store.clear()
+        }
+    }
+
+    #[test]
+    fn the_cache_reads_the_store_once_and_keeps_up_with_changes() {
+        let counting: &'static Counting = Box::leak(Box::default());
+        counting.store.save(&tokens()).unwrap();
+        let cached = Cached::new(counting);
+
+        assert_eq!(cached.load().unwrap(), Some(tokens()));
+        assert_eq!(cached.load().unwrap(), Some(tokens()));
+        assert_eq!(counting.loads.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let newer = Tokens::new("a2".into(), "r2".into(), UNIX_EPOCH);
+        cached.save(&newer).unwrap();
+        assert_eq!(cached.load().unwrap(), Some(newer.clone()));
+        assert_eq!(counting.store.load().unwrap(), Some(newer));
+
+        cached.clear().unwrap();
+        assert_eq!(cached.load().unwrap(), None);
+        assert_eq!(counting.store.load().unwrap(), None);
+        assert_eq!(counting.loads.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[test]
