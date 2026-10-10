@@ -157,6 +157,35 @@ describe("Library", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps an album's mark when More finishes after its Add", async () => {
+    let finishMore: (results: SearchResults) => void = () => {};
+    backEnd({
+      get_collection: () => [],
+      search_albums: (args) => {
+        const { offset } = args as { offset: number };
+        if (offset === 0) return page(0);
+        return new Promise<SearchResults>((resolve) => (finishMore = resolve));
+      },
+      add_album: () => album(1),
+    });
+    render(<Library name="Will" onSignedOut={() => {}} />);
+
+    searchFor("album");
+    await waitFor(() => expect(results()).toHaveLength(10));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Album 1 by Artist 1" }),
+    );
+    await waitFor(() =>
+      expect(results()[1]).toHaveTextContent("In your collection"),
+    );
+
+    finishMore(page(10, true));
+
+    await waitFor(() => expect(results()).toHaveLength(13));
+    expect(results()[1]).toHaveTextContent("In your collection");
+  });
+
   it("marks the albums already in your collection", async () => {
     backEnd({
       get_collection: () => [],

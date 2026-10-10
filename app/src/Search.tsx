@@ -55,16 +55,21 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
     try {
       const page = await searchAlbums(results.query, results.nextOffset);
       if (current !== latest.current) return;
-      // Spotify's ranking can shift between pages, so an album already
-      // shown may come back. Show it once.
-      const shown = new Set(results.results.map((r) => r.album.id));
-      setResults({
-        query: results.query,
-        results: [
-          ...results.results,
-          ...page.results.filter((r) => !shown.has(r.album.id)),
-        ],
-        nextOffset: page.nextOffset,
+      // Built from the current results, not the ones captured above, so an
+      // Add that finished meanwhile keeps its mark. Spotify's ranking can
+      // shift between pages, so an album already shown may come back: show
+      // it once.
+      setResults((now) => {
+        if (!now) return now;
+        const shown = new Set(now.results.map((r) => r.album.id));
+        return {
+          ...now,
+          results: [
+            ...now.results,
+            ...page.results.filter((r) => !shown.has(r.album.id)),
+          ],
+          nextOffset: page.nextOffset,
+        };
       });
     } catch (e) {
       if (current === latest.current) onFailed(e);
