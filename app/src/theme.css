@@ -1,0 +1,48 @@
+/*
+ * Deadwax's styles for project 1. There's no DESIGN.md yet (RFC-001, open
+ * question 2): the whole UI is provisional, and project 2 starts DESIGN.md
+ * from what we learn. Until then, colours live only in the variables below,
+ * and this is the one file allowed to write a colour (stylelint.config.js).
+ */
+
+:root {
+  --background: #f4f1ea;
+  --surface: #ffffff;
+  --ink: #1c1b19;
+  --ink-muted: #6b6760;
+  --accent: #c2410c;
+
+  --font-body: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --space: 8px;
+  --radius: 4px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #121110;
+    --surface: #1d1c1a;
+    --ink: #f1eee8;
+    --ink-muted: #9d9890;
+    --accent: #fb923c;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  min-height: 100%;
+}
