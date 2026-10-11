@@ -1,0 +1,548 @@
+/* ---------- the gatefold: mechanics ---------- */
+
+.gatefold {
+  --w: min(76vh, 44vw); /* one panel; a spread is two */
+  --pad: calc(var(--w) * 0.075);
+  --inner: calc(var(--w) - var(--pad) * 2);
+  --inner-h: calc(var(--w) - var(--pad) * 2.5);
+  --gap: calc(var(--w) * 0.045);
+  --k: 2;
+  --fs: calc(var(--w) * 0.0205);
+  --paper: #efe6d2;
+  --paper-rear: #e2d6bd;
+  --text: #2b2219;
+  --muted: #6a5a48;
+  --hl: #8a3b1f;
+
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  color: var(--text);
+}
+
+.gf-stage {
+  position: absolute;
+  inset: 0;
+  perspective: 2600px;
+  transform-style: preserve-3d;
+}
+
+/* Closed, the sleeve sits in the middle. Open, the spine moves to the middle. */
+.gf-opener {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: var(--w);
+  height: var(--w);
+  margin-top: calc(var(--w) / -2);
+  transform: translateX(calc(var(--w) / -2 * (1 - var(--open))));
+  transition: transform 1.1s cubic-bezier(.45, .05, .2, 1);
+  transform-style: preserve-3d;
+}
+
+.gf-strip {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--s, 0) * var(--w) * -1));
+  transform-style: preserve-3d;
+}
+
+.gf-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transform-origin: left center;
+  transform: translateZ(1px) rotateY(calc(var(--open) * -179.6deg));
+  transition: transform 1.1s cubic-bezier(.45, .05, .2, 1);
+  transform-style: preserve-3d;
+}
+.gf-cover-out,
+.gf-cover-in {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.gf-cover-out .sleeve-face { --s: var(--w); }
+.gf-cover-in {
+  transform: rotateY(180deg);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.gf-panel {
+  --u: clamp(0, calc(var(--s, 0) - var(--i) + 2), 1);
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.gf-strip > .gf-panel { --u: 1; }
+.gf-panel.tucked { visibility: hidden; }
+.gf-panel .gf-panel {
+  left: 100%;
+  right: auto;
+  width: 100%;
+  transform-origin: left center;
+  /* Each unopened panel folds back behind the one before it, so the folded
+     stack always waits behind the last open page. */
+  transform: rotateY(calc(179.4deg * (1 - var(--u))));
+}
+
+.gf-face,
+.gf-rear,
+.gf-shade {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.gf-face { background: var(--paper); overflow: hidden; }
+.gf-rear { background: var(--paper-rear); transform: rotateY(180deg); }
+/* Darker while folded, and once you've read past it. */
+.gf-shade {
+  --gone: clamp(0, calc(var(--s, 0) - var(--i)), 1);
+  background: black;
+  opacity: max(calc((1 - var(--u)) * 0.6), calc(var(--gone) * 0.8));
+  pointer-events: none;
+}
+
+/* Fold lines and paper. */
+/* Paper grain is kept fine and faint here: these pages are for reading. */
+.gf-crease {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.14), transparent 3.5%, transparent 96.5%, rgb(0 0 0 / 0.1));
+}
+.gf-crease::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--grain) 0 0 / 128px;
+  opacity: 0.35;
+}
+
+.gf-window {
+  position: absolute;
+  left: var(--pad);
+  top: var(--pad);
+  width: var(--inner);
+  height: var(--inner-h);
+  overflow: hidden;
+}
+.gf-flow {
+  width: 100%;
+  height: 100%;
+  column-count: var(--k);
+  column-gap: var(--gap);
+  column-fill: auto;
+  font-size: var(--fs);
+  transform: translateX(calc(var(--pi) * (var(--inner) + var(--gap)) * -1));
+}
+.gf-measure {
+  position: fixed;
+  left: -300vw;
+  top: 0;
+  width: var(--w);
+  height: var(--w);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.gf-folio {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--pad) * 0.5);
+  text-align: center;
+  font-family: var(--type-label);
+  font-size: calc(var(--w) * 0.014);
+  color: var(--muted);
+}
+
+/* ---------- the bar under the spread ---------- */
+
+.gf-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px 18px;
+  color: var(--paper-ui, #f1e9db);
+  font-family: var(--type-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.6s 0.6s;
+}
+.gatefold.open .gf-bar { opacity: 1; }
+.gatefold.closing .gf-bar { opacity: 0; transition-delay: 0s; }
+.gf-bar button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.gf-themes { display: flex; gap: 2px; flex-wrap: wrap; }
+.gf-themes button { padding: 4px 8px; opacity: 0.45; }
+.gf-themes button:hover { opacity: 0.8; }
+.gf-themes button.on {
+  opacity: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.5em;
+}
+.gf-dots { display: flex; gap: 8px; }
+.gf-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+}
+.gf-dots button.on { opacity: 1; }
+.gf-now { justify-self: end; text-align: right; }
+.gf-now button { opacity: 0.85; }
+.gf-now button:disabled { cursor: default; }
+.gf-now span { opacity: 0.55; margin-right: 0.6em; }
+
+/* ---------- shared typography ---------- */
+
+.gf-flow p,
+.gf-flow h2,
+.gf-flow blockquote,
+.gf-flow figure,
+.gf-flow dl,
+.gf-flow ol { margin: 0; }
+.gf-p { line-height: 1.5; hyphens: auto; margin-bottom: 0.75em !important; }
+.gf-h { break-after: avoid; }
+.gf-pull,
+.gf-quote,
+.gf-credits > div { break-inside: avoid; }
+.gf-track {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--hl) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+.gf-track-playing {
+  background: linear-gradient(transparent 12%, color-mix(in srgb, var(--hl) 26%, transparent) 12% 92%, transparent 92%);
+}
+.gf-end { break-before: column; }
+.gf-credits div { margin-bottom: 0.5em; }
+.gf-credits dt { font-size: 0.78em; color: var(--muted); }
+.gf-credits dd { margin: 0; }
+.gf-sources { padding-left: 1.4em !important; font-size: 0.78em; line-height: 1.4; }
+.gf-sources li { margin-bottom: 0.35em; }
+.gf-colophon { margin-top: 1.2em !important; font-size: 0.75em; font-style: italic; color: var(--muted); }
+
+.gf-title {
+  position: absolute;
+  inset: var(--pad);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs);
+}
+.gf-title p,
+.gf-title h1,
+.gf-title dl { margin: 0; }
+.gf-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 1em 1.4em; }
+.gf-facts dd { margin: 0; }
+
+/* ---------- 1. liner notes: a reissue booklet ---------- */
+
+.theme-liner .gf-flow,
+.theme-liner .gf-title { font-family: var(--serif); font-variation-settings: "opsz" 12; }
+.theme-liner .gf-p { text-align: justify; }
+.theme-liner .gf-h {
+  margin: 1.3em 0 0.7em;
+  font-size: 0.86em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+}
+.theme-liner .gf-h::before,
+.theme-liner .gf-h::after { content: " — "; color: var(--hl); }
+.theme-liner section:first-child .gf-h { margin-top: 0; }
+.theme-liner .gf-first::first-letter {
+  float: left;
+  margin: 0.06em 0.08em 0 0;
+  font-size: 3.7em;
+  line-height: 0.8;
+  font-weight: 400;
+  color: var(--hl);
+}
+.theme-liner .gf-pull {
+  margin: 0.9em 0 1em;
+  padding: 0.6em 0;
+  border-top: 1px solid color-mix(in srgb, var(--text) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 35%, transparent);
+  font-size: 1.32em;
+  font-style: italic;
+  font-weight: 300;
+  line-height: 1.25;
+  text-align: center;
+}
+.theme-liner .gf-quote { margin: 0.6em 0 1em; text-align: center; font-style: italic; }
+.theme-liner .gf-quote figcaption {
+  margin-top: 0.3em;
+  font-style: normal;
+  font-size: 0.75em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hl);
+}
+.theme-liner .gf-title { justify-content: center; text-align: center; gap: 1.4em; }
+.theme-liner .gf-kicker { font-size: 0.82em; letter-spacing: 0.2em; text-transform: uppercase; color: var(--hl); }
+.theme-liner .gf-headline { font-size: 3.1em; font-weight: 300; line-height: 1.05; font-variation-settings: "opsz" 144; }
+.theme-liner .gf-standfirst { font-size: 1.2em; font-style: italic; line-height: 1.4; padding: 0 6%; }
+.theme-liner .gf-facts { margin: 0.6em 6% 0; padding-top: 1.2em; border-top: 1px solid color-mix(in srgb, var(--text) 30%, transparent); text-align: left; }
+.theme-liner .gf-facts dt { font-size: 1.3em; color: var(--hl); }
+.theme-liner .gf-facts dd { font-size: 0.82em; line-height: 1.3; color: var(--muted); }
+.theme-liner .gf-byline { font-size: 0.72em; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- 2. magazine: a long-read feature ---------- */
+
+.theme-magazine {
+  --k: 1;
+  --fs: calc(var(--w) * 0.0255);
+  --paper: #f6f4ef;
+  --paper-rear: #e8e5dd;
+  --text: #151413;
+  --muted: #5d5a55;
+  --hl: var(--album-on-light);
+}
+.theme-magazine .gf-flow { font-family: "Newsreader", Georgia, serif; font-variation-settings: "opsz" 16; }
+.theme-magazine .gf-p { line-height: 1.55; }
+.theme-magazine .gf-h {
+  margin: 1em 0 0.35em;
+  font-family: "Instrument Serif", serif;
+  font-size: 2.3em;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1;
+  color: var(--hl);
+}
+.theme-magazine section:first-child .gf-h { margin-top: 0; }
+.theme-magazine .gf-first::first-letter {
+  float: left;
+  margin: 0.04em 0.1em 0 0;
+  font-family: "Instrument Serif", serif;
+  font-size: 5.2em;
+  line-height: 0.78;
+  color: var(--hl);
+}
+.theme-magazine .gf-pull {
+  margin: 0.5em 0 0.8em;
+  font-family: "Instrument Serif", serif;
+  font-size: 2.5em;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  color: var(--hl);
+}
+.theme-magazine .gf-pull .gf-track { text-decoration: none; }
+.theme-magazine .gf-quote {
+  margin: 0.8em 0 1em;
+  padding-left: 0.9em;
+  border-left: 3px solid var(--hl);
+  font-family: "Instrument Serif", serif;
+  font-size: 1.6em;
+  line-height: 1.12;
+}
+.theme-magazine .gf-quote figcaption { margin-top: 0.4em; font-family: var(--type-label); font-size: 0.38em; letter-spacing: 0.16em; text-transform: uppercase; }
+.theme-magazine .gf-end { font-family: "Newsreader", serif; }
+.theme-magazine .gf-end .gf-h { font-size: 1.6em; }
+.theme-magazine .gf-title { justify-content: flex-end; gap: 1.1em; }
+.theme-magazine .gf-kicker { font-family: var(--type-label); font-size: 0.62em; letter-spacing: 0.22em; text-transform: uppercase; color: var(--hl); }
+.theme-magazine .gf-headline { font-family: "Instrument Serif", serif; font-size: 4.6em; font-weight: 400; line-height: 0.92; letter-spacing: -0.02em; }
+.theme-magazine .gf-standfirst { font-family: "Newsreader", serif; font-size: 1.15em; font-style: italic; line-height: 1.4; max-width: 30em; }
+.theme-magazine .gf-facts { grid-template-columns: repeat(3, 1fr); padding-top: 1em; border-top: 2px solid var(--text); }
+.theme-magazine .gf-facts dt { font-family: "Instrument Serif", serif; font-size: 1.7em; line-height: 1; color: var(--hl); }
+.theme-magazine .gf-facts dd { font-family: "Newsreader", serif; font-size: 0.72em; line-height: 1.3; margin-top: 0.3em; }
+.theme-magazine .gf-byline { font-family: var(--type-label); font-size: 0.55em; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- 3. archive: a catalogue, Swiss and numbered ---------- */
+
+.theme-archive {
+  --arch-sans: "IBM Plex Sans", sans-serif;
+  --arch-mono: "IBM Plex Mono", monospace;
+  --k: 3;
+  --fs: calc(var(--w) * 0.0172);
+  --gap: calc(var(--w) * 0.032);
+  --paper: #eceae4;
+  --paper-rear: #dcd9d1;
+  --text: #1a1a1a;
+  --muted: #595855;
+  --hl: #c73614;
+}
+.theme-archive .gf-flow,
+.theme-archive .gf-title { font-family: var(--arch-sans); counter-reset: sec; }
+.theme-archive .gf-p { line-height: 1.45; hyphens: auto; }
+.theme-archive .gf-h {
+  counter-increment: sec;
+  margin: 1.4em 0 0.7em;
+  padding-top: 0.45em;
+  border-top: 2px solid var(--text);
+  font-family: var(--arch-mono);
+  font-size: 0.8em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.theme-archive .gf-h::before { content: counter(sec, decimal-leading-zero) "  "; color: var(--hl); }
+.theme-archive .gf-end .gf-h::before { content: "—  "; }
+.theme-archive section:first-child .gf-h { margin-top: 0; }
+.theme-archive .gf-first::first-line { font-weight: 500; }
+.theme-archive .gf-track { text-decoration: none; font-weight: 500; }
+.theme-archive .gf-track::before { content: "♪ "; font-weight: 400; color: var(--hl); font-size: 0.85em; }
+.theme-archive .gf-pull {
+  margin: 0.5em 0 1em;
+  font-size: 1.55em;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--hl);
+}
+.theme-archive .gf-pull .gf-track::before { content: none; }
+.theme-archive .gf-quote { margin: 0.6em 0 1em; padding: 0.7em; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.theme-archive .gf-quote p { font-weight: 500; line-height: 1.3; }
+.theme-archive .gf-quote figcaption { margin-top: 0.4em; font-family: var(--arch-mono); font-size: 0.75em; }
+.theme-archive .gf-sources { font-family: var(--arch-mono); font-size: 0.72em; }
+.theme-archive .gf-title { gap: 1.2em; }
+.theme-archive .gf-kicker { font-family: var(--arch-mono); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 0.5em; border-bottom: 2px solid var(--text); }
+.theme-archive .gf-kicker em { font-style: normal; color: var(--hl); }
+.theme-archive .gf-headline { font-size: 3.4em; font-weight: 700; line-height: 0.98; letter-spacing: -0.035em; }
+.theme-archive .gf-standfirst { font-size: 1.15em; line-height: 1.35; max-width: 26em; }
+.theme-archive .gf-facts { margin-top: auto; grid-template-columns: 1fr 1fr 1fr; gap: 0; border-top: 1px solid var(--text); }
+.theme-archive .gf-facts div { padding: 0.6em 0.8em 0.8em 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 25%, transparent); }
+.theme-archive .gf-facts dt { font-family: var(--arch-mono); font-size: 1.15em; font-weight: 500; color: var(--hl); }
+.theme-archive .gf-facts dd { font-size: 0.78em; line-height: 1.3; }
+.theme-archive .gf-byline { font-family: var(--arch-mono); font-size: 0.7em; color: var(--muted); }
+
+/* ---------- 4. album colours: printed in the sleeve's own colours ---------- */
+
+/* The album's colours, derived for reading (see palette.ts): body text 7:1,
+   accent and secondary text 4.5:1. */
+.theme-album,
+.in-album-colours {
+  --paper: var(--album-ground);
+  --paper-rear: var(--album-rear);
+  --text: var(--album-ink);
+  --muted: var(--album-muted);
+  --hl: var(--album-accent);
+}
+.theme-album .gf-flow,
+.theme-album .gf-title { font-family: var(--serif); font-variation-settings: "opsz" 14; }
+.theme-album .gf-h {
+  margin: 1.4em 0 0.6em;
+  font-family: var(--type-label);
+  font-size: 0.68em;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hl);
+}
+.theme-album section:first-child .gf-h { margin-top: 0; }
+.theme-album .gf-first::first-letter {
+  float: left;
+  margin: 0.05em 0.08em 0 0;
+  font-size: 3.9em;
+  font-weight: 300;
+  line-height: 0.8;
+  color: var(--hl);
+}
+.theme-album .gf-pull { margin: 0.6em 0 1em; font-size: 1.6em; font-weight: 300; line-height: 1.15; color: var(--hl); }
+.theme-album .gf-quote { margin: 0.6em 0 1em; font-style: italic; }
+.theme-album .gf-quote figcaption { font-family: var(--type-label); font-style: normal; font-size: 0.65em; letter-spacing: 0.16em; text-transform: uppercase; color: var(--hl); margin-top: 0.3em; }
+.theme-album .gf-title { justify-content: space-between; }
+.theme-album .gf-kicker { font-family: var(--type-label); font-size: 0.66em; letter-spacing: 0.22em; text-transform: uppercase; color: var(--hl); }
+.theme-album .gf-headline { font-size: 3.6em; font-weight: 300; line-height: 1; letter-spacing: -0.015em; font-variation-settings: "opsz" 144; margin-top: auto !important; }
+.theme-album .gf-standfirst { margin-top: 0.8em !important; font-size: 1.15em; font-style: italic; line-height: 1.4; }
+.theme-album .gf-facts { margin-top: 1.4em !important; padding-top: 1em; border-top: 1px solid color-mix(in srgb, var(--text) 30%, transparent); grid-template-columns: repeat(3, 1fr); }
+.theme-album .gf-facts dt { font-size: 1.3em; color: var(--hl); }
+.theme-album .gf-facts dd { font-size: 0.75em; line-height: 1.3; color: var(--muted); }
+.theme-album .gf-byline { margin-top: 1.2em !important; font-family: var(--type-label); font-size: 0.56em; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- the button that opens it ---------- */
+
+.notes-btn {
+  position: fixed;
+  top: 2.5vh;
+  right: 24px;
+  z-index: 12;
+  padding: 8px 14px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 999px;
+  background: rgb(18 15 12 / 0.4);
+  backdrop-filter: blur(10px);
+  color: var(--paper);
+  font-family: var(--type-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+.notes-btn.on { opacity: 1; pointer-events: auto; transition-delay: 0.6s; }
+.notes-btn:hover { background: rgb(18 15 12 / 0.65); }
+
+/* ---------- ?colours: the contact sheet ---------- */
+
+body:has(.sheet) { overflow: auto; }
+.sheet { padding: 40px 32px 80px; }
+.sheet header { max-width: 60em; margin-bottom: 28px; }
+.sheet h1 { margin: 0 0 8px; font-weight: 300; }
+.sheet header p { margin: 0; font-family: var(--type-label); font-size: 0.75rem; line-height: 1.6; opacity: 0.8; }
+.sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+.sheet-card { display: grid; grid-template-columns: 120px 1fr; margin: 0; }
+.sheet-card img { width: 120px; height: 120px; object-fit: cover; }
+.sheet-page { padding: 12px 14px; background: var(--paper); color: var(--text); font-family: var(--serif); }
+.sheet-page p { margin: 0; }
+.sheet-kicker { font-family: var(--type-label); font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--hl); }
+.sheet-title { margin-top: 2px !important; font-size: 1.1rem; font-weight: 300; line-height: 1.15; }
+.sheet-body { margin-top: 6px !important; font-size: 0.72rem; line-height: 1.4; }
+.sheet-body span { background: linear-gradient(transparent 12%, color-mix(in srgb, var(--hl) 26%, transparent) 12% 92%, transparent 92%); }
+.sheet-muted { margin-top: 4px !important; font-size: 0.66rem; color: var(--muted); }
+.sheet-ratios { margin-top: 6px !important; font-family: var(--type-label); font-size: 0.56rem; color: var(--muted); }
+
+/* ---------- Album × Archive follows the record's type system ---------- */
+
+.theme-archive.in-album-colours {
+  --arch-sans: var(--type-body);
+  --arch-mono: var(--type-label);
+}
+/* Set in Fraunces, archive's three narrow columns get too tight: use two,
+   and swap the bold grotesk display for Fraunces' large optical size. */
+:root:not(.type-grotesk) .in-album-colours {
+  --k: 2;
+  --fs: calc(var(--w) * 0.0195);
+}
+:root:not(.type-grotesk) .in-album-colours :is(.gf-flow, .gf-title) { font-variation-settings: "opsz" 12; }
+:root:not(.type-grotesk) .in-album-colours .gf-headline {
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 144;
+}
+:root:not(.type-grotesk) .in-album-colours .gf-pull { font-weight: 400; font-variation-settings: "opsz" 72; }
+
+.gf-type { display: flex; align-items: center; gap: 2px; margin-left: 14px; padding-left: 14px; border-left: 1px solid rgb(255 255 255 / 0.2); }
+.gf-type span { margin-right: 4px; opacity: 0.55; }
+.gf-type button { padding: 4px 8px; opacity: 0.45; }
+.gf-type button.on { opacity: 1; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.5em; }
+.gf-controls { display: flex; flex-wrap: wrap; align-items: center; }
+.in-album-colours .gf-track::before { content: none; }
+
+
+/* The film grain over the whole screen steps back while you read. */
+.grain { transition: opacity 0.8s; }
+body:has(.gatefold.open) .grain { opacity: 0.06; }
