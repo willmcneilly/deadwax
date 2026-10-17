@@ -1,6 +1,6 @@
 ---
 name: work-ticket
-description: Pick up a Deadwax ticket and take it through to a merged PR. Use when Will says /work-ticket, "work on DWX-n", "pick up the next ticket", says to merge a ticket's PR, or reports something he found trying it. Covers claiming the ticket, branching, implementing, verifying against the acceptance criteria, recording verification notes, opening the PR, the review loop with an independent reviewer, handing over to Will with what needs him, and merging on his go-ahead.
+description: Pick up a Deadwax ticket and take it through to a merged PR. Use when Will says /work-ticket, "work on DWX-n", "pick up the next ticket", says to merge a ticket's PR, or reports something he found trying it. Covers claiming the ticket, branching, implementing, verifying against the acceptance criteria, writing the evidence once in the PR body and syncing it to the ticket, opening the PR, the review loop with an independent reviewer, handing over to Will with what needs him, and merging on his go-ahead.
 effort: medium
 ---
 
@@ -66,7 +66,7 @@ Before opening the PR:
    - Running it again on code that has passed is instant, so run it whenever you need to know, rather than re-running single commands by hand.
    - If it says `origin/main` has moved on, bring main in first, then run it again.
    - `git push` runs it too, through the pre-push hook, and is instant after a pass.
-2. **Go through the acceptance criteria one by one.** For each, record the evidence: the test that proves it, the command you ran and what it showed, or a screenshot for UI.
+2. **Go through the acceptance criteria one by one.** For each, record the evidence in the PR body file (step 6): the test that proves it, the command you ran and what it showed, or a screenshot for UI.
 3. **Manual checks you can't do yourself.** You can't sign in to Spotify as Will, hear what plays, or see the Sonos speakers and TV in Will's home. Do what you can (run it against mocked Spotify responses, check the logs, take screenshots), then list exactly what Will should try and what they should hear or see. **Never claim you verified something you didn't.**
 4. **Self-review the diff:**
    - remove debug leftovers;
@@ -75,28 +75,33 @@ Before opening the PR:
 
 5. **New concepts.** Did this work bring in a concept that isn't in the Glossary, something you had to reach for that the RFC didn't name? Usually the answer is no. If yes, add an entry (see the `deadwax-notion` skill), with `Introduced in` set to the ticket's RFC, and list the new terms in the PR.
 
-## 6. Record it on the ticket
+## 6. Write the evidence, once
 
-- **Tick the checkboxes** of the criteria you met: `scripts/ticket tick DWX-n "<criterion>" …`, with a few words of each criterion's text. It ticks only the checkbox, leaving the text and its comments alone, and ticks nothing if a criterion matches no checkbox or several (it lists them). Leave unmet ones unticked, and explain why in the notes.
-- **Fill in Verification notes.** It's the last section, so delete the placeholder paragraph and append bullets to the page (`PATCH v1/blocks/<page id>/children` with `children`). Give:
-  - for each criterion, how it was verified;
-  - what's left for Will to check manually;
-  - any follow-ups.
+The evidence is written in one place: the PR body. Keep it as a file in the session's scratchpad (`pr-body.md`), and edit only that file. `scripts/ticket sync` makes everything else from it: the PR's description, the ticket's ticks and its Verification notes. Never edit those by hand: copies edited by hand drift, and a reviewer rightly blocks on a stale claim.
+
+**The body:**
+- one paragraph on what changed and why, plus the Notion ticket link;
+- `## Acceptance criteria`: one line per criterion, `- [x] **<the ticket's text for it, word for word>** <the evidence>`, or `- [ ]` with why it isn't met. Copy the text from the ticket: `sync` pairs each line with its checkbox by that text, and refuses a paraphrase (it lists the ticket's wording). Evidence can go in sub-bullets below the line;
+- `## For Will to try`: the manual checks, as steps with expected results;
+- `## Design decisions`, for UI work: each provisional decision's `D-n` and link, or "None";
+- `## Follow-ups`;
+- new Glossary terms, if any;
+- the PR attribution line.
+
+`sync` copies the acceptance criteria, "For Will to try" and the follow-ups into the ticket's Verification notes.
+
+**How to write the evidence so it stays true:**
+- **Name the tests, don't count them.** "76 tests pass" is stale the moment anyone adds one. Name the tests that prove the criterion.
+- **Put names, paths and commands in backticks:** a Rust test's `fn` name, a vitest test's name (`it("…")`'s text, word for word), a file, a script, a command to run. `scripts/ticket evidence-check pr-body.md` checks that each is in the branch: a name is in the code, words in plain English (a test's name, or a label the UI shows) appear word for word in a file that isn't Markdown, a path is a file or folder, a script or npm script exists, and a cargo package or test target exists. It also refuses a total of tests. Run it while you write; `sync` runs it too, and refuses until it passes.
+- **A name that's gone** (renamed or removed) is struck through, ~~`lastDrag`~~, or written as a rename, `sliderScale` → `numberScale`, and isn't checked. Something outside the repository (a global skill, a Spotify API field, a file in Application Support) is a `~/` path, or isn't in backticks.
 
 ## 7. Open the PR
 
-- Push the branch, then `gh pr create`.
-- **Title:** `DWX-<n>: <ticket name>`.
-- **Body:**
-  - one paragraph on what changed and why, plus the Notion ticket link;
-  - the acceptance criteria as a checklist with evidence;
-  - **For Will to try:** the manual checks, as steps with expected results;
-  - **Design decisions**, for UI work: each provisional decision's `D-n` and link, or "None";
-  - follow-ups;
-  - new Glossary terms, if any;
-  - the PR attribution line.
-- **After opening:** use the `ccd_pr` tools. Call `get_status`, bind the PR if it isn't bound, and read its CI. Don't poll CI yourself. If CI fails, fix it on the branch.
-- **Update the ticket:** set the `PR` URL, and set Status to `In Review`.
+1. Push the branch, then `gh pr create --title "DWX-<n>: <ticket name>" --body-file <the file>`.
+2. Run `scripts/ticket sync DWX-n --pr <n> <the file>`. It ticks and unticks the ticket's criteria to match the PR's `[x]` and `[ ]`, replaces its Verification notes, and sets its `PR` link and `In Review`. It changes only what differs, so it's safe to run again, and running it again with nothing changed changes nothing. Add `--dry-run` to see what it would do first.
+3. **After opening:** use the `ccd_pr` tools. Call `get_status`, bind the PR if it isn't bound, and read its CI. Don't poll CI yourself. If CI fails, fix it on the branch.
+
+**To change the description later,** edit the file and run `sync` again.
 
 Then go straight into the review loop. Don't stop to tell Will about the PR yet.
 
@@ -112,7 +117,7 @@ You and an independent reviewer go back and forth until you agree. Will isn't in
   - fix it on the branch; or
   - if you think it's wrong, reply on the PR explaining why, with evidence. The next reviewer decides. **Never dismiss a blocking finding yourself.**
 
-  Fix should-fix findings too, unless they're clearly bigger than the ticket; then reply that they belong in follow-ups. Re-run the step 5 checks, reply to each comment with what you changed, push, update the verification notes if the evidence changed, and start the next round.
+  Fix should-fix findings too, unless they're clearly bigger than the ticket; then reply that they belong in follow-ups. Re-run the step 5 checks, reply to each comment with what you changed, and push. If the fix changed the evidence (a renamed test, a new check, a different result), edit the PR body file and run `scripts/ticket sync` again, which updates the PR, the ticks and the notes in one go. Then start the next round.
 
 **Stop after 3 rounds** if you still don't agree, and take the disagreement to Will in step 9: each open finding, the reviewer's position and yours, both in a sentence or two, with links.
 
@@ -159,6 +164,6 @@ Then stop and wait for Will.
 3. **Line up the next ticket.** Take it from what `merge` printed as ready to start (or run `scripts/ticket ready`). Pick the next one the plan's order says to do in the same project, or the lowest ID if the plan doesn't say. Then create a chip for it with the `spawn_task` tool (the `ccd_session` one): title `Work on DWX-<n>: <name>`, a one-line tldr of its goal, and the prompt `/work-ticket DWX-<n>`, so Will only has to click it. If that tool isn't available, give him the command to paste instead. If nothing is Ready, say what the next ticket is waiting on.
 4. Tell Will, in a few lines: what merged, which tickets are now Ready, the next ticket you lined up (and any other Ready tickets that could run alongside it), what he can try if this was a checkpoint, and one line on what you cleaned up. Only ask about something you couldn't clean up safely.
 
-**Something he found by hand:** fix it on the branch, re-run the step 5 checks and push. Then run one more review round, so the reviewer sees the change before Will does, and hand over again as in step 9. `tauri dev` reloads changes by itself; `scripts/dev-app status` says whether the app is still up and has built without errors, and `scripts/dev-app start` restarts it if not.
+**Something he found by hand:** fix it on the branch, re-run the step 5 checks and push. If the evidence changed, edit the PR body file and run `scripts/ticket sync` again. Then run one more review round, so the reviewer sees the change before Will does, and hand over again as in step 9. `tauri dev` reloads changes by itself; `scripts/dev-app status` says whether the app is still up and has built without errors, and `scripts/dev-app start` restarts it if not.
 
 The ticket stays `In Review` until it's merged.

@@ -7,13 +7,15 @@ description: How to read and write Deadwax's Notion (RFCs, Projects, Tickets, Re
 
 ## A ticket's steps: `scripts/ticket`
 
-Claiming, ticking criteria, merging and unblocking a ticket, and finding what's ready, are each one command in `scripts/ticket` (`--help` for the details). Use it rather than building those calls by hand:
+Claiming, ticking criteria, syncing the ticket with its PR, merging and unblocking a ticket, and finding what's ready, are each one command in `scripts/ticket` (`--help` for the details). Use it rather than building those calls by hand:
 
 ```bash
 scripts/ticket show DWX-n                        # page ID, status, type, project, PR, and each dependency
 scripts/ticket ready                             # what can start now, what's waiting, what's running
 scripts/ticket claim DWX-n --branch <branch>     # In Progress, project Active, the Started comment
 scripts/ticket tick DWX-n "<criterion>" …        # tick acceptance criteria by their text
+scripts/ticket evidence-check <file>             # every test, path and command a PR body quotes is in the branch
+scripts/ticket sync DWX-n --pr <n> <file>        # PR description, ticks, Verification notes, PR link, In Review, from the PR body
 scripts/ticket merge DWX-n                       # merge the PR, Done, unblock, project Done
 ```
 
@@ -83,7 +85,7 @@ Before adding a term, query the Glossary for it so you don't add a duplicate. If
 - `## Out of scope`
 - `## Depends on` (DWX-n IDs, or "Nothing")
 - `## Context` (RFC link and the sections this implements)
-- `## Verification notes`: left empty at creation. The implementer fills it in before moving the ticket to In Review, saying what was checked and how.
+- `## Verification notes`: left empty at creation, and kept as the last section. `scripts/ticket sync` fills it from the PR body (its acceptance criteria, "For Will to try" and follow-ups) when the ticket goes to In Review, and replaces it on each sync after.
 
 Branches and PR titles use the ticket ID: branch `dwx-12-short-name`, PR title `DWX-12: …`.
 

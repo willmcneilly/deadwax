@@ -128,11 +128,14 @@ function packages(tree: Tree): Set<string> {
   return names;
 }
 
-/** The scripts in app/package.json. */
+/** The scripts in every package.json: app's, and a prototype's that a command may `cd` into first. */
 function npmScripts(tree: Tree): Set<string> {
-  if (!tree.files().includes("app/package.json")) return new Set();
-  const json = JSON.parse(tree.read("app/package.json")) as { scripts?: Record<string, string> };
-  return new Set(Object.keys(json.scripts ?? {}));
+  const names = new Set<string>();
+  for (const file of tree.files().filter((f) => f === "package.json" || f.endsWith("/package.json"))) {
+    const json = JSON.parse(tree.read(file)) as { scripts?: Record<string, string> };
+    for (const name of Object.keys(json.scripts ?? {})) names.add(name);
+  }
+  return names;
 }
 
 /** What's wrong with one command line: a script, package, test target or path that isn't there. */
@@ -147,7 +150,7 @@ function commandProblems(
   words.forEach((word, at) => {
     const next = words[at + 1];
     if (next === undefined || PLACEHOLDER.test(next)) return;
-    if (tool === "npm" && word === "run" && at === 1 && !context.scripts().has(next)) problems.push(`no npm script "${next}" in app/package.json`);
+    if (tool === "npm" && word === "run" && at === 1 && !context.scripts().has(next)) problems.push(`no npm script "${next}" in any package.json`);
     if (tool === "cargo" && (word === "-p" || word === "--package") && !context.packages().has(next)) problems.push(`no package ${next}`);
     if (tool === "cargo" && word === "--test" && !context.files.some((f) => f.endsWith(`tests/${next}.rs`) || f.endsWith(`tests/${next}/main.rs`))) {
       problems.push(`no test target ${next}`);

@@ -21,6 +21,7 @@ const CHECKOUT = tree(
     "crates/deadwax-core/tests/collection.rs": "#[test]\nfn adds_an_album_once() {}\nconst PAGE_SIZE: usize = 50;",
     "crates/deadwax-core/src/collection.rs": "pub struct Collection;",
     "app/package.json": JSON.stringify({ scripts: { typecheck: "tsc -b", test: "vitest run" } }),
+    "prototypes/crate/package.json": JSON.stringify({ scripts: { fixture: "node fixture.js" } }),
     "app/scripts/ticket.ts": "export function parseDependsOn() {}",
     "app/src/NowPlaying.test.tsx": 'it("moves the progress bar smoothly between polls", () => {});\nscreen.getByText("Open in Spotify");',
     "docs/plans/agent-tooling.md": "The test `keeps the old name in a plan` is quoted here.",
@@ -90,7 +91,7 @@ describe("evidenceProblems", () => {
     const body = [
       "- [x] **It adds once.** `adds_an_album_once` in `collection.rs` uses `PAGE_SIZE`; see `crates/deadwax-core/src/collection.rs:12` and `app/scripts/`.",
       "- [x] **It moves.** `moves the progress bar smoothly between polls`, and `Open in Spotify` is shown.",
-      "Run `npm run typecheck`, `scripts/check` and `cargo test -p deadwax-core --test collection`.",
+      "Run `npm run typecheck`, `scripts/check` and `cargo test -p deadwax-core --test collection`, and `npm run fixture` in the prototype.",
       "Build output in `target/release/bundle`; deps in `app/node_modules`. `parseDependsOn` reads it.",
     ].join("\n");
     expect(evidenceProblems(body, CHECKOUT)).toEqual([]);
@@ -110,7 +111,7 @@ describe("evidenceProblems", () => {
   it("names a missing file, script, npm script, package and test target", () => {
     expect(problems("`crates/deadwax-core/src/gone.rs` and `moved.rs`")).toEqual(["crates/deadwax-core/src/gone.rs", "moved.rs"]);
     const why = evidenceProblems("`scripts/nope --help`, `npm run lint`, `cargo test -p deadwax-gone --test sound`", CHECKOUT).map((p) => p.why);
-    expect(why).toEqual(["no scripts/nope script", 'no npm script "lint" in app/package.json', "no package deadwax-gone", "no test target sound"]);
+    expect(why).toEqual(["no scripts/nope script", 'no npm script "lint" in any package.json', "no package deadwax-gone", "no test target sound"]);
   });
 
   it("checks paths in shell blocks, but not output blocks", () => {
