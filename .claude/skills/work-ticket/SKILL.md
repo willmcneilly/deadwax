@@ -1,13 +1,14 @@
 ---
 name: work-ticket
 description: Pick up a Deadwax ticket and take it through to a merged PR. Use when Will says /work-ticket, "work on DWX-n", "pick up the next ticket", says to merge a ticket's PR, or reports something he found trying it. Covers claiming the ticket, branching, implementing, verifying against the acceptance criteria, recording verification notes, opening the PR, the review loop with an independent reviewer, handing over to Will with what needs him, and merging on his go-ahead.
+effort: medium
 ---
 
 # Working a ticket
 
 A ticket is done when a reviewer and Will can trust it without reading every line, because the evidence is in the ticket and the PR. The job isn't just writing the code: it's showing, criterion by criterion, that it works.
 
-Use the `notion` skill for Notion mechanics. Keep your own context lean: send broad exploration, library research and large log reading to subagents, and keep the conclusions.
+Use the `deadwax-notion` skill for Notion mechanics. Keep your own context lean: send broad exploration, library research and large log reading to subagents, and keep the conclusions.
 
 ## 1. Pick the ticket
 
@@ -25,6 +26,7 @@ Use the `notion` skill for Notion mechanics. Keep your own context lean: send br
 3. Create a branch named `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`.
    - If another ticket is in progress in this checkout, or it has uncommitted work that isn't yours, use a git worktree instead of switching branches.
 4. Post a ticket comment: `🤖 Claude: Started on branch dwx-2-spotify-sign-in.`
+5. Rename this session to the PR title, `DWX-<n>: <ticket name>`, with the `set_session_title` tool (the `ccd_session_mgmt` one) and `session_id: "self"`, so the sidebar, the PR and the commit on `main` share one name. If that tool isn't available (a terminal session), skip this step.
 
 ## 3. Understand before building
 
@@ -51,7 +53,7 @@ Read:
 
 When the UI work needs something `DESIGN.md` doesn't cover (a new component, a layout pattern, a new token, or bending one of its rules), don't block the ticket and don't invent a rule quietly. Build the best version you can from the principles, then:
 
-1. **Log it** in the Design decisions database (see the `notion` skill), with `Status: Open`: what was needed, what you chose and why, the principles you relied on, the alternatives, and the ticket. Its ID is `D-n`. Leave `Screenshot` empty: the PR body has the screenshots, and that's enough.
+1. **Log it** in the Design decisions database (see the `deadwax-notion` skill), with `Status: Open`: what was needed, what you chose and why, the principles you relied on, the alternatives, and the ticket. Its ID is `D-n`. Leave `Screenshot` empty: the PR body has the screenshots, and that's enough.
 2. **Mark the code** with a comment where the decision lives: `provisional: D-n`.
 3. **List it in the PR** under "Design decisions", with its link and a screenshot.
 
@@ -69,7 +71,7 @@ Before opening the PR:
    - check nothing out of scope slipped in;
    - check that names and comments match the surrounding code.
 
-5. **New concepts.** Did this work bring in a concept that isn't in the Glossary, something you had to reach for that the RFC didn't name? Usually the answer is no. If yes, add an entry (see the `notion` skill), with `Introduced in` set to the ticket's RFC, and list the new terms in the PR.
+5. **New concepts.** Did this work bring in a concept that isn't in the Glossary, something you had to reach for that the RFC didn't name? Usually the answer is no. If yes, add an entry (see the `deadwax-notion` skill), with `Introduced in` set to the ticket's RFC, and list the new terms in the PR.
 
 ## 6. Record it on the ticket
 
@@ -141,14 +143,15 @@ Then stop and wait for Will.
 ## 10. When Will replies
 
 **"Merge":** check that the last review is Ready to merge and CI is green (`gh pr checks <n>`). If they aren't, tell Will what's wrong instead of merging. Then:
-1. `gh pr merge <n> --squash --delete-branch`, so there's one commit per ticket on `main`, titled `DWX-<n>: …`.
+1. `gh pr merge <n> --squash`, so there's one commit per ticket on `main`, titled `DWX-<n>: …`. Then delete the remote branch with `git push origin --delete <branch>`. Don't use `--delete-branch`: from a worktree it fails, because it tries to switch to `main`, which is checked out in Will's main checkout.
 2. Set the ticket to `Done`.
 3. **Unblock:** for each `Backlog` ticket in the project whose **Depends on** tickets are now all `Done`, set it to `Ready`. If every ticket in the project is `Done`, set the project to `Done`.
 4. **Clean up after yourself, without asking:**
    - stop any dev servers and previews you started, and close the browser tabs you opened, in the built-in browser or elsewhere;
    - remove any worktree you created, and its build output. If this session itself runs in a worktree the app made, leave that one: the app removes it;
    - delete scratch branches you pushed, except a branch that holds images the PR links to, which stays so the PR keeps working;
-   - leave anything you didn't create alone.
+   - leave anything you didn't create alone;
+   - then run the `tidy` skill, which clears what earlier tickets left behind: worktrees and build output whose work is on `main`, and merged branches.
 5. **Line up the next ticket.** Query the Tickets for `Ready` ones whose **Depends on** are all `Done` and merged. Pick the next one the plan's order says to do in the same project, or the lowest ID if the plan doesn't say. Then create a chip for it with the `spawn_task` tool (the `ccd_session` one): title `Work on DWX-<n>: <name>`, a one-line tldr of its goal, and the prompt `/work-ticket DWX-<n>`, so Will only has to click it. If that tool isn't available, give him the command to paste instead. If nothing is Ready, say what the next ticket is waiting on.
 6. Tell Will, in a few lines: what merged, which tickets are now Ready, the next ticket you lined up (and any other Ready tickets that could run alongside it), what he can try if this was a checkpoint, and one line on what you cleaned up. Only ask about something you couldn't clean up safely.
 

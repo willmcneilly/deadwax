@@ -50,6 +50,13 @@ scripts/check-release-has-no-dev-list.sh            # the release build has no d
 
 **Before opening a PR, run all of the above checks and fix everything they report.** CI runs the same set on `macos-15`.
 
+## Shell and tools
+
+- The shell is zsh: quote globs (`--include='*.rs'`) or use `rg`, don't start an `echo` with `=` (`echo ====` fails), and brace a variable before a colon (`"${c}:refs/heads/…"`, since `$c:r` is a modifier).
+- Never `sleep` to wait for something: run the command in the background and wait for its notification, or use Monitor.
+- There's no Prettier. `npm run lint` is the only formatting check for the frontend.
+- Python has only the standard library (no numpy or PIL).
+
 ## Spotify rules
 
 These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spotify account.
@@ -74,7 +81,7 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 ## Working on tickets
 
-Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. Use the `notion` skill and its `ntn.sh` wrapper for all Notion access. The `work-ticket` skill has the full process.
+Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. Use the `deadwax-notion` skill and its `ntn.sh` wrapper for all Notion access. The `work-ticket` skill has the full process.
 
 - Tickets have IDs `DWX-n` and a status: Backlog · Ready · In Progress · Blocked · In Review · Done. Only start a `Ready` ticket whose dependencies are `Done` and merged.
 - Branch: `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`, from an up-to-date `main`.
