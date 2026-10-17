@@ -16,7 +16,7 @@ app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
-scripts                 the repository's own tools (`check`, `warm`, each with `--help`; their logic is in app/scripts) and CI's release check
+scripts                 the repository's own tools (`check`, `warm`, `ticket`, each with `--help`; their logic is in app/scripts) and CI's release check
 .githooks               git hooks: pre-push runs `scripts/check`, post-checkout warms a new worktree
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
@@ -31,6 +31,7 @@ Run everything from the repository root unless it says `app/`.
 ```bash
 scripts/check                                       # the checks this change needs (below)
 scripts/warm                                        # give a new worktree a warm Rust build
+scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, merge
 git config core.hooksPath .githooks                 # once per clone; scripts/check does it on its first run
 
 # Rust
@@ -91,7 +92,7 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 ## Working on tickets
 
-Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. Use the `deadwax-notion` skill and its `ntn.sh` wrapper for all Notion access. The `work-ticket` skill has the full process.
+Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. A ticket's own steps (show, ready, claim, tick, merge) are each one command in `scripts/ticket`; use the `deadwax-notion` skill and its `ntn.sh` wrapper for all other Notion access. The `work-ticket` skill has the full process.
 
 - Tickets have IDs `DWX-n` and a status: Backlog · Ready · In Progress · Blocked · In Review · Done. Only start a `Ready` ticket whose dependencies are `Done` and merged.
 - Branch: `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`, from an up-to-date `main`.

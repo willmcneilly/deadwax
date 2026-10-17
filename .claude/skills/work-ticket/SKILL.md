@@ -8,31 +8,28 @@ effort: medium
 
 A ticket is done when a reviewer and Will can trust it without reading every line, because the evidence is in the ticket and the PR. The job isn't just writing the code: it's showing, criterion by criterion, that it works.
 
-Use the `deadwax-notion` skill for Notion mechanics. Keep your own context lean: send broad exploration, library research and large log reading to subagents, and keep the conclusions.
+`scripts/ticket` does the ticket's Notion and GitHub steps, one command each (`scripts/ticket --help`). Every command takes `--dry-run`, which reads as usual and prints the calls it would make instead of making them. For anything else in Notion, use the `deadwax-notion` skill. Keep your own context lean: send broad exploration, library research and large log reading to subagents, and keep the conclusions.
 
 ## 1. Pick the ticket
 
 - **If Will named one** (`/work-ticket DWX-3`), use it.
-- **If not,** query Tickets for `Status: Ready` and take the lowest ID. Tell Will which one you picked.
-- **Check before starting:**
-  - The ticket's status is `Ready`.
-  - Every ticket in its **Depends on** is `Done`, and its PR is merged into `main`.
+- **If not,** run `scripts/ticket ready`, and take the lowest ID it says is ready to start. Tell Will which one you picked.
+- **Before starting,** the ticket must be `Ready`, and every ticket in its **Depends on** `Done` with its PR merged into `main`. `scripts/ticket show DWX-n` shows each, and `claim` (below) refuses otherwise.
 - **If a check fails, stop and tell Will.** Don't start a Backlog ticket, and don't build on an unmerged branch.
 
 ## 2. Claim it
 
-1. Set the ticket to `In Progress`. If its project is `Planned`, set the project to `Active`.
-2. Update `main` (`git fetch && git switch main && git pull --ff-only`).
-3. Create a branch named `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`.
+1. Update `main` (`git fetch && git switch main && git pull --ff-only`).
+2. Create a branch named `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`.
    - If another ticket is in progress in this checkout, or it has uncommitted work that isn't yours, use a git worktree instead of switching branches.
    - In a new worktree, run `scripts/warm`, which gives it a warm Rust build from the main checkout's in a few seconds. It does nothing if the worktree has one already, and the post-checkout hook usually has.
-4. Post a ticket comment: `🤖 Claude: Started on branch dwx-2-spotify-sign-in.`
-5. Rename this session to the PR title, `DWX-<n>: <ticket name>`, with the `set_session_title` tool (the `ccd_session_mgmt` one) and `session_id: "self"`, so the sidebar, the PR and the commit on `main` share one name. If that tool isn't available (a terminal session), skip this step.
+3. Run `scripts/ticket claim DWX-n --branch <branch>`. It refuses, and says why, unless the ticket is Ready with its dependencies merged. Then it sets the ticket `In Progress`, sets the project `Active` if it was `Planned`, and comments `🤖 Claude: Started on branch <branch>.` on the ticket.
+4. Rename this session to the PR title, `DWX-<n>: <ticket name>`, with the `set_session_title` tool (the `ccd_session_mgmt` one) and `session_id: "self"`, so the sidebar, the PR and the commit on `main` share one name. If that tool isn't available (a terminal session), skip this step.
 
 ## 3. Understand before building
 
 Read:
-- the ticket (`N pages get <id>`);
+- the ticket (`N pages get <id>`; `scripts/ticket show DWX-n` prints its page ID);
 - the RFC sections in its **Context**;
 - the project plan in `docs/plans/`;
 - `CLAUDE.md`;
@@ -80,7 +77,7 @@ Before opening the PR:
 
 ## 6. Record it on the ticket
 
-- **Tick the checkboxes** of the criteria you met. PATCH each `to_do` block with `{"to_do":{"checked":true}}`, which doesn't touch the text or its comments. Leave unmet ones unticked, and explain why in the notes.
+- **Tick the checkboxes** of the criteria you met: `scripts/ticket tick DWX-n "<criterion>" …`, with a few words of each criterion's text. It ticks only the checkbox, leaving the text and its comments alone, and ticks nothing if a criterion matches no checkbox or several (it lists them). Leave unmet ones unticked, and explain why in the notes.
 - **Fill in Verification notes.** It's the last section, so delete the placeholder paragraph and append bullets to the page (`PATCH v1/blocks/<page id>/children` with `children`). Give:
   - for each criterion, how it was verified;
   - what's left for Will to check manually;
@@ -147,18 +144,20 @@ Then stop and wait for Will.
 
 ## 10. When Will replies
 
-**"Merge":** check that the last review is Ready to merge and CI is green (`gh pr checks <n>`). If they aren't, tell Will what's wrong instead of merging. Then:
-1. `gh pr merge <n> --squash`, so there's one commit per ticket on `main`, titled `DWX-<n>: …`. Then delete the remote branch with `git push origin --delete <branch>`. Don't use `--delete-branch`: from a worktree it fails, because it tries to switch to `main`, which is checked out in Will's main checkout.
-2. Set the ticket to `Done`.
-3. **Unblock:** for each `Backlog` ticket in the project whose **Depends on** tickets are now all `Done`, set it to `Ready`. If every ticket in the project is `Done`, set the project to `Done`.
-4. **Clean up after yourself, without asking:**
+**"Merge":**
+1. Run `scripts/ticket merge DWX-n`. It does the merge's GitHub and Notion steps, and prints what's ready afterwards:
+   - It refuses unless the newest review says Ready to merge and was of the PR's head commit, and CI is green on that commit. If it refuses, tell Will what's wrong instead of merging.
+   - It squash merges, so there's one commit per ticket on `main`, titled `DWX-<n>: …`, then deletes the remote branch with `git push origin --delete`. Never `gh pr merge --delete-branch`: from a worktree it fails, because it tries to switch to `main`, which is checked out in Will's main checkout.
+   - It sets the ticket `Done`, sets each `Backlog` ticket whose **Depends on** are now all `Done` and merged to `Ready`, and sets the project `Done` if every ticket in it is.
+   - If it stops partway (a failed Notion call, say), run it again: it skips a merge that's already happened.
+2. **Clean up after yourself, without asking:**
    - stop any dev servers and previews you started, and close the browser tabs you opened, in the built-in browser or elsewhere;
    - remove any worktree you created, and its build output. If this session itself runs in a worktree the app made, leave that one: the app removes it;
    - delete scratch branches you pushed, except a branch that holds images the PR links to, which stays so the PR keeps working;
    - leave anything you didn't create alone;
    - then run the `tidy` skill, which clears what earlier tickets left behind: worktrees and build output whose work is on `main`, and merged branches.
-5. **Line up the next ticket.** Query the Tickets for `Ready` ones whose **Depends on** are all `Done` and merged. Pick the next one the plan's order says to do in the same project, or the lowest ID if the plan doesn't say. Then create a chip for it with the `spawn_task` tool (the `ccd_session` one): title `Work on DWX-<n>: <name>`, a one-line tldr of its goal, and the prompt `/work-ticket DWX-<n>`, so Will only has to click it. If that tool isn't available, give him the command to paste instead. If nothing is Ready, say what the next ticket is waiting on.
-6. Tell Will, in a few lines: what merged, which tickets are now Ready, the next ticket you lined up (and any other Ready tickets that could run alongside it), what he can try if this was a checkpoint, and one line on what you cleaned up. Only ask about something you couldn't clean up safely.
+3. **Line up the next ticket.** Take it from what `merge` printed as ready to start (or run `scripts/ticket ready`). Pick the next one the plan's order says to do in the same project, or the lowest ID if the plan doesn't say. Then create a chip for it with the `spawn_task` tool (the `ccd_session` one): title `Work on DWX-<n>: <name>`, a one-line tldr of its goal, and the prompt `/work-ticket DWX-<n>`, so Will only has to click it. If that tool isn't available, give him the command to paste instead. If nothing is Ready, say what the next ticket is waiting on.
+4. Tell Will, in a few lines: what merged, which tickets are now Ready, the next ticket you lined up (and any other Ready tickets that could run alongside it), what he can try if this was a checkpoint, and one line on what you cleaned up. Only ask about something you couldn't clean up safely.
 
 **Something he found by hand:** fix it on the branch, re-run the step 5 checks and push. Then run one more review round, so the reviewer sees the change before Will does, and hand over again as in step 9.
 

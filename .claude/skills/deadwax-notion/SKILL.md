@@ -5,6 +5,20 @@ description: How to read and write Deadwax's Notion (RFCs, Projects, Tickets, Re
 
 # Deadwax's Notion via `ntn.sh`
 
+## A ticket's steps: `scripts/ticket`
+
+Claiming, ticking criteria, merging and unblocking a ticket, and finding what's ready, are each one command in `scripts/ticket` (`--help` for the details). Use it rather than building those calls by hand:
+
+```bash
+scripts/ticket show DWX-n                        # page ID, status, type, project, PR, and each dependency
+scripts/ticket ready                             # what can start now, what's waiting, what's running
+scripts/ticket claim DWX-n --branch <branch>     # In Progress, project Active, the Started comment
+scripts/ticket tick DWX-n "<criterion>" …        # tick acceptance criteria by their text
+scripts/ticket merge DWX-n                       # merge the PR, Done, unblock, project Done
+```
+
+Every command takes `--dry-run`, which prints the `ntn.sh`, `gh` and `git` calls it would make. A ticket's dependencies are the `DWX-n` IDs under its `## Depends on` heading. Everything else goes through the wrapper below.
+
 ## Always use the wrapper
 
 ```bash
@@ -101,9 +115,8 @@ N api v1/pages/<id> -X PATCH -d '{"properties":{"Status":{"status":{"name":"In R
 
 **Query a data source.** Default output is TSV (id, ID, title, props…), and `--json` gives full objects:
 ```bash
-N tickets query --filter '{"property":"Status","status":{"equals":"Ready"}}'
 N tickets query --filter '{"property":"ID","unique_id":{"equals":12}}'   # find DWX-12
-N tickets query --json --filter '{"property":"Status","status":{"equals":"Ready"}}' | jq -r '.results[].id'
+N scratchpad query --json --filter '{"property":"Status","status":{"equals":"Raw"}}' | jq -r '.results[].id'
 ```
 `N datasources resolve <database-id>` turns any other database ID into its data source ID.
 
