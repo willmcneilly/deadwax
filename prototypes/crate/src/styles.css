@@ -5,9 +5,6 @@
   --paper: #f1e9db;
   --wood: #6e4b2e;
   --wood-dark: #3f2a19;
-  --card: #b99a68;
-  --card-dark: #9c7e50;
-  --marker: #1d1a17;
   --sleeve-rear: #26211c;
 
   --s: min(70vh, 68vw); /* a sleeve in the crate */
@@ -131,7 +128,7 @@ body {
   transition: opacity 230ms;
   pointer-events: none;
 }
-.slot.divider .shade { inset: -14% 0 0; }
+.slot.divider .shade { inset: -6.5% 0 0; }
 .no-shade .shade { display: none; }
 
 .sleeve-rear {
@@ -172,34 +169,62 @@ body {
 
 /* ---------- dividers ---------- */
 
+/* Smooth card with a slim tab, in one of three materials (see
+   dividers.ts): ink, a near-black card; paper, an off-white card; acrylic,
+   the smoky plastic of a shop's bin dividers. Flat colour, no texture. */
+:root,
+:root.dividers-ink {
+  --div-face: #23201c;
+  --div-face-low: #191714;
+  --div-ink: #e9e1d1;
+  --div-edge: rgb(255 255 255 / 0.07);
+}
+:root.dividers-paper {
+  --div-face: #eee8dc;
+  --div-face-low: #e0d8c8;
+  --div-ink: #24201b;
+  --div-edge: rgb(255 255 255 / 0.5);
+}
+:root.dividers-acrylic {
+  --div-face: #4a4640;
+  --div-face-low: #33302c;
+  --div-ink: #f1e9db;
+  --div-edge: rgb(255 255 255 / 0.18);
+}
+
 .divider-card {
   position: absolute;
   inset: 0;
-  background:
-    var(--grain) 0 0 / 256px,
-    linear-gradient(170deg, var(--card), var(--card-dark));
+  background: linear-gradient(172deg, var(--div-face), var(--div-face-low));
   border-radius: 2px 2px 0 0;
-  color: var(--marker);
+  color: var(--div-ink);
   font-family: var(--hand);
-  box-shadow: inset 0 0 calc(var(--s) * 0.06) rgb(0 0 0 / 0.25);
+  box-shadow: inset 0 1px 0 var(--div-edge);
+}
+:root.dividers-acrylic .divider-card {
+  /* A sheen across the plastic. */
+  background:
+    linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.06) 42%, transparent 55%),
+    linear-gradient(172deg, var(--div-face), var(--div-face-low));
 }
 .divider-tab {
   position: absolute;
   left: var(--tab);
   bottom: 100%;
-  width: 30%;
-  height: 14%;
+  width: 18%;
+  height: 6.5%;
   display: grid;
   place-items: center;
-  background: inherit;
-  background-position: 0 0;
-  border-radius: 7px 7px 0 0;
-  font-size: calc(var(--s) * 0.075);
+  background: var(--div-face);
+  border-radius: 4px 4px 0 0;
+  box-shadow: inset 0 1px 0 var(--div-edge);
+  font-size: calc(var(--s) * 0.04);
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
 }
-.divider-tab span { transform: rotate(-2deg) translateY(4%); }
+.divider-tab span { transform: translateY(6%); }
 .divider-body {
   position: absolute;
   inset: 0;
@@ -208,15 +233,15 @@ body {
   text-align: center;
 }
 .divider-big {
-  font-size: calc(var(--s) * 0.2);
+  font-size: calc(var(--s) * 0.16);
   font-weight: 700;
   transform: rotate(-3deg);
   line-height: 1;
 }
 .divider-count {
-  margin-top: 0.6em;
-  font-size: calc(var(--s) * 0.06);
-  opacity: 0.7;
+  margin-top: 0.7em;
+  font-size: calc(var(--s) * 0.045);
+  opacity: 0.6;
 }
 
 /* ---------- caption ---------- */

@@ -13,6 +13,7 @@ import {
   subscribe,
   type Failure,
 } from "./connect/fake";
+import { currentDividers, MATERIALS, setDividers } from "./dividers";
 import { cleanTitle } from "./types";
 
 const FAILURES: { id: Failure; label: string }[] = [
@@ -53,6 +54,24 @@ export function Dev() {
         <strong>Pretend Spotify</strong>
         <button onClick={() => setOpen(false)}>×</button>
       </header>
+
+      <section>
+        <h4>Dividers</h4>
+        <div className="dev-row">
+          {MATERIALS.map((m) => (
+            <button
+              key={m}
+              className={currentDividers() === m ? "on" : undefined}
+              onClick={() => {
+                setDividers(m);
+                redraw();
+              }}
+            >
+              {m[0].toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section>
         <h4>Account</h4>

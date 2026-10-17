@@ -37,6 +37,10 @@ mentions it. Five albums have notes so far: In Rainbows, Blue, Pink Moon,
 Mixing Colours and Music Has the Right to Children. Claude researched and wrote
 each one from the sources listed at its end.
 
+The dividers are a smooth card with a slim tab, in one of three materials:
+ink (near-black, the default), paper (off-white) or acrylic (smoky plastic).
+Switch them from the dev panel (backtick).
+
 `?colours` shows every album's printed colours (paper, text, accent) with
 their contrast ratios. Press T to switch the record's type between serif and
 grotesk.
