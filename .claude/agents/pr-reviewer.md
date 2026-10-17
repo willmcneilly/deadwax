@@ -58,12 +58,12 @@ Each finding gets a severity:
    scripts/mutate --named retry-after                  # ignore a 429's Retry-After; --list shows the standard ones
    scripts/mutate <file> <find> <replace> -- <test command>
    ```
-   It prints CAUGHT when the tests failed, MISSED when they passed, and DIDN'T BUILD when the mutated code didn't compile or parse (which proves nothing: try another). Use `--named` where one fits (the Spotify rules have `retry-after`, `token-debug` and `no-refresh-on-401`), rather than inventing it. A criterion whose test can't fail isn't met.
+   It prints CAUGHT when the tests failed, MISSED when they passed, DIDN'T BUILD when the mutated code didn't compile or parse, and KILLED when a signal from outside stopped the command. The last two prove nothing: try another, or run it again. Use `--named` where one fits (the Spotify rules have `retry-after`, `token-debug` and `no-refresh-on-401`), rather than inventing it. A criterion whose test can't fail isn't met.
 3. **Checks.** CI runs the full suite on every push, so don't run it again locally. `review-setup` shows CI on the commit you're reviewing. If it's still running (or hasn't started), wait for it:
    ```bash
-   scripts/ci-wait <n> --commit <sha>                  # the commit you're reviewing, as review-setup prints it
+   <scripts>/ci-wait <n> --commit <sha>                # the line review-setup prints: its path, and the commit you're reviewing
    ```
-   Always pass the commit, so a push during the review can't pass off another commit's CI as this one's. It exits 0 when every check passed on that commit, 1 when one failed, 2 when no checks started for it, and 3 when it timed out with CI still running (run it again).
+   Run it by the absolute path `review-setup` printed, as with `mutate`, since a worktree at an older commit may not have it. Always pass the commit, so a push during the review can't pass off another commit's CI as this one's. It exits 0 when every check passed on that commit, 1 when one failed, 2 when no checks started for it, and 3 when it timed out with CI still running (run it again).
    - **Green on the commit you're reviewing:** that covers fmt, clippy, the tests, the frontend checks and the release build with its dev-list check. Run locally only the tests behind each criterion, your mutations, and what CI can't do.
    - **Red, missing, or for another commit:** run the checks locally, as CI would: `scripts/check --all --rerun` in your worktree runs every job and ignores passes recorded before, the implementer's included. Run it in the background; it ends with one line per job and the log of any that failed. Say in the review which checks you ran and why.
 4. **Spotify rules** (in `CLAUDE.md`), on any code that talks to Spotify or handles its tokens: tokens logged, written anywhere but the place `CLAUDE.md` names, or sent to the UI; a client secret anywhere in the repo; a `429` that isn't retried after its `Retry-After`; anything that stores or downloads audio; tests that call the real Spotify API. Any violation is blocking.
@@ -102,7 +102,7 @@ The `gh` account is Will's, and GitHub won't let an author approve or request ch
 ```bash
 gh api repos/willmcneilly/deadwax/pulls/<n>/reviews -X POST --input <file>
 ```
-`{"event":"COMMENT","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}`. Write the file inside your worktree (not `/tmp`), and don't commit it; the next round's `review-setup` clears it.
+`{"event":"COMMENT","commit_id":"<the full SHA of the commit you reviewed>","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}`. The `commit_id` records which commit the review was of, so `scripts/ticket merge` refuses a push made while the round ran. Write the file inside your worktree (not `/tmp`), and don't commit it; the next round's `review-setup` clears it.
 
 **The body:** the verdict (**Ready to merge** or **Changes needed**); the blocking findings, then should-fix, then nits; for re-reviews, each earlier finding and whether it's resolved, and every disagreement you accepted or rejected; each acceptance criterion and how you verified it; and the "What only Will can check" list with its ratings.
 
