@@ -3,6 +3,7 @@
 
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { cleanEnv } from "./git.ts";
 import {
   type Action,
   type Check,
@@ -29,6 +30,7 @@ export function realServices(checkout: string): Services & { run(dryRun: boolean
     execFileSync(tool === "ntn.sh" ? ntnPath : tool, args, {
       cwd: checkout,
       encoding: "utf8",
+      env: cleanEnv(),
       stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 64 * 1024 * 1024,
     });

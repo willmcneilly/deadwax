@@ -31,6 +31,7 @@ Run everything from the repository root unless it says `app/`.
 ```bash
 scripts/check                                       # the checks this change needs (below)
 scripts/warm                                        # give a new worktree a warm Rust build
+scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, merge
 git config core.hooksPath .githooks                 # once per clone; scripts/check does it on its first run
 
 # Rust
