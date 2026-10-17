@@ -61,12 +61,12 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
       // it once.
       setResults((now) => {
         if (!now) return now;
-        const shown = new Set(now.results.map((r) => r.album.id));
+        const shown = new Set(now.results.map((r) => r.album.spotifyId));
         return {
           ...now,
           results: [
             ...now.results,
-            ...page.results.filter((r) => !shown.has(r.album.id)),
+            ...page.results.filter((r) => !shown.has(r.album.spotifyId)),
           ],
           nextOffset: page.nextOffset,
         };
@@ -78,17 +78,20 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
     }
   }
 
-  async function add(id: string) {
+  /** Adds a search result, by its Spotify ID. */
+  async function add(spotifyId: string) {
     onStarted();
-    setAdding((ids) => new Set(ids).add(id));
+    setAdding((ids) => new Set(ids).add(spotifyId));
     try {
-      const album = await addAlbum(id);
+      const album = await addAlbum(spotifyId);
       setResults(
         (current) =>
           current && {
             ...current,
             results: current.results.map((r) =>
-              r.album.id === id ? { ...r, inCollection: true } : r,
+              r.album.spotifyId === spotifyId
+                ? { ...r, inCollection: true }
+                : r,
             ),
           },
       );
@@ -98,7 +101,7 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
     } finally {
       setAdding((ids) => {
         const next = new Set(ids);
-        next.delete(id);
+        next.delete(spotifyId);
         return next;
       });
     }
@@ -125,7 +128,7 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
           ) : (
             <ul className="results" aria-label="Search results">
               {results.results.map(({ album, inCollection }) => (
-                <li key={album.id} className="result">
+                <li key={album.spotifyId} className="result">
                   <Cover album={album} className="result-cover" />
                   <div className="result-text">
                     <span className="result-title">{album.title}</span>
@@ -139,11 +142,11 @@ function Search({ onAdded, onFailed, onStarted }: Props) {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => add(album.id)}
-                      disabled={adding.has(album.id)}
+                      onClick={() => add(album.spotifyId)}
+                      disabled={adding.has(album.spotifyId)}
                       aria-label={`Add ${album.title} by ${album.artist}`}
                     >
-                      {adding.has(album.id) ? "Adding…" : "Add"}
+                      {adding.has(album.spotifyId) ? "Adding…" : "Add"}
                     </button>
                   )}
                 </li>

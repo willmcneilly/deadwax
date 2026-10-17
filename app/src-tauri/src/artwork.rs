@@ -1,11 +1,11 @@
 //! Looking for each album's high-res cover in the background (DWX-7; RFC-001,
 //! "High-res artwork, as an experiment").
 //!
-//! An album is queued when it's added or restored, and when its page opens
-//! without a result yet. One worker takes the queue an album at a time, so
-//! the sources' limits are kept however many are queued, and an album queued
-//! twice is looked up once. When a result is stored, the UI is told, so an
-//! open album page can show it.
+//! An album is queued, by its Deadwax ID, when it's added or restored, and
+//! when its page opens without a result yet. One worker takes the queue an
+//! album at a time, so the sources' limits are kept however many are queued,
+//! and an album queued twice is looked up once. When a result is stored,
+//! the UI is told, so an open album page can show it.
 //!
 //! A failed lookup stores nothing, so the album is looked up again the next
 //! time its page opens.
@@ -14,18 +14,19 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use deadwax_core::collection::Collection;
+use deadwax_core::collection::{AlbumId, Collection};
 use deadwax_sources::artwork::Finder;
 use deadwax_sources::clock::Clock;
 use tokio::sync::mpsc;
 
-/// The event the UI gets, with the album's ID, when its artwork is stored.
+/// The event the UI gets, with the album's Deadwax ID, when its artwork is
+/// stored.
 pub const ARTWORK_FOUND: &str = "artwork-found";
 
 pub struct ArtworkQueue {
-    sender: mpsc::UnboundedSender<String>,
+    sender: mpsc::UnboundedSender<AlbumId>,
     /// Queued or being looked up now.
-    pending: Arc<Mutex<HashSet<String>>>,
+    pending: Arc<Mutex<HashSet<AlbumId>>>,
 }
 
 impl ArtworkQueue {
@@ -34,9 +35,9 @@ impl ArtworkQueue {
     pub fn start<C: Clock + Clone>(
         finder: Finder<C>,
         collection: Arc<Mutex<Collection>>,
-        found: impl Fn(&str) + Send + 'static,
+        found: impl Fn(&AlbumId) + Send + 'static,
     ) -> Self {
-        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<AlbumId>();
         let pending = Arc::new(Mutex::new(HashSet::new()));
         let worker_pending = pending.clone();
         tauri::async_runtime::spawn(async move {
@@ -56,7 +57,7 @@ impl ArtworkQueue {
     /// A queue with no worker, for tests: they read what was queued from the
     /// receiver.
     #[cfg(test)]
-    pub fn unstarted() -> (Self, mpsc::UnboundedReceiver<String>) {
+    pub fn unstarted() -> (Self, mpsc::UnboundedReceiver<AlbumId>) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let queue = Self {
             sender,
@@ -67,20 +68,20 @@ impl ArtworkQueue {
 
     /// What has been queued so far, for tests of an `unstarted` queue.
     #[cfg(test)]
-    pub fn queued(receiver: &mut mpsc::UnboundedReceiver<String>) -> Vec<String> {
+    pub fn queued(receiver: &mut mpsc::UnboundedReceiver<AlbumId>) -> Vec<AlbumId> {
         std::iter::from_fn(|| receiver.try_recv().ok()).collect()
     }
 
     /// Queues the album, unless it's already queued.
-    pub fn look_for(&self, id: &str) {
+    pub fn look_for(&self, id: &AlbumId) {
         if self
             .pending
             .lock()
             .expect("pending lock")
-            .insert(id.to_owned())
+            .insert(id.clone())
         {
             // The worker only stops when the app does.
-            let _ = self.sender.send(id.to_owned());
+            let _ = self.sender.send(id.clone());
         }
     }
 
@@ -88,14 +89,14 @@ impl ArtworkQueue {
     /// from the dev list uses it.
     #[cfg(debug_assertions)]
     pub fn look_for_missing(&self, collection: &Mutex<Collection>) -> Result<(), String> {
-        let missing: Vec<String> = collection
+        let missing: Vec<AlbumId> = collection
             .lock()
             .expect("collection lock")
             .albums()
             .map_err(|e| e.to_string())?
             .into_iter()
             .filter(|collected| collected.artwork.is_none())
-            .map(|collected| collected.album.spotify_id)
+            .map(|collected| collected.id)
             .collect();
         for id in missing {
             self.look_for(&id);
@@ -109,7 +110,7 @@ impl ArtworkQueue {
 pub async fn look_for<C: Clock + Clone>(
     finder: &Finder<C>,
     collection: &Mutex<Collection>,
-    id: &str,
+    id: &AlbumId,
     now: SystemTime,
 ) -> Result<bool, String> {
     let collected = collection
@@ -182,12 +183,18 @@ mod tests {
         )
     }
 
-    fn collection(ids: &[&str]) -> Arc<Mutex<Collection>> {
+    /// A collection of the albums with these Spotify IDs, and their Deadwax
+    /// IDs in the same order.
+    fn collection(spotify_ids: &[&str]) -> (Arc<Mutex<Collection>>, Vec<AlbumId>) {
         let mut collection = Collection::open_in_memory().unwrap();
-        for id in ids {
-            collection.add(&album(id), SystemTime::now()).unwrap();
-        }
-        Arc::new(Mutex::new(collection))
+        let ids = spotify_ids
+            .iter()
+            .map(|id| {
+                let added = collection.add(&album(id), SystemTime::now()).unwrap();
+                added.id().clone()
+            })
+            .collect();
+        (Arc::new(Mutex::new(collection)), ids)
     }
 
     fn spotifys(id: &str) -> Artwork {
@@ -201,17 +208,17 @@ mod tests {
     async fn stores_what_it_finds() {
         let server = MockServer::start().await;
         let finder = finds_nothing(&server).await;
-        let collection = collection(&["a"]);
+        let (collection, ids) = collection(&["a"]);
 
         assert_eq!(
-            look_for(&finder, &collection, "a", SystemTime::now()).await,
+            look_for(&finder, &collection, &ids[0], SystemTime::now()).await,
             Ok(true)
         );
 
         let artwork = collection
             .lock()
             .unwrap()
-            .get("a")
+            .get(&ids[0])
             .unwrap()
             .unwrap()
             .artwork;
@@ -222,14 +229,14 @@ mod tests {
     async fn an_album_with_a_result_isnt_looked_up_again() {
         let server = MockServer::start().await;
         let finder = finds_nothing(&server).await;
-        let collection = collection(&["a"]);
-        look_for(&finder, &collection, "a", SystemTime::now())
+        let (collection, ids) = collection(&["a"]);
+        look_for(&finder, &collection, &ids[0], SystemTime::now())
             .await
             .unwrap();
         let asked = server.received_requests().await.unwrap().len();
 
         assert_eq!(
-            look_for(&finder, &collection, "a", SystemTime::now()).await,
+            look_for(&finder, &collection, &ids[0], SystemTime::now()).await,
             Ok(false)
         );
         assert_eq!(server.received_requests().await.unwrap().len(), asked);
@@ -239,10 +246,10 @@ mod tests {
     async fn an_album_not_in_the_collection_isnt_looked_up() {
         let server = MockServer::start().await;
         let finder = finds_nothing(&server).await;
-        let collection = collection(&[]);
+        let (collection, _) = collection(&[]);
 
         assert_eq!(
-            look_for(&finder, &collection, "a", SystemTime::now()).await,
+            look_for(&finder, &collection, &AlbumId::new(), SystemTime::now()).await,
             Ok(false)
         );
         assert!(server.received_requests().await.unwrap().is_empty());
@@ -257,17 +264,17 @@ mod tests {
             .mount(&server)
             .await;
         let finder = finds_nothing(&server).await;
-        let collection = collection(&["a"]);
+        let (collection, ids) = collection(&["a"]);
 
         assert!(
-            look_for(&finder, &collection, "a", SystemTime::now())
+            look_for(&finder, &collection, &ids[0], SystemTime::now())
                 .await
                 .is_err()
         );
         let artwork = collection
             .lock()
             .unwrap()
-            .get("a")
+            .get(&ids[0])
             .unwrap()
             .unwrap()
             .artwork;
@@ -277,41 +284,42 @@ mod tests {
     #[test]
     fn an_album_already_queued_isnt_queued_again() {
         let (queue, mut receiver) = ArtworkQueue::unstarted();
+        let (a, b) = (AlbumId::new(), AlbumId::new());
 
-        queue.look_for("a");
-        queue.look_for("b");
-        queue.look_for("a");
+        queue.look_for(&a);
+        queue.look_for(&b);
+        queue.look_for(&a);
 
-        assert_eq!(ArtworkQueue::queued(&mut receiver), ["a", "b"]);
+        assert_eq!(ArtworkQueue::queued(&mut receiver), [a, b]);
     }
 
     #[test]
     fn queues_only_the_albums_without_a_result() {
-        let collection = collection(&["a", "b"]);
+        let (collection, ids) = collection(&["a", "b"]);
         collection
             .lock()
             .unwrap()
-            .set_artwork("a", &spotifys("a"), SystemTime::now())
+            .set_artwork(&ids[0], &spotifys("a"), SystemTime::now())
             .unwrap();
         let (queue, mut receiver) = ArtworkQueue::unstarted();
 
         queue.look_for_missing(&collection).unwrap();
 
-        assert_eq!(ArtworkQueue::queued(&mut receiver), ["b"]);
+        assert_eq!(ArtworkQueue::queued(&mut receiver), [ids[1].clone()]);
     }
 
     #[tokio::test]
     async fn the_queue_looks_up_albums_in_the_background_and_says_so() {
         let server = MockServer::start().await;
         let finder = finds_nothing(&server).await;
-        let collection = collection(&["a", "b"]);
+        let (collection, ids) = collection(&["a", "b"]);
         let (tell, mut told) = mpsc::unbounded_channel();
         let queue = ArtworkQueue::start(finder, collection.clone(), move |id| {
-            tell.send(id.to_owned()).unwrap();
+            tell.send(id.clone()).unwrap();
         });
 
-        queue.look_for("a");
-        queue.look_for("a");
+        queue.look_for(&ids[0]);
+        queue.look_for(&ids[0]);
         queue.look_for_missing(&collection).unwrap();
 
         let mut found = Vec::new();
@@ -323,11 +331,13 @@ mod tests {
             found.push(id);
         }
         found.sort();
-        assert_eq!(found, ["a", "b"]);
+        let mut expected = ids.clone();
+        expected.sort();
+        assert_eq!(found, expected);
         let collection = collection.lock().unwrap();
-        for id in ["a", "b"] {
+        for (id, spotify_id) in ids.iter().zip(["a", "b"]) {
             let artwork = collection.get(id).unwrap().unwrap().artwork;
-            assert_eq!(artwork, Some(spotifys(id)));
+            assert_eq!(artwork, Some(spotifys(spotify_id)));
         }
     }
 }

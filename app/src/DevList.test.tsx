@@ -143,7 +143,7 @@ describe("The dev list", () => {
       missing: 2,
       report: {
         restored: 1,
-        failed: [{ id: "gone", message: "Spotify said 404" }],
+        failed: [{ spotifyId: "gone", message: "Spotify said 404" }],
       },
       restored: [album(1)],
     });

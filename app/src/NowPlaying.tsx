@@ -147,8 +147,11 @@ function NowPlaying({
               polledAt={polledAt}
             />
             {controls}
-            {track.albumId !== null && (
-              <OpenInSpotify id={track.albumId} onFailed={onFailed} />
+            {track.spotifyAlbumId !== null && (
+              <OpenInSpotify
+                spotifyId={track.spotifyAlbumId}
+                onFailed={onFailed}
+              />
             )}
           </div>
         </>
@@ -226,19 +229,19 @@ function time(ms: number) {
  * in the browser or the Spotify app.
  */
 function OpenInSpotify({
-  id,
+  spotifyId,
   onFailed,
 }: {
-  id: string;
+  spotifyId: string;
   onFailed: (error: unknown) => void;
 }) {
   return (
     <a
       className="now-playing-spotify"
-      href={`https://open.spotify.com/album/${id}`}
+      href={`https://open.spotify.com/album/${spotifyId}`}
       onClick={(event) => {
         event.preventDefault();
-        openAlbumInSpotify(id).catch(onFailed);
+        openAlbumInSpotify(spotifyId).catch(onFailed);
       }}
     >
       Open in Spotify

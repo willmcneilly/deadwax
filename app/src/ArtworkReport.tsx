@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useEffectEvent, useState } from "react";
+import type { AlbumId } from "./api";
 
 /** The event the Develop menu's item sends (app/src-tauri/src/commands/dev.rs). */
 export const ARTWORK_REPORT = "artwork-report";
@@ -16,7 +17,8 @@ export const ARTWORK_REPORT = "artwork-report";
 export type Report = {
   /** The collection, the most recently added first. */
   albums: {
-    id: string;
+    /** The album's Deadwax ID. */
+    id: AlbumId;
     title: string;
     artist: string;
     /** "iTunes", "Deezer", "MusicBrainz", "Spotify" or "Not looked up yet". */

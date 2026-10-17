@@ -1,10 +1,10 @@
-import type { AlbumCard } from "./api";
+import type { AlbumCard, AlbumId } from "./api";
 import Cover from "./Cover";
 
 type Props = {
   albums: AlbumCard[];
   /** Opens the album page. */
-  onOpen: (id: string) => void;
+  onOpen: (id: AlbumId) => void;
 };
 
 /** The collection, as a grid of covers. */

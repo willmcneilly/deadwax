@@ -1,12 +1,15 @@
 //! The collection: the albums you've added, in SQLite. See RFC-001, "The
-//! collection".
+//! collection", and RFC-002, "1. Deadwax's own album IDs".
 //!
-//! Two tables. `collection` is what you own: each album's Spotify ID and when
-//! you added it. `album_cache` is a refreshable copy of what we show about
-//! each album (title, artist, year, tracklist, Spotify's cover URLs, UPC) and
-//! when it was fetched. Spotify's terms allow caching metadata only for a
-//! while, so the cache can always be thrown away and fetched again. The
-//! collection can't.
+//! Every album has a Deadwax ID (`AlbumId`), made when it's added, which
+//! never changes. Its Spotify ID says where it plays, not what it is.
+//!
+//! Two tables. `collection` is what you own: each album's Deadwax ID, its
+//! Spotify ID and when you added it. `album_cache` is a refreshable copy of
+//! what we show about each album (title, artist, year, tracklist, Spotify's
+//! cover URLs, UPC) and when it was fetched. Spotify's terms allow caching
+//! metadata only for a while, so the cache can always be thrown away and
+//! fetched again. The collection can't.
 //!
 //! A third table, `artwork`, holds the high-res cover found for each album
 //! (DWX-7): only its URL, where it came from and its size, never the image.
@@ -18,6 +21,7 @@
 //! compiled under `debug_assertions`, so release builds don't contain it.
 
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -27,6 +31,50 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
 use crate::dev_list::{DevList, DevListError};
+
+/// An album's Deadwax ID: random, made when the album is added, and never
+/// changed. Commands take and return it; only the Spotify client sees
+/// Spotify IDs.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AlbumId(String);
+
+impl AlbumId {
+    /// A new, random ID.
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for AlbumId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Display for AlbumId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// An ID as stored or as the UI sent it. Nothing checks its shape: an ID
+/// that isn't in the collection just finds nothing.
+impl From<String> for AlbumId {
+    fn from(id: String) -> Self {
+        Self(id)
+    }
+}
+
+impl From<&str> for AlbumId {
+    fn from(id: &str) -> Self {
+        Self(id.to_owned())
+    }
+}
 
 /// An album as Spotify describes it, which is what the cache holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -119,6 +167,7 @@ pub const CACHE_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// An album in the collection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Collected {
+    pub id: AlbumId,
     pub album: Album,
     pub added_at: SystemTime,
     /// When the cached metadata was fetched from Spotify.
@@ -136,13 +185,21 @@ impl Collected {
     }
 }
 
-/// What adding an album did.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What adding an album did, and the album's Deadwax ID.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Added {
-    New,
-    /// It was already in the collection. It keeps its date added, and the
-    /// cache is updated with what was just fetched.
-    AlreadyThere,
+    New(AlbumId),
+    /// It was already in the collection. It keeps its Deadwax ID and date
+    /// added, and the cache is updated with what was just fetched.
+    AlreadyThere(AlbumId),
+}
+
+impl Added {
+    pub fn id(&self) -> &AlbumId {
+        match self {
+            Self::New(id) | Self::AlreadyThere(id) => id,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -163,16 +220,19 @@ pub enum CollectionError {
 }
 
 /// The schema version this code writes, in SQLite's `user_version`.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
+/// Schema 3 (DWX-17): every table is keyed by the Deadwax ID, and the
+/// Spotify ID is a column of `collection`.
 const SCHEMA: &str = "
     CREATE TABLE collection (
-        spotify_id TEXT PRIMARY KEY NOT NULL,
-        added_at   INTEGER NOT NULL  -- Unix milliseconds
+        id         TEXT PRIMARY KEY NOT NULL,  -- AlbumId
+        spotify_id TEXT NOT NULL UNIQUE,
+        added_at   INTEGER NOT NULL            -- Unix milliseconds
     ) STRICT;
 
     CREATE TABLE album_cache (
-        spotify_id TEXT PRIMARY KEY NOT NULL,
+        id         TEXT PRIMARY KEY NOT NULL,
         title      TEXT NOT NULL,
         artist     TEXT NOT NULL,
         year       INTEGER,
@@ -181,12 +241,9 @@ const SCHEMA: &str = "
         upc        TEXT,
         fetched_at INTEGER NOT NULL  -- Unix milliseconds
     ) STRICT;
-";
 
-/// Schema 2 (DWX-7): the artwork found for each album.
-const ARTWORK: &str = "
     CREATE TABLE artwork (
-        spotify_id TEXT PRIMARY KEY NOT NULL,
+        id         TEXT PRIMARY KEY NOT NULL,
         source     TEXT NOT NULL,    -- ArtworkSource::as_str
         url        TEXT,             -- NULL when nothing had a cover
         width      INTEGER,
@@ -194,6 +251,66 @@ const ARTWORK: &str = "
         found_at   INTEGER NOT NULL  -- Unix milliseconds
     ) STRICT;
 ";
+
+/// Schema 2 (DWX-7) added this to schema 1, when tables were keyed by the
+/// Spotify ID.
+const ARTWORK_V2: &str = "
+    CREATE TABLE artwork (
+        spotify_id TEXT PRIMARY KEY NOT NULL,
+        source     TEXT NOT NULL,
+        url        TEXT,
+        width      INTEGER,
+        height     INTEGER,
+        found_at   INTEGER NOT NULL
+    ) STRICT;
+";
+
+/// Moves a schema-2 database to schema 3 in one transaction, giving every
+/// album a Deadwax ID from `new_id` and keeping its Spotify ID, date added,
+/// cache and artwork. A failure part-way rolls everything back, so the
+/// database stays at schema 2.
+fn migrate_to_3(
+    db: &mut Connection,
+    mut new_id: impl FnMut() -> AlbumId,
+) -> Result<(), CollectionError> {
+    let tx = db.transaction()?;
+    // The new tables are made beside the old ones, filled, then renamed.
+    tx.execute_batch(
+        &SCHEMA
+            .replace("TABLE collection", "TABLE collection_3")
+            .replace("TABLE album_cache", "TABLE album_cache_3")
+            .replace("TABLE artwork", "TABLE artwork_3"),
+    )?;
+    let albums: Vec<(i64, String, i64)> = tx
+        .prepare("SELECT rowid, spotify_id, added_at FROM collection ORDER BY rowid")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    for (rowid, spotify_id, added_at) in albums {
+        // The same rowid keeps the order of albums added in the same
+        // millisecond.
+        tx.execute(
+            "INSERT INTO collection_3 (rowid, id, spotify_id, added_at) VALUES (?1, ?2, ?3, ?4)",
+            params![rowid, new_id().as_str(), spotify_id, added_at],
+        )?;
+    }
+    tx.execute_batch(
+        "INSERT INTO album_cache_3
+             SELECT c.id, a.title, a.artist, a.year, a.tracks, a.covers, a.upc, a.fetched_at
+             FROM album_cache a JOIN collection_3 c USING (spotify_id);
+         INSERT INTO artwork_3
+             SELECT c.id, w.source, w.url, w.width, w.height, w.found_at
+             FROM artwork w JOIN collection_3 c USING (spotify_id);
+         DROP TABLE collection;
+         DROP TABLE album_cache;
+         DROP TABLE artwork;
+         ALTER TABLE collection_3 RENAME TO collection;
+         ALTER TABLE album_cache_3 RENAME TO album_cache;
+         ALTER TABLE artwork_3 RENAME TO artwork;
+         PRAGMA user_version = 3;",
+    )?;
+    tx.commit()?;
+    Ok(())
+}
 
 pub struct Collection {
     db: Connection,
@@ -217,20 +334,23 @@ impl Collection {
         Self::set_up(Connection::open_in_memory()?)
     }
 
-    fn set_up(db: Connection) -> Result<Self, CollectionError> {
+    fn set_up(mut db: Connection) -> Result<Self, CollectionError> {
         let version: i64 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
         match version {
             0 => {
-                db.execute_batch(SCHEMA)?;
-                db.execute_batch(ARTWORK)?;
-                db.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-            }
-            1 => {
-                // In one transaction, so a crash can't leave the table without
-                // the version that says it's there.
                 db.execute_batch(&format!(
-                    "BEGIN; {ARTWORK} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+                    "BEGIN; {SCHEMA} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
                 ))?;
+            }
+            1 | 2 => {
+                if version == 1 {
+                    // In one transaction, so a crash can't leave the table
+                    // without the version that says it's there.
+                    db.execute_batch(&format!(
+                        "BEGIN; {ARTWORK_V2} PRAGMA user_version = 2; COMMIT;"
+                    ))?;
+                }
+                migrate_to_3(&mut db, AlbumId::new)?;
             }
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),
@@ -257,7 +377,7 @@ impl Collection {
     }
 
     /// Adds `album` to the collection at `now`, and caches what we know
-    /// about it.
+    /// about it. A new album gets a new Deadwax ID.
     pub fn add(&mut self, album: &Album, now: SystemTime) -> Result<Added, CollectionError> {
         self.add_at(album, now, now)
     }
@@ -272,45 +392,48 @@ impl Collection {
         fetched_at: SystemTime,
     ) -> Result<Added, CollectionError> {
         let tx = self.db.transaction()?;
+        let new_id = AlbumId::new();
         let inserted = tx.execute(
-            "INSERT INTO collection (spotify_id, added_at) VALUES (?1, ?2)
+            "INSERT INTO collection (id, spotify_id, added_at) VALUES (?1, ?2, ?3)
              ON CONFLICT (spotify_id) DO NOTHING",
-            params![album.spotify_id, millis(added_at)],
+            params![new_id.as_str(), album.spotify_id, millis(added_at)],
         )?;
-        cache(&tx, album, fetched_at)?;
+        // The ID and date in the collection, which an album already there
+        // keeps.
+        let (id, added_at): (String, i64) = tx.query_row(
+            "SELECT id, added_at FROM collection WHERE spotify_id = ?1",
+            [&album.spotify_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let id = AlbumId(id);
+        cache(&tx, &id, album, fetched_at)?;
         tx.commit()?;
         #[cfg(debug_assertions)]
         if let Some(dev_list) = &self.dev_list {
-            // The date in the collection, which an album already there keeps.
-            let added_at: i64 = self.db.query_row(
-                "SELECT added_at FROM collection WHERE spotify_id = ?1",
-                [&album.spotify_id],
-                |row| row.get(0),
-            )?;
             dev_list.added(&album.spotify_id, time(added_at))?;
         }
+        #[cfg(not(debug_assertions))]
+        let _ = added_at;
         Ok(if inserted == 1 {
-            Added::New
+            Added::New(id)
         } else {
-            Added::AlreadyThere
+            Added::AlreadyThere(id)
         })
     }
 
-    /// Replaces the cached metadata with `album`, fetched at `now`, if the
-    /// album is still in the collection. Returns whether it was: one removed
+    /// Replaces the album's cached metadata with `album`, fetched at `now`,
+    /// if it's still in the collection. Returns whether it was: one removed
     /// while it was being fetched stays removed.
-    pub fn refresh(&mut self, album: &Album, now: SystemTime) -> Result<bool, CollectionError> {
+    pub fn refresh(
+        &mut self,
+        id: &AlbumId,
+        album: &Album,
+        now: SystemTime,
+    ) -> Result<bool, CollectionError> {
         let tx = self.db.transaction()?;
-        let collected = tx
-            .query_row(
-                "SELECT 1 FROM collection WHERE spotify_id = ?1",
-                [&album.spotify_id],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
+        let collected = contains(&tx, id)?;
         if collected {
-            cache(&tx, album, now)?;
+            cache(&tx, id, album, now)?;
         }
         tx.commit()?;
         Ok(collected)
@@ -320,18 +443,17 @@ impl Collection {
     /// still in the collection. Returns whether it was.
     pub fn set_artwork(
         &mut self,
-        spotify_id: &str,
+        id: &AlbumId,
         artwork: &Artwork,
         now: SystemTime,
     ) -> Result<bool, CollectionError> {
         let cover = artwork.cover.as_ref();
         let stored = self.db.execute(
-            "INSERT OR REPLACE INTO artwork
-                 (spotify_id, source, url, width, height, found_at)
+            "INSERT OR REPLACE INTO artwork (id, source, url, width, height, found_at)
              SELECT ?1, ?2, ?3, ?4, ?5, ?6
-             WHERE EXISTS (SELECT 1 FROM collection WHERE spotify_id = ?1)",
+             WHERE EXISTS (SELECT 1 FROM collection WHERE id = ?1)",
             params![
-                spotify_id,
+                id.as_str(),
                 artwork.source.as_str(),
                 cover.map(|c| &c.url),
                 cover.and_then(|c| c.width),
@@ -344,20 +466,23 @@ impl Collection {
 
     /// Takes the album out of the collection, and forgets its cache and
     /// artwork. Returns whether it was there.
-    pub fn remove(&mut self, spotify_id: &str) -> Result<bool, CollectionError> {
+    pub fn remove(&mut self, id: &AlbumId) -> Result<bool, CollectionError> {
         let tx = self.db.transaction()?;
-        let removed = tx.execute("DELETE FROM collection WHERE spotify_id = ?1", [spotify_id])?;
-        tx.execute(
-            "DELETE FROM album_cache WHERE spotify_id = ?1",
-            [spotify_id],
-        )?;
-        tx.execute("DELETE FROM artwork WHERE spotify_id = ?1", [spotify_id])?;
+        let spotify_id: Option<String> = tx
+            .query_row(
+                "DELETE FROM collection WHERE id = ?1 RETURNING spotify_id",
+                [id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        tx.execute("DELETE FROM album_cache WHERE id = ?1", [id.as_str()])?;
+        tx.execute("DELETE FROM artwork WHERE id = ?1", [id.as_str()])?;
         tx.commit()?;
         #[cfg(debug_assertions)]
-        if let Some(dev_list) = &self.dev_list {
+        if let (Some(dev_list), Some(spotify_id)) = (&self.dev_list, &spotify_id) {
             dev_list.removed(spotify_id)?;
         }
-        Ok(removed == 1)
+        Ok(spotify_id.is_some())
     }
 
     /// Empties the collection, its cache and its artwork. The dev list is
@@ -372,43 +497,44 @@ impl Collection {
     /// Every album in the collection, the most recently added first.
     pub fn albums(&self) -> Result<Vec<Collected>, CollectionError> {
         let mut statement = self.db.prepare(
-            "SELECT c.spotify_id, c.added_at, a.title, a.artist, a.year, a.tracks,
+            "SELECT c.id, c.spotify_id, c.added_at, a.title, a.artist, a.year, a.tracks,
                     a.covers, a.upc, a.fetched_at,
                     w.source, w.url, w.width, w.height
-             FROM collection c JOIN album_cache a USING (spotify_id)
-             LEFT JOIN artwork w USING (spotify_id)
+             FROM collection c JOIN album_cache a USING (id)
+             LEFT JOIN artwork w USING (id)
              ORDER BY c.added_at DESC, c.rowid DESC",
         )?;
         let rows = statement.query_map([], |row| {
-            let url: Option<String> = row.get(10)?;
+            let url: Option<String> = row.get(11)?;
             let cover = match url {
                 Some(url) => Some(Cover {
                     url,
-                    width: row.get(11)?,
-                    height: row.get(12)?,
+                    width: row.get(12)?,
+                    height: row.get(13)?,
                 }),
                 None => None,
             };
             Ok((
+                AlbumId(row.get(0)?),
                 Album {
-                    spotify_id: row.get(0)?,
-                    title: row.get(2)?,
-                    artist: row.get(3)?,
-                    year: row.get(4)?,
+                    spotify_id: row.get(1)?,
+                    title: row.get(3)?,
+                    artist: row.get(4)?,
+                    year: row.get(5)?,
                     tracks: Vec::new(),
                     covers: Vec::new(),
-                    upc: row.get(7)?,
+                    upc: row.get(8)?,
                 },
-                row.get::<_, i64>(1)?,
-                row.get::<_, String>(5)?,
+                row.get::<_, i64>(2)?,
                 row.get::<_, String>(6)?,
-                row.get::<_, i64>(8)?,
-                row.get::<_, Option<String>>(9)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, i64>(9)?,
+                row.get::<_, Option<String>>(10)?,
                 cover,
             ))
         })?;
         rows.map(|row| {
-            let (mut album, added_at, tracks, covers, fetched_at, source, cover) = row?;
+            let (id, mut album, added_at, tracks, covers, fetched_at, source, cover) = row?;
             album.tracks = serde_json::from_str(&tracks)?;
             album.covers = serde_json::from_str(&covers)?;
             let artwork = source
@@ -419,6 +545,7 @@ impl Collection {
                 })
                 .transpose()?;
             Ok(Collected {
+                id,
                 album,
                 added_at: time(added_at),
                 fetched_at: time(fetched_at),
@@ -429,43 +556,61 @@ impl Collection {
     }
 
     /// One album, if it's in the collection.
-    pub fn get(&self, spotify_id: &str) -> Result<Option<Collected>, CollectionError> {
+    pub fn get(&self, id: &AlbumId) -> Result<Option<Collected>, CollectionError> {
         // A few hundred albums: reading them all is simpler than a second
         // query, and fast enough.
+        Ok(self.albums()?.into_iter().find(|c| &c.id == id))
+    }
+
+    /// The album that plays from this Spotify ID, if it's in the
+    /// collection. Now playing uses it for what Spotify is playing.
+    pub fn get_by_spotify_id(
+        &self,
+        spotify_id: &str,
+    ) -> Result<Option<Collected>, CollectionError> {
         Ok(self
             .albums()?
             .into_iter()
             .find(|c| c.album.spotify_id == spotify_id))
     }
 
-    /// The Spotify IDs of every album in the collection.
-    pub fn ids(&self) -> Result<HashSet<String>, CollectionError> {
+    /// The Spotify IDs of every album in the collection, to mark search
+    /// results and to compare with the dev list.
+    pub fn spotify_ids(&self) -> Result<HashSet<String>, CollectionError> {
         let mut statement = self.db.prepare("SELECT spotify_id FROM collection")?;
         let ids = statement.query_map([], |row| row.get(0))?;
         Ok(ids.collect::<Result<_, _>>()?)
     }
 
     /// Whether the album is in the collection.
-    pub fn contains(&self, spotify_id: &str) -> Result<bool, CollectionError> {
-        Ok(self
-            .db
-            .query_row(
-                "SELECT 1 FROM collection WHERE spotify_id = ?1",
-                [spotify_id],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some())
+    pub fn contains(&self, id: &AlbumId) -> Result<bool, CollectionError> {
+        contains(&self.db, id)
     }
 }
 
-fn cache(tx: &Transaction, album: &Album, now: SystemTime) -> Result<(), CollectionError> {
+fn contains(db: &Connection, id: &AlbumId) -> Result<bool, CollectionError> {
+    Ok(db
+        .query_row(
+            "SELECT 1 FROM collection WHERE id = ?1",
+            [id.as_str()],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn cache(
+    tx: &Transaction,
+    id: &AlbumId,
+    album: &Album,
+    now: SystemTime,
+) -> Result<(), CollectionError> {
     tx.execute(
         "INSERT OR REPLACE INTO album_cache
-             (spotify_id, title, artist, year, tracks, covers, upc, fetched_at)
+             (id, title, artist, year, tracks, covers, upc, fetched_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
-            album.spotify_id,
+            id.as_str(),
             album.title,
             album.artist,
             album.year,
@@ -535,7 +680,8 @@ mod tests {
         }
     }
 
-    fn ids(collection: &Collection) -> Vec<String> {
+    /// The Spotify IDs of the collection's albums, in order.
+    fn spotify_ids(collection: &Collection) -> Vec<String> {
         collection
             .albums()
             .unwrap()
@@ -544,31 +690,54 @@ mod tests {
             .collect()
     }
 
+    /// The album that plays from `spotify_id`, which must be collected.
+    fn by_spotify(collection: &Collection, spotify_id: &str) -> Collected {
+        collection.get_by_spotify_id(spotify_id).unwrap().unwrap()
+    }
+
+    fn id_of(collection: &Collection, spotify_id: &str) -> AlbumId {
+        by_spotify(collection, spotify_id).id
+    }
+
     #[test]
     fn a_new_collection_is_empty() {
         let collection = Collection::open_in_memory().unwrap();
         assert!(collection.albums().unwrap().is_empty());
-        assert!(collection.ids().unwrap().is_empty());
+        assert!(collection.spotify_ids().unwrap().is_empty());
     }
 
     #[test]
-    fn adds_an_album_with_its_metadata() {
+    fn adds_an_album_with_its_metadata_and_a_new_deadwax_id() {
         let mut collection = Collection::open_in_memory().unwrap();
         let in_rainbows = album("in-rainbows", "In Rainbows");
 
-        assert_eq!(collection.add(&in_rainbows, day(1)).unwrap(), Added::New);
+        let Added::New(id) = collection.add(&in_rainbows, day(1)).unwrap() else {
+            panic!("not added as new");
+        };
 
+        assert_ne!(id.as_str(), "in-rainbows");
         assert_eq!(
             collection.albums().unwrap(),
             [Collected {
+                id: id.clone(),
                 album: in_rainbows,
                 added_at: day(1),
                 fetched_at: day(1),
                 artwork: None,
             }]
         );
-        assert!(collection.contains("in-rainbows").unwrap());
-        assert!(!collection.contains("ok-computer").unwrap());
+        assert!(collection.contains(&id).unwrap());
+        assert!(!collection.contains(&"in-rainbows".into()).unwrap());
+        assert_eq!(collection.get(&id).unwrap().unwrap().id, id);
+    }
+
+    #[test]
+    fn every_album_gets_its_own_deadwax_id() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let a = collection.add(&album("a", "A"), day(1)).unwrap();
+        let b = collection.add(&album("b", "B"), day(1)).unwrap();
+
+        assert_ne!(a.id(), b.id());
     }
 
     #[test]
@@ -580,13 +749,13 @@ mod tests {
         // Two in the same millisecond: the later add comes first.
         collection.add(&album("d", "D"), day(3)).unwrap();
 
-        assert_eq!(ids(&collection), ["d", "c", "b", "a"]);
+        assert_eq!(spotify_ids(&collection), ["d", "c", "b", "a"]);
     }
 
     #[test]
-    fn adding_an_album_twice_keeps_one_with_its_first_date_and_fresh_metadata() {
+    fn adding_an_album_twice_keeps_one_with_its_id_first_date_and_fresh_metadata() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection
+        let first = collection
             .add(&album("in-rainbows", "In Rainbows"), day(1))
             .unwrap();
         let mut renamed = album("in-rainbows", "In Rainbows (Remastered)");
@@ -594,12 +763,13 @@ mod tests {
 
         assert_eq!(
             collection.add(&renamed, day(5)).unwrap(),
-            Added::AlreadyThere
+            Added::AlreadyThere(first.id().clone())
         );
 
         assert_eq!(
             collection.albums().unwrap(),
             [Collected {
+                id: first.id().clone(),
                 album: renamed,
                 added_at: day(1),
                 fetched_at: day(5),
@@ -611,14 +781,14 @@ mod tests {
     #[test]
     fn removes_an_album_and_its_cache() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
+        let a = collection.add(&album("a", "A"), day(1)).unwrap();
         collection.add(&album("b", "B"), day(2)).unwrap();
 
-        assert!(collection.remove("a").unwrap());
-        assert!(!collection.remove("a").unwrap());
-        assert!(!collection.remove("never-added").unwrap());
+        assert!(collection.remove(a.id()).unwrap());
+        assert!(!collection.remove(a.id()).unwrap());
+        assert!(!collection.remove(&"never-added".into()).unwrap());
 
-        assert_eq!(ids(&collection), ["b"]);
+        assert_eq!(spotify_ids(&collection), ["b"]);
         let cached: i64 = collection
             .db
             .query_row("SELECT count(*) FROM album_cache", [], |row| row.get(0))
@@ -627,39 +797,40 @@ mod tests {
     }
 
     #[test]
-    fn removed_albums_can_be_added_again_as_new() {
+    fn removed_albums_can_be_added_again_as_new_with_a_new_id() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
-        collection.remove("a").unwrap();
+        let first = collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.remove(first.id()).unwrap();
 
-        assert_eq!(
-            collection.add(&album("a", "A"), day(4)).unwrap(),
-            Added::New
-        );
-        assert_eq!(collection.get("a").unwrap().unwrap().added_at, day(4));
+        let again = collection.add(&album("a", "A"), day(4)).unwrap();
+
+        assert!(matches!(again, Added::New(_)));
+        assert_ne!(again.id(), first.id());
+        assert_eq!(by_spotify(&collection, "a").added_at, day(4));
     }
 
     #[test]
     fn everything_survives_reopening_the_database() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("deadwax.sqlite3");
-        {
+        let a = {
             let mut collection = Collection::open(&path).unwrap();
-            collection.add(&album("a", "A"), day(1)).unwrap();
-            collection.add(&album("b", "B"), day(2)).unwrap();
+            let a = collection.add(&album("a", "A"), day(1)).unwrap();
+            let b = collection.add(&album("b", "B"), day(2)).unwrap();
             collection.add(&album("c", "C"), day(3)).unwrap();
             collection.add(&album("a", "A again"), day(4)).unwrap();
-            collection.remove("b").unwrap();
-        }
+            collection.remove(b.id()).unwrap();
+            a.id().clone()
+        };
 
         let collection = Collection::open(&path).unwrap();
 
-        assert_eq!(ids(&collection), ["c", "a"]);
-        let a = collection.get("a").unwrap().unwrap();
-        assert_eq!(a.album, album("a", "A again"));
-        assert_eq!((a.added_at, a.fetched_at), (day(1), day(4)));
+        assert_eq!(spotify_ids(&collection), ["c", "a"]);
+        let collected = collection.get(&a).unwrap().unwrap();
+        assert_eq!(collected.album, album("a", "A again"));
+        assert_eq!((collected.added_at, collected.fetched_at), (day(1), day(4)));
         assert_eq!(
-            collection.ids().unwrap(),
+            collection.spotify_ids().unwrap(),
             HashSet::from(["a".to_string(), "c".to_string()])
         );
     }
@@ -675,7 +846,7 @@ mod tests {
 
         assert!(matches!(
             Collection::open(&path),
-            Err(CollectionError::TooNew(3))
+            Err(CollectionError::TooNew(4))
         ));
     }
 
@@ -686,9 +857,9 @@ mod tests {
 
         collection.add_at(&album("a", "A"), day(1), day(9)).unwrap();
 
-        let a = collection.get("a").unwrap().unwrap();
+        let a = by_spotify(&collection, "a");
         assert_eq!((a.added_at, a.fetched_at), (day(1), day(9)));
-        assert_eq!(ids(&collection), ["b", "a"]);
+        assert_eq!(spotify_ids(&collection), ["b", "a"]);
     }
 
     #[test]
@@ -743,17 +914,17 @@ mod tests {
         }
 
         #[test]
-        fn every_add_and_remove_updates_the_dev_list() {
+        fn every_add_and_remove_updates_the_dev_list_by_spotify_id() {
             let (_root, mut collection) = collection();
 
-            collection.add(&album("a", "A"), day(1)).unwrap();
+            let a = collection.add(&album("a", "A"), day(1)).unwrap();
             collection.add(&album("b", "B"), day(2)).unwrap();
             assert_eq!(
                 listed(&collection),
                 [("a".into(), day(1)), ("b".into(), day(2))]
             );
 
-            collection.remove("a").unwrap();
+            collection.remove(a.id()).unwrap();
             assert_eq!(listed(&collection), [("b".into(), day(2))]);
         }
 
@@ -763,6 +934,16 @@ mod tests {
             collection.add(&album("a", "A"), day(1)).unwrap();
 
             collection.add(&album("a", "A again"), day(4)).unwrap();
+
+            assert_eq!(listed(&collection), [("a".into(), day(1))]);
+        }
+
+        #[test]
+        fn removing_an_album_not_there_leaves_the_dev_list_alone() {
+            let (_root, mut collection) = collection();
+            collection.add(&album("a", "A"), day(1)).unwrap();
+
+            collection.remove(&"never-added".into()).unwrap();
 
             assert_eq!(listed(&collection), [("a".into(), day(1))]);
         }
@@ -784,8 +965,8 @@ mod tests {
             let database = root.path().join("deadwax.sqlite3");
             let mut collection = Collection::open(&database).unwrap();
 
-            collection.add(&album("a", "A"), day(1)).unwrap();
-            collection.remove("a").unwrap();
+            let a = collection.add(&album("a", "A"), day(1)).unwrap();
+            collection.remove(a.id()).unwrap();
 
             let files: Vec<_> = std::fs::read_dir(root.path())
                 .unwrap()
@@ -796,16 +977,17 @@ mod tests {
     }
 
     #[test]
-    fn refreshing_replaces_the_cache_and_keeps_the_date_added() {
+    fn refreshing_replaces_the_cache_and_keeps_the_id_and_date_added() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
+        let added = collection.add(&album("a", "A"), day(1)).unwrap();
         let renamed = album("a", "A (Remastered)");
 
-        assert!(collection.refresh(&renamed, day(9)).unwrap());
+        assert!(collection.refresh(added.id(), &renamed, day(9)).unwrap());
 
         assert_eq!(
-            collection.get("a").unwrap().unwrap(),
+            collection.get(added.id()).unwrap().unwrap(),
             Collected {
+                id: added.id().clone(),
                 album: renamed,
                 added_at: day(1),
                 fetched_at: day(9),
@@ -817,10 +999,14 @@ mod tests {
     #[test]
     fn refreshing_an_album_not_in_the_collection_doesnt_add_it() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
-        collection.remove("a").unwrap();
+        let added = collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.remove(added.id()).unwrap();
 
-        assert!(!collection.refresh(&album("a", "A"), day(2)).unwrap());
+        assert!(
+            !collection
+                .refresh(added.id(), &album("a", "A"), day(2))
+                .unwrap()
+        );
 
         assert!(collection.albums().unwrap().is_empty());
         let cached: i64 = collection
@@ -833,6 +1019,7 @@ mod tests {
     #[test]
     fn the_cache_goes_stale_after_a_week() {
         let collected = Collected {
+            id: AlbumId::new(),
             album: album("a", "A"),
             added_at: day(1),
             fetched_at: day(1),
@@ -870,13 +1057,13 @@ mod tests {
     #[test]
     fn stores_only_the_artworks_url_source_and_size() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
-        assert_eq!(collection.get("a").unwrap().unwrap().artwork, None);
+        let a = collection.add(&album("a", "A"), day(1)).unwrap();
+        assert_eq!(collection.get(a.id()).unwrap().unwrap().artwork, None);
 
-        assert!(collection.set_artwork("a", &itunes(), day(2)).unwrap());
+        assert!(collection.set_artwork(a.id(), &itunes(), day(2)).unwrap());
 
         assert_eq!(
-            collection.get("a").unwrap().unwrap().artwork,
+            collection.get(a.id()).unwrap().unwrap().artwork,
             Some(itunes())
         );
         let columns: Vec<String> = collection
@@ -889,15 +1076,15 @@ mod tests {
             .unwrap();
         assert_eq!(
             columns,
-            ["spotify_id", "source", "url", "width", "height", "found_at"]
+            ["id", "source", "url", "width", "height", "found_at"]
         );
     }
 
     #[test]
     fn stores_spotifys_cover_and_no_cover_at_all() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
-        collection.add(&album("b", "B"), day(1)).unwrap();
+        let a = collection.add(&album("a", "A"), day(1)).unwrap();
+        let b = collection.add(&album("b", "B"), day(1)).unwrap();
         let spotify = Artwork {
             source: ArtworkSource::Spotify,
             cover: Some(Cover {
@@ -911,36 +1098,47 @@ mod tests {
             cover: None,
         };
 
-        collection.set_artwork("a", &spotify, day(2)).unwrap();
-        collection.set_artwork("b", &nothing, day(2)).unwrap();
+        collection.set_artwork(a.id(), &spotify, day(2)).unwrap();
+        collection.set_artwork(b.id(), &nothing, day(2)).unwrap();
 
-        assert_eq!(collection.get("a").unwrap().unwrap().artwork, Some(spotify));
-        assert_eq!(collection.get("b").unwrap().unwrap().artwork, Some(nothing));
+        assert_eq!(
+            collection.get(a.id()).unwrap().unwrap().artwork,
+            Some(spotify)
+        );
+        assert_eq!(
+            collection.get(b.id()).unwrap().unwrap().artwork,
+            Some(nothing)
+        );
     }
 
     #[test]
     fn artwork_for_an_album_not_in_the_collection_isnt_stored() {
         let mut collection = Collection::open_in_memory().unwrap();
+        let gone = AlbumId::new();
 
-        assert!(!collection.set_artwork("a", &itunes(), day(2)).unwrap());
+        assert!(!collection.set_artwork(&gone, &itunes(), day(2)).unwrap());
 
         collection.add(&album("a", "A"), day(3)).unwrap();
-        assert_eq!(collection.get("a").unwrap().unwrap().artwork, None);
+        assert_eq!(by_spotify(&collection, "a").artwork, None);
     }
 
     #[test]
     fn removing_or_clearing_forgets_the_artwork() {
         let mut collection = Collection::open_in_memory().unwrap();
+        let mut ids = Vec::new();
         for id in ["a", "b"] {
-            collection.add(&album(id, id), day(1)).unwrap();
-            collection.set_artwork(id, &itunes(), day(1)).unwrap();
+            let added = collection.add(&album(id, id), day(1)).unwrap();
+            collection
+                .set_artwork(added.id(), &itunes(), day(1))
+                .unwrap();
+            ids.push(added.id().clone());
         }
         let artwork = |c: &Collection| -> i64 {
             c.db.query_row("SELECT count(*) FROM artwork", [], |row| row.get(0))
                 .unwrap()
         };
 
-        collection.remove("a").unwrap();
+        collection.remove(&ids[0]).unwrap();
         assert_eq!(artwork(&collection), 1);
         collection.clear().unwrap();
         assert_eq!(artwork(&collection), 0);
@@ -949,43 +1147,269 @@ mod tests {
     #[test]
     fn refreshing_the_cache_keeps_the_artwork() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
-        collection.set_artwork("a", &itunes(), day(1)).unwrap();
+        let a = collection.add(&album("a", "A"), day(1)).unwrap();
+        collection.set_artwork(a.id(), &itunes(), day(1)).unwrap();
 
-        collection.refresh(&album("a", "A"), day(9)).unwrap();
+        collection
+            .refresh(a.id(), &album("a", "A"), day(9))
+            .unwrap();
 
         assert_eq!(
-            collection.get("a").unwrap().unwrap().artwork,
+            collection.get(a.id()).unwrap().unwrap().artwork,
             Some(itunes())
         );
     }
 
     #[test]
-    fn a_schema_1_database_gains_the_artwork_table_and_keeps_its_albums() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("deadwax.sqlite3");
-        {
-            let db = Connection::open(&path).unwrap();
-            db.execute_batch(SCHEMA).unwrap();
-            db.pragma_update(None, "user_version", 1).unwrap();
-            let tx = db.unchecked_transaction().unwrap();
-            tx.execute(
-                "INSERT INTO collection (spotify_id, added_at) VALUES ('a', ?1)",
-                [millis(day(1))],
+    fn the_same_spotify_id_cant_be_collected_twice() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+
+        let duplicate = collection.db.execute(
+            "INSERT INTO collection (id, spotify_id, added_at) VALUES ('other', 'a', 0)",
+            [],
+        );
+
+        assert!(duplicate.is_err());
+    }
+
+    // Migrations.
+
+    /// The schema-1 tables, as RFC-001 made them, keyed by the Spotify ID.
+    const SCHEMA_V1: &str = "
+        CREATE TABLE collection (
+            spotify_id TEXT PRIMARY KEY NOT NULL,
+            added_at   INTEGER NOT NULL
+        ) STRICT;
+
+        CREATE TABLE album_cache (
+            spotify_id TEXT PRIMARY KEY NOT NULL,
+            title      TEXT NOT NULL,
+            artist     TEXT NOT NULL,
+            year       INTEGER,
+            tracks     TEXT NOT NULL,
+            covers     TEXT NOT NULL,
+            upc        TEXT,
+            fetched_at INTEGER NOT NULL
+        ) STRICT;
+    ";
+
+    /// Writes `albums` into a schema-1 or schema-2 database, as those
+    /// versions did: (Spotify ID, added, fetched, artwork).
+    fn old_database(
+        path: &Path,
+        version: i64,
+        albums: &[(&str, SystemTime, SystemTime, Option<Artwork>)],
+    ) {
+        let db = Connection::open(path).unwrap();
+        db.execute_batch(SCHEMA_V1).unwrap();
+        if version == 2 {
+            db.execute_batch(ARTWORK_V2).unwrap();
+        }
+        db.pragma_update(None, "user_version", version).unwrap();
+        for (spotify_id, added_at, fetched_at, artwork) in albums {
+            let a = album(spotify_id, &spotify_id.to_uppercase());
+            db.execute(
+                "INSERT INTO collection (spotify_id, added_at) VALUES (?1, ?2)",
+                params![spotify_id, millis(*added_at)],
             )
             .unwrap();
-            cache(&tx, &album("a", "A"), day(1)).unwrap();
-            tx.commit().unwrap();
+            db.execute(
+                "INSERT INTO album_cache
+                     (spotify_id, title, artist, year, tracks, covers, upc, fetched_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    spotify_id,
+                    a.title,
+                    a.artist,
+                    a.year,
+                    serde_json::to_string(&a.tracks).unwrap(),
+                    serde_json::to_string(&a.covers).unwrap(),
+                    a.upc,
+                    millis(*fetched_at),
+                ],
+            )
+            .unwrap();
+            if let Some(artwork) = artwork {
+                let cover = artwork.cover.as_ref();
+                db.execute(
+                    "INSERT INTO artwork (spotify_id, source, url, width, height, found_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        spotify_id,
+                        artwork.source.as_str(),
+                        cover.map(|c| &c.url),
+                        cover.and_then(|c| c.width),
+                        cover.and_then(|c| c.height),
+                        millis(day(9)),
+                    ],
+                )
+                .unwrap();
+            }
         }
+    }
+
+    fn user_version(db: &Connection) -> i64 {
+        db.pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap()
+    }
+
+    /// Everything in a table, as text, to compare before and after.
+    fn dump(db: &Connection, table: &str) -> Vec<String> {
+        let mut statement = db
+            .prepare(&format!("SELECT * FROM {table} ORDER BY rowid"))
+            .unwrap();
+        let columns = statement.column_count();
+        statement
+            .query_map([], |row| {
+                (0..columns)
+                    .map(|i| {
+                        row.get::<_, rusqlite::types::Value>(i)
+                            .map(|v| format!("{v:?}"))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(|values| values.join(" | "))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_schema_2_database_migrates_with_its_albums_cache_and_artwork_intact() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        old_database(
+            &path,
+            2,
+            &[
+                ("a", day(1), day(2), Some(itunes())),
+                ("b", day(3), day(3), None),
+                // Added in the same millisecond as b, after it.
+                ("c", day(3), day(4), Some(itunes())),
+            ],
+        );
+
+        let collection = Collection::open(&path).unwrap();
+
+        assert_eq!(user_version(&collection.db), 3);
+        let albums = collection.albums().unwrap();
+        assert_eq!(spotify_ids(&collection), ["c", "b", "a"]);
+        let expected = [
+            ("c", day(3), day(4), Some(itunes())),
+            ("b", day(3), day(3), None),
+            ("a", day(1), day(2), Some(itunes())),
+        ];
+        for (collected, (spotify_id, added_at, fetched_at, artwork)) in albums.iter().zip(expected)
+        {
+            assert_eq!(
+                collected.album,
+                album(spotify_id, &spotify_id.to_uppercase())
+            );
+            assert_eq!(collected.added_at, added_at);
+            assert_eq!(collected.fetched_at, fetched_at);
+            assert_eq!(collected.artwork, artwork);
+            assert_ne!(collected.id.as_str(), spotify_id);
+        }
+        let ids: HashSet<&AlbumId> = albums.iter().map(|c| &c.id).collect();
+        assert_eq!(ids.len(), 3);
+    }
+
+    #[test]
+    fn a_migrated_collection_works_and_keeps_its_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        old_database(&path, 2, &[("a", day(1), day(1), None)]);
+        let id = id_of(&Collection::open(&path).unwrap(), "a");
 
         let mut collection = Collection::open(&path).unwrap();
 
-        assert_eq!(ids(&collection), ["a"]);
-        assert!(collection.set_artwork("a", &itunes(), day(2)).unwrap());
-        let version: i64 = collection
-            .db
-            .pragma_query_value(None, "user_version", |row| row.get(0))
+        assert_eq!(id_of(&collection, "a"), id);
+        assert_eq!(
+            collection.add(&album("a", "A"), day(5)).unwrap(),
+            Added::AlreadyThere(id.clone())
+        );
+        assert!(collection.set_artwork(&id, &itunes(), day(5)).unwrap());
+        collection.add(&album("b", "B"), day(6)).unwrap();
+        assert!(collection.remove(&id).unwrap());
+        assert_eq!(spotify_ids(&collection), ["b"]);
+    }
+
+    #[test]
+    fn a_failure_part_way_through_the_migration_leaves_schema_2_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        old_database(
+            &path,
+            2,
+            &[
+                ("a", day(1), day(1), Some(itunes())),
+                ("b", day(2), day(2), None),
+            ],
+        );
+        let mut db = Connection::open(&path).unwrap();
+        let before: Vec<Vec<String>> = ["collection", "album_cache", "artwork"]
+            .iter()
+            .map(|table| dump(&db, table))
+            .collect();
+
+        // The second album gets the first one's ID, so the migration fails
+        // after it has already moved one album.
+        let same = AlbumId::new();
+        let result = migrate_to_3(&mut db, || same.clone());
+
+        assert!(matches!(result, Err(CollectionError::Sqlite(_))));
+        assert_eq!(user_version(&db), 2);
+        let after: Vec<Vec<String>> = ["collection", "album_cache", "artwork"]
+            .iter()
+            .map(|table| dump(&db, table))
+            .collect();
+        assert_eq!(after, before);
+        let tables: Vec<String> = db
+            .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(tables, ["album_cache", "artwork", "collection"]);
+        drop(db);
+
+        // Opening it again migrates it properly.
+        let collection = Collection::open(&path).unwrap();
+        assert_eq!(spotify_ids(&collection), ["b", "a"]);
+    }
+
+    #[test]
+    fn a_schema_1_database_migrates_to_3_and_keeps_its_albums() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        old_database(&path, 1, &[("a", day(1), day(1), None)]);
+
+        let mut collection = Collection::open(&path).unwrap();
+
+        assert_eq!(user_version(&collection.db), 3);
+        assert_eq!(spotify_ids(&collection), ["a"]);
+        let id = id_of(&collection, "a");
+        assert!(collection.set_artwork(&id, &itunes(), day(2)).unwrap());
+    }
+
+    #[test]
+    fn a_new_database_is_made_at_schema_3() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+
+        let collection = Collection::open(&path).unwrap();
+
+        assert_eq!(user_version(&collection.db), 3);
+        let columns: Vec<String> = collection
+            .db
+            .prepare("SELECT name FROM pragma_table_info('collection')")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(columns, ["id", "spotify_id", "added_at"]);
     }
 }

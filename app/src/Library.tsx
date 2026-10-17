@@ -4,6 +4,7 @@ import {
   getCollection,
   getSession,
   type AlbumCard,
+  type AlbumId,
   type Session,
 } from "./api";
 import AlbumPage from "./AlbumPage";
@@ -28,7 +29,7 @@ function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** The album whose page is open, if any. */
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<AlbumId | null>(null);
   /** Counts albums started, so the playback bar asks again straight away. */
   const [started, setStarted] = useState(0);
 
@@ -44,7 +45,7 @@ function Library({ name, onSignedOut }: Props) {
       ...(current ?? []).filter((a) => a.id !== album.id),
     ]);
 
-  function openAlbum(id: string) {
+  function openAlbum(id: AlbumId) {
     setError(null);
     setOpen(id);
   }
@@ -56,7 +57,7 @@ function Library({ name, onSignedOut }: Props) {
     load();
   }
 
-  function removed(id: string) {
+  function removed(id: AlbumId) {
     setAlbums((current) => current?.filter((a) => a.id !== id) ?? null);
     closeAlbum();
   }

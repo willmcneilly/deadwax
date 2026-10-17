@@ -2,6 +2,11 @@
 //! the source of every Tauri command, lists what each one returns, and fails
 //! if any of those types could carry a token.
 //!
+//! It also checks that commands name albums by their Deadwax IDs (RFC-002,
+//! "1. Deadwax's own album IDs"): every parameter or field called `id` or
+//! `album_id` has the type `AlbumId`. A Spotify ID goes only in a field that
+//! says so, such as `spotify_id`.
+//!
 //! A return type passes if it's built only from plain values (strings,
 //! numbers, `bool`, `Option`, `Vec`, `Result`) and types defined in the same
 //! file (`commands.rs`, or `commands/dev.rs` for the Develop menu), and no
@@ -26,6 +31,11 @@ const PLAIN: &[&str] = &[
     "isize", "f32", "f64", "Option", "Vec", "Result",
 ];
 
+/// Types from elsewhere that hold only a plain value, added here on purpose.
+/// `AlbumId` is a Deadwax album ID: a `String` with its own type, from
+/// `deadwax-core`.
+const KNOWN: &[&str] = &["AlbumId"];
+
 /// Names that suggest something holds a credential.
 const FORBIDDEN: &[&str] = &[
     "token",
@@ -36,9 +46,10 @@ const FORBIDDEN: &[&str] = &[
     "bearer",
 ];
 
-/// A command and what it returns.
+/// A command, what it takes and what it returns.
 struct Command {
     name: String,
+    params: Vec<(String, Type)>,
     returns: Option<Type>,
 }
 
@@ -62,6 +73,20 @@ fn parse(source: &str) -> (Vec<Command>, HashMap<String, Item>) {
         match item {
             Item::Fn(function) if is_command(&function) => commands.push(Command {
                 name: function.sig.ident.to_string(),
+                params: function
+                    .sig
+                    .inputs
+                    .iter()
+                    .filter_map(|input| match input {
+                        syn::FnArg::Typed(typed) => match &*typed.pat {
+                            syn::Pat::Ident(ident) => {
+                                Some((ident.ident.to_string(), (*typed.ty).clone()))
+                            }
+                            _ => None,
+                        },
+                        syn::FnArg::Receiver(_) => None,
+                    })
+                    .collect(),
                 returns: match function.sig.output {
                     ReturnType::Default => None,
                     ReturnType::Type(_, ty) => Some(*ty),
@@ -139,7 +164,7 @@ fn check(ty: &Type, types: &HashMap<String, Item>, seen: &mut BTreeSet<String>) 
                     }
                 }
             }
-            if PLAIN.contains(&name.as_str()) {
+            if PLAIN.contains(&name.as_str()) || KNOWN.contains(&name.as_str()) {
                 return None;
             }
             let Some(item) = types.get(&name) else {
@@ -179,6 +204,69 @@ fn problems(source: &str) -> Vec<String> {
                 .map(|why| format!("{}: {why}", command.name))
         })
         .collect()
+}
+
+/// Names that mean "which album".
+const ALBUM_IDENTITY: &[&str] = &["id", "album_id"];
+
+/// Whether `ty` is `AlbumId`, maybe in an `Option` or behind a reference.
+fn is_album_id(ty: &Type) -> bool {
+    match ty {
+        Type::Reference(reference) => is_album_id(&reference.elem),
+        Type::Path(path) => {
+            let Some(segment) = path.path.segments.last() else {
+                return false;
+            };
+            if segment.ident == "AlbumId" {
+                return true;
+            }
+            match &segment.arguments {
+                PathArguments::AngleBracketed(args) if segment.ident == "Option" => args
+                    .args
+                    .iter()
+                    .any(|arg| matches!(arg, GenericArgument::Type(inner) if is_album_id(inner))),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Every command parameter and every field of a type in `source` that names
+/// an album by anything but its Deadwax ID.
+fn identity_problems(source: &str) -> Vec<String> {
+    let (commands, types) = parse(source);
+    let params = commands.iter().flat_map(|command| {
+        command
+            .params
+            .iter()
+            .map(move |(name, ty)| (format!("{}({name})", command.name), name.clone(), ty))
+    });
+    let mut types: Vec<(&String, &Item)> = types.iter().collect();
+    types.sort_by_key(|(name, _)| *name);
+    let fields = types.into_iter().flat_map(|(type_name, item)| {
+        let fields: Vec<&Fields> = match item {
+            Item::Struct(s) => vec![&s.fields],
+            Item::Enum(e) => e.variants.iter().map(|v| &v.fields).collect(),
+            _ => unreachable!(),
+        };
+        fields.into_iter().flatten().filter_map(move |field| {
+            let ident = field.ident.as_ref()?.to_string();
+            Some((format!("{type_name}.{ident}"), ident, &field.ty))
+        })
+    });
+    params
+        .chain(fields)
+        .filter(|(_, name, ty)| ALBUM_IDENTITY.contains(&name.as_str()) && !is_album_id(ty))
+        .map(|(place, _, _)| format!("{place} names an album by something other than its AlbumId"))
+        .collect()
+}
+
+#[test]
+fn every_command_names_albums_by_their_deadwax_ids() {
+    for source in [COMMANDS, DEV_COMMANDS] {
+        assert_eq!(identity_problems(source), Vec::<String>::new());
+    }
 }
 
 #[test]
@@ -232,6 +320,36 @@ fn catches_a_token_field_in_a_nested_type() {
 fn catches_a_type_it_cannot_see_inside() {
     let source = "#[tauri::command] fn leak() -> deadwax_sources::Anything { todo!() }";
     assert_eq!(problems(source).len(), 1);
+}
+
+#[test]
+fn catches_a_spotify_id_as_an_albums_identity() {
+    let source = "
+        struct AlbumCard { id: String, title: String }
+        struct NowPlayingTrack { album_id: Option<String> }
+        #[tauri::command] fn get_album(state: State<'_, AppState>, id: String) -> Result<AlbumCard, String> { todo!() }
+    ";
+    assert_eq!(
+        identity_problems(source),
+        [
+            "get_album(id) names an album by something other than its AlbumId",
+            "AlbumCard.id names an album by something other than its AlbumId",
+            "NowPlayingTrack.album_id names an album by something other than its AlbumId",
+        ]
+    );
+}
+
+#[test]
+fn allows_deadwax_ids_and_spotify_ids_that_say_so() {
+    let source = "
+        struct AlbumPage { id: AlbumId, spotify_id: String }
+        struct NowPlayingTrack { album_id: Option<AlbumId>, spotify_album_id: Option<String> }
+        #[tauri::command] fn get_album(id: AlbumId) -> Result<AlbumPage, String> { todo!() }
+        #[tauri::command] fn add_album(spotify_id: String) -> Result<AlbumPage, String> { todo!() }
+    ";
+    assert_eq!(identity_problems(source), Vec::<String>::new());
+    // And `AlbumId` can't carry a token.
+    assert_eq!(problems(source), Vec::<String>::new());
 }
 
 #[test]

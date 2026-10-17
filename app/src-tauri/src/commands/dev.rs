@@ -7,7 +7,7 @@
 
 use std::time::SystemTime;
 
-use deadwax_core::collection::{ArtworkSource, Collection};
+use deadwax_core::collection::{AlbumId, ArtworkSource, Collection};
 use deadwax_core::dev_list::Entry;
 use deadwax_sources::clock::Clock;
 use deadwax_sources::spotify::tokens::TokenStore;
@@ -32,10 +32,12 @@ pub struct RestoreReport {
     pub failed: Vec<RestoreFailure>,
 }
 
+/// An album the dev list has that couldn't be restored. It has no Deadwax
+/// ID, since it never made it into the collection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreFailure {
-    pub id: String,
+    pub spotify_id: String,
     pub message: String,
 }
 
@@ -47,7 +49,7 @@ fn dev_list_error(error: impl std::fmt::Display) -> String {
 fn missing(collection: &std::sync::Mutex<Collection>) -> Result<Vec<Entry>, String> {
     let collection = collection.lock().expect("collection lock");
     let dev_list = collection.dev_list().ok_or("This build has no dev list.")?;
-    let owned = collection.ids().map_err(collection_error)?;
+    let owned = collection.spotify_ids().map_err(collection_error)?;
     Ok(dev_list
         .albums()
         .map_err(dev_list_error)?
@@ -75,7 +77,8 @@ pub fn reset_collection(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 /// Adds back every album in the dev list that isn't in the collection,
-/// fetching each from Spotify one at a time, with its original date added.
+/// fetching each from Spotify one at a time, with its original date added
+/// and a new Deadwax ID (the dev list keeps only Spotify IDs).
 /// Their high-res covers are looked for in the background.
 #[tauri::command]
 pub async fn restore_from_dev_list(state: State<'_, AppState>) -> Result<RestoreReport, String> {
@@ -125,7 +128,7 @@ async fn restore<C: Clock, S: TokenStore>(
             // No point asking for the rest.
             Err(SpotifyError::SignedOut) => return Err(EXPIRED_MESSAGE.into()),
             Err(error) => report.failed.push(RestoreFailure {
-                id: entry.spotify_id,
+                spotify_id: entry.spotify_id,
                 message: spotify_error(error),
             }),
         }
@@ -148,7 +151,7 @@ pub struct ArtworkReport {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtworkRow {
-    pub id: String,
+    pub id: AlbumId,
     pub title: String,
     pub artist: String,
     /// "iTunes", "Deezer", "MusicBrainz", "Spotify", or `NOT_LOOKED_UP`.
@@ -197,7 +200,7 @@ fn report(collection: &Collection) -> Result<ArtworkReport, String> {
                 .map_or(NOT_LOOKED_UP, |artwork| source_name(artwork.source));
             let cover = collected.artwork.and_then(|artwork| artwork.cover);
             ArtworkRow {
-                id: collected.album.spotify_id,
+                id: collected.id,
                 title: collected.album.title,
                 artist: collected.album.artist,
                 source: source.into(),
@@ -287,6 +290,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restoring_makes_new_deadwax_ids_and_keeps_the_dates_added() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let (_root, collection) = collection_with_dev_list(&[(IN_RAINBOWS, day(1))]);
+        restore(&spotify, &collection, day(10)).await.unwrap();
+        let first = collection.lock().unwrap().albums().unwrap()[0].clone();
+
+        // Reset and restore again: the same album comes back with a new
+        // Deadwax ID and its original date.
+        collection.lock().unwrap().clear().unwrap();
+        restore(&spotify, &collection, day(20)).await.unwrap();
+        let again = collection.lock().unwrap().albums().unwrap()[0].clone();
+
+        assert_ne!(first.id.as_str(), IN_RAINBOWS);
+        assert_ne!(again.id, first.id);
+        assert_eq!(again.album.spotify_id, IN_RAINBOWS);
+        assert_eq!((first.added_at, again.added_at), (day(1), day(1)));
+        assert_eq!(again.fetched_at, day(20));
+        // The dev list still names it by its Spotify ID only.
+        assert_eq!(
+            collection
+                .lock()
+                .unwrap()
+                .dev_list()
+                .unwrap()
+                .albums()
+                .unwrap(),
+            [Entry {
+                spotify_id: IN_RAINBOWS.into(),
+                added_at: day(1)
+            }]
+        );
+    }
+
+    #[tokio::test]
     async fn restores_each_album_one_at_a_time_with_its_original_date() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
@@ -357,7 +395,17 @@ mod tests {
 
         let mut queued = ArtworkQueue::queued(&mut queued);
         queued.sort();
-        assert_eq!(queued, [IN_RAINBOWS, OK_COMPUTER]);
+        let mut restored: Vec<AlbumId> = collection
+            .lock()
+            .unwrap()
+            .albums()
+            .unwrap()
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        restored.sort();
+        assert_eq!(restored.len(), 2);
+        assert_eq!(queued, restored);
     }
 
     #[tokio::test]
@@ -391,7 +439,7 @@ mod tests {
 
         assert_eq!(report.restored, 1);
         assert_eq!(report.failed.len(), 1);
-        assert_eq!(report.failed[0].id, GONE);
+        assert_eq!(report.failed[0].spotify_id, GONE);
         assert!(report.failed[0].message.contains("404"), "{report:?}");
         // It stays in the dev list, to try again later.
         let collection = collection.lock().unwrap();
@@ -446,10 +494,12 @@ mod tests {
     #[test]
     fn the_artwork_report_lists_every_album_with_its_source_and_size_and_totals_by_source() {
         let mut collection = Collection::open_in_memory().unwrap();
+        let mut ids = std::collections::HashMap::new();
         for (n, id) in ["a", "b", "c", "d", "e"].into_iter().enumerate() {
-            collection
+            let added = collection
                 .add(&album(id, &id.to_uppercase()), day(n as u64))
                 .unwrap();
+            ids.insert(id, added.id().clone());
         }
         for (id, source, cover) in [
             (
@@ -466,11 +516,14 @@ mod tests {
             ("d", ArtworkSource::Spotify, None),
         ] {
             collection
-                .set_artwork(id, &Artwork { source, cover }, day(9))
+                .set_artwork(&ids[id], &Artwork { source, cover }, day(9))
                 .unwrap();
         }
 
         let report = report(&collection).unwrap();
+
+        // Rows name albums by their Deadwax IDs.
+        assert_eq!(report.albums[0].id, ids["e"]);
 
         let rows: Vec<_> = report
             .albums
@@ -514,10 +567,10 @@ mod tests {
     #[test]
     fn the_artwork_report_only_counts_albums_not_looked_up_when_there_are_some() {
         let mut collection = Collection::open_in_memory().unwrap();
-        collection.add(&album("a", "A"), day(1)).unwrap();
+        let added = collection.add(&album("a", "A"), day(1)).unwrap();
         collection
             .set_artwork(
-                "a",
+                added.id(),
                 &Artwork {
                     source: ArtworkSource::Deezer,
                     cover: cover("https://deezer/a", Some(1000)),
@@ -574,13 +627,13 @@ mod tests {
         let report = RestoreReport {
             restored: 1,
             failed: vec![RestoreFailure {
-                id: GONE.into(),
+                spotify_id: GONE.into(),
                 message: "m".into(),
             }],
         };
         assert_eq!(
             serde_json::to_value(&report).unwrap(),
-            json!({"restored": 1, "failed": [{"id": GONE, "message": "m"}]})
+            json!({"restored": 1, "failed": [{"spotifyId": GONE, "message": "m"}]})
         );
     }
 }
