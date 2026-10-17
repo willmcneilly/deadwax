@@ -27,7 +27,7 @@ Use the `deadwax-notion` skill for Notion (`.claude/skills/deadwax-notion/ntn.sh
   git fetch origin
   git worktree add ../deadwax-review-<n> origin/<branch>   # or, with a commit: git fetch origin <commit> && git worktree add --detach ../deadwax-review-<n> <commit>
   ```
-  The post-checkout hook gives the worktree a warm Rust build; if it has no `target/`, run `scripts/warm` there. The diff to review is `git diff $(git merge-base origin/main HEAD)...HEAD` inside the worktree. Work there for the rest of the review, and remove the worktree at the end (`git worktree remove --force ../deadwax-review-<n>`).
+  The post-checkout hook gives the worktree a warm Rust build; if it has no `target/`, run `scripts/warm` there. The diff to review is `git diff $(git merge-base origin/main HEAD)...HEAD` inside the worktree. Work there for the rest of the review, and remove the worktree at the end. If you opened the app there, stop it first, because nothing else will: `../deadwax-review-<n>/scripts/dev-app stop`, then `git worktree remove --force ../deadwax-review-<n>`.
 - For a large diff, hand parts of it to subagents and keep only their findings.
 - **When you were given a commit,** the PR and ticket may record what happened after it: later reviews, replies, fixes and verification notes. Don't read the PR's reviews or comments, and from the ticket read only the goal, acceptance criteria, out of scope and context. Review the code as if that commit were the PR's head.
 
