@@ -16,7 +16,8 @@ app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
-scripts                 checks CI runs that aren't cargo or npm commands
+scripts                 the repository's own tools (`check`, `warm`, each with `--help`; their logic is in app/scripts) and CI's release check
+.githooks               git hooks: pre-push runs `scripts/check`, post-checkout warms a new worktree
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
 ```
@@ -28,6 +29,10 @@ Development builds also keep a **dev list** in Deadwax's app-data folder (`~/Lib
 Run everything from the repository root unless it says `app/`.
 
 ```bash
+scripts/check                                       # the checks this change needs (below)
+scripts/warm                                        # give a new worktree a warm Rust build
+git config core.hooksPath .githooks                 # once per clone; scripts/check does it on its first run
+
 # Rust
 cargo fmt --all                                     # format
 cargo fmt --all --check                             # CI check
@@ -48,7 +53,12 @@ scripts/check-release-has-no-dev-list.sh            # the release build has no d
 
 `cargo build`/`clippy`/`test` compile the app crate in dev mode, so they don't need `app/dist`. Only `tauri build` needs the frontend built, and it does that itself.
 
-**Before opening a PR, run all of the above checks and fix everything they report.** CI runs the same set on `macos-15`.
+**Before opening a PR, run `scripts/check` and fix everything it reports.** It runs the checks above that the change needs, against `origin/main`, in parallel:
+- Rust (fmt, clippy, test) when `crates/`, `app/src-tauri/`, `Cargo.*`, `rust-toolchain.toml` or `app/src/Setup.tsx` (a Rust test reads it) changed;
+- the frontend checks (typecheck, lint, test) when anything else under `app/` changed, `app/scripts/` included;
+- the release build and its dev-list check only when they could break: when `app/src-tauri/`, `app/package.json`, `crates/deadwax-core/src/dev_list*`, `scripts/check-release-has-no-dev-list.sh` or a Rust file containing `debug_assertions` changed. CI builds it on every PR.
+
+Each pass is stamped with the content it checked, so running it again is instant. `--all` runs every job and `--rerun` ignores earlier passes. It warns when `origin/main` has moved on. `git push` runs it through the pre-push hook and blocks a push that hasn't passed; don't skip that with `--no-verify`. CI runs the full set on `macos-15` on every PR.
 
 ## Shell and tools
 
