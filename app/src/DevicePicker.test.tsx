@@ -4,17 +4,31 @@ import type { AlbumDetails, DeviceChoice, Devices, PlayOutcome } from "./api";
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
 
+// Played by its Deadwax ID, from a track's Spotify ID.
 const IN_RAINBOWS: AlbumDetails = {
-  id: "5vkqYmiPBYLaalcmjujWxK",
+  id: "0b1c7e1e-6a0e-4c43-9f1e-2b8f6f1d9a01",
+  spotifyId: "5vkqYmiPBYLaalcmjujWxK",
   title: "In Rainbows",
   artist: "Radiohead",
   year: 2007,
   coverUrl: null,
   tracks: [
-    { id: "t1", disc: 1, number: 1, title: "15 Step", durationMs: 237_293 },
-    { id: "t3", disc: 1, number: 3, title: "Nude", durationMs: 255_386 },
+    {
+      spotifyId: "t1",
+      disc: 1,
+      number: 1,
+      title: "15 Step",
+      durationMs: 237_293,
+    },
+    {
+      spotifyId: "t3",
+      disc: 1,
+      number: 3,
+      title: "Nude",
+      durationMs: 255_386,
+    },
     // A local file: Spotify gives it no ID, so it can't be played.
-    { id: "", disc: 1, number: 4, title: "Demo", durationMs: 60_000 },
+    { spotifyId: "", disc: 1, number: 4, title: "Demo", durationMs: 60_000 },
   ],
 };
 

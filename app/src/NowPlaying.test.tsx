@@ -5,6 +5,8 @@ import { backEnd } from "./mockBackEnd";
 import PlaybackBar from "./PlaybackBar";
 
 const IN_RAINBOWS = "5vkqYmiPBYLaalcmjujWxK";
+/** In Rainbows' Deadwax ID: it's in the collection. */
+const IN_RAINBOWS_ID = "0b1c7e1e-6a0e-4c43-9f1e-2b8f6f1d9a01";
 const HIGH_RES = "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg";
 
 const playing = (
@@ -18,7 +20,8 @@ const playing = (
     title,
     artist: "Radiohead",
     album: "In Rainbows",
-    albumId: IN_RAINBOWS,
+    albumId: IN_RAINBOWS_ID,
+    spotifyAlbumId: IN_RAINBOWS,
     durationMs: 240_000,
     coverUrl: HIGH_RES,
   },
@@ -128,7 +131,32 @@ describe("Now playing", () => {
     await wait(0);
     expect(calls.at(-1)).toEqual({
       cmd: "open_album_in_spotify",
-      args: { id: IN_RAINBOWS },
+      args: { spotifyId: IN_RAINBOWS },
+    });
+  });
+
+  it("opens an album outside your collection on Spotify too", async () => {
+    const calls = spotify(() =>
+      playing("Idioteque", {
+        track: {
+          title: "Idioteque",
+          artist: "Radiohead",
+          album: "Kid A",
+          albumId: null,
+          spotifyAlbumId: "6GjwtEZcfenmOf6l18N7T7",
+          durationMs: 309_000,
+          coverUrl: null,
+        },
+      }),
+    );
+    await open();
+
+    fireEvent.click(screen.getByRole("link", { name: "Open in Spotify" }));
+    await wait(0);
+
+    expect(calls.at(-1)).toEqual({
+      cmd: "open_album_in_spotify",
+      args: { spotifyId: "6GjwtEZcfenmOf6l18N7T7" },
     });
   });
 
@@ -145,7 +173,8 @@ describe("Now playing", () => {
         title: "Idioteque",
         artist: "Radiohead",
         album: "Kid A",
-        albumId: "6GjwtEZcfenmOf6l18N7T7",
+        albumId: null,
+        spotifyAlbumId: "6GjwtEZcfenmOf6l18N7T7",
         durationMs: 309_000,
         coverUrl: "https://i.scdn.co/image/kid-a-640.jpg",
       },

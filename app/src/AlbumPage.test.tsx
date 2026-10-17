@@ -11,16 +11,25 @@ import { ARTWORK_FOUND, type AlbumCard, type AlbumDetails } from "./api";
 import Library from "./Library";
 import { backEnd, NOTHING_PLAYING } from "./mockBackEnd";
 
+// Albums are named by their Deadwax IDs; the Spotify ID is only for Open in
+// Spotify.
 const IN_RAINBOWS: AlbumDetails = {
-  id: "5vkqYmiPBYLaalcmjujWxK",
+  id: "0b1c7e1e-6a0e-4c43-9f1e-2b8f6f1d9a01",
+  spotifyId: "5vkqYmiPBYLaalcmjujWxK",
   title: "In Rainbows",
   artist: "Radiohead",
   year: 2007,
   coverUrl: "https://i.scdn.co/image/in-rainbows-640",
   tracks: [
-    { id: "t1", disc: 1, number: 1, title: "15 Step", durationMs: 237_293 },
     {
-      id: "t2",
+      spotifyId: "t1",
+      disc: 1,
+      number: 1,
+      title: "15 Step",
+      durationMs: 237_293,
+    },
+    {
+      spotifyId: "t2",
       disc: 1,
       number: 2,
       title: "Bodysnatchers",
@@ -44,7 +53,7 @@ const card = ({
 });
 
 const OTHER: AlbumCard = {
-  id: "6dVIqQ8qmQ5GBnJ9shOYGE",
+  id: "7d2f4a90-3c55-4b1e-8e0a-5f6b9c2d1e02",
   title: "OK Computer",
   artist: "Radiohead",
   year: 1997,
@@ -184,21 +193,21 @@ describe("The album page", () => {
     );
   });
 
-  it("opens the album on Spotify through Rust", async () => {
+  it("opens the album on Spotify through Rust, by its Spotify ID", async () => {
     const calls = collection({ open_album_in_spotify: () => null });
     await openInRainbows();
 
     const link = screen.getByRole("link", { name: "Open in Spotify" });
     expect(link).toHaveAttribute(
       "href",
-      `https://open.spotify.com/album/${IN_RAINBOWS.id}`,
+      `https://open.spotify.com/album/${IN_RAINBOWS.spotifyId}`,
     );
     fireEvent.click(link);
 
     await waitFor(() =>
       expect(calls).toContainEqual({
         cmd: "open_album_in_spotify",
-        args: { id: IN_RAINBOWS.id },
+        args: { spotifyId: IN_RAINBOWS.spotifyId },
       }),
     );
   });
@@ -286,7 +295,13 @@ describe("The album page", () => {
         ...IN_RAINBOWS,
         tracks: [
           ...IN_RAINBOWS.tracks,
-          { id: "t3", disc: 2, number: 1, title: "MK 1", durationMs: 65_000 },
+          {
+            spotifyId: "t3",
+            disc: 2,
+            number: 1,
+            title: "MK 1",
+            durationMs: 65_000,
+          },
         ],
       }),
     });

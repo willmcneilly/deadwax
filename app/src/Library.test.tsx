@@ -6,12 +6,13 @@ import {
   within,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { AlbumCard, SearchResults } from "./api";
+import type { AlbumCard, SearchAlbum, SearchResults } from "./api";
 import Library from "./Library";
 import { backEnd, EMPTY_COLLECTION, NOTHING_PLAYING } from "./mockBackEnd";
 
+/** An album in the collection, named by its Deadwax ID. */
 const album = (n: number, extra: Partial<AlbumCard> = {}): AlbumCard => ({
-  id: `album${n}`,
+  id: `deadwax-${n}`,
   title: `Album ${n}`,
   artist: `Artist ${n}`,
   year: 2000 + n,
@@ -19,8 +20,22 @@ const album = (n: number, extra: Partial<AlbumCard> = {}): AlbumCard => ({
   ...extra,
 });
 
+/** The same album as search finds it, named by its Spotify ID. */
+const found = (n: number): SearchAlbum => {
+  const { title, artist, year, coverUrl } = album(n);
+  return { spotifyId: `spotify${n}`, title, artist, year, coverUrl };
+};
+
 const IN_RAINBOWS: AlbumCard = {
-  id: "5vkqYmiPBYLaalcmjujWxK",
+  id: "0b1c7e1e-6a0e-4c43-9f1e-2b8f6f1d9a01",
+  title: "In Rainbows",
+  artist: "Radiohead",
+  year: 2007,
+  coverUrl: "https://i.scdn.co/image/in-rainbows-640",
+};
+
+const IN_RAINBOWS_FOUND: SearchAlbum = {
+  spotifyId: "5vkqYmiPBYLaalcmjujWxK",
   title: "In Rainbows",
   artist: "Radiohead",
   year: 2007,
@@ -31,7 +46,7 @@ const IN_RAINBOWS: AlbumCard = {
 function page(offset: number, last = false): SearchResults {
   return {
     results: Array.from({ length: last ? 3 : 10 }, (_, i) => ({
-      album: album(offset + i),
+      album: found(offset + i),
       inCollection: offset + i === 0,
     })),
     nextOffset: last ? null : offset + 10,
@@ -147,7 +162,7 @@ describe("Library", () => {
         if (offset === 0) return page(0);
         // Spotify's ranking shifted: album 9 comes back on the next page.
         const next = page(10, true);
-        next.results[0] = { album: album(9), inCollection: false };
+        next.results[0] = { album: found(9), inCollection: false };
         return next;
       },
     });
@@ -210,13 +225,13 @@ describe("Library", () => {
     ).toBeInTheDocument();
   });
 
-  it("adds an album to the grid", async () => {
+  it("adds an album by its Spotify ID, and the grid has it by its Deadwax ID", async () => {
     let finish: (album: AlbumCard) => void = () => {};
     const calls = backEnd({
       ...NOTHING_PLAYING,
       get_collection: () => [album(50)],
       search_albums: () => ({
-        results: [{ album: IN_RAINBOWS, inCollection: false }],
+        results: [{ album: IN_RAINBOWS_FOUND, inCollection: false }],
         nextOffset: null,
       }),
       add_album: () => new Promise<AlbumCard>((resolve) => (finish = resolve)),
@@ -238,7 +253,7 @@ describe("Library", () => {
     ).toHaveTextContent("Adding…");
     expect(calls).toContainEqual({
       cmd: "add_album",
-      args: { id: IN_RAINBOWS.id },
+      args: { spotifyId: IN_RAINBOWS_FOUND.spotifyId },
     });
 
     finish(IN_RAINBOWS);

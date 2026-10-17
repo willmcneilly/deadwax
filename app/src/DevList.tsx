@@ -15,8 +15,11 @@ export const RESTORE_FROM_DEV_LIST = "restore-from-dev-list";
 
 export type RestoreReport = {
   restored: number;
-  /** Albums Spotify couldn't give us. They stay in the dev list. */
-  failed: { id: string; message: string }[];
+  /**
+   * Albums Spotify couldn't give us, by Spotify ID: they never got a Deadwax
+   * ID. They stay in the dev list.
+   */
+  failed: { spotifyId: string; message: string }[];
 };
 
 const devListMissing = () => invoke<number>("dev_list_missing");
@@ -133,8 +136,8 @@ function DevList({ empty, onChanged, onFailed }: Props) {
               </p>
               <ul>
                 {state.report.failed.map((f) => (
-                  <li key={f.id}>
-                    {f.id}: {f.message}
+                  <li key={f.spotifyId}>
+                    {f.spotifyId}: {f.message}
                   </li>
                 ))}
               </ul>

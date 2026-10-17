@@ -25,9 +25,15 @@ export function errorMessage(error: unknown): string {
   return typeof error === "string" ? error : String(error);
 }
 
-/** An album as the grid and the search results show it. */
+/**
+ * An album's Deadwax ID (`AlbumId` in Rust): what every command names an
+ * album in the collection by. It isn't the Spotify ID.
+ */
+export type AlbumId = string;
+
+/** An album in your collection, as the grid shows it. */
 export type AlbumCard = {
-  id: string;
+  id: AlbumId;
   title: string;
   artist: string;
   year: number | null;
@@ -35,7 +41,20 @@ export type AlbumCard = {
   coverUrl: string | null;
 };
 
-export type SearchResult = { album: AlbumCard; inCollection: boolean };
+/**
+ * An album as Spotify's search finds it. It has no Deadwax ID until it's
+ * added, so it's named by its Spotify ID.
+ */
+export type SearchAlbum = {
+  spotifyId: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  /** Spotify's largest cover, about 640 pixels. */
+  coverUrl: string | null;
+};
+
+export type SearchResult = { album: SearchAlbum; inCollection: boolean };
 
 export type SearchResults = {
   results: SearchResult[];
@@ -46,10 +65,13 @@ export type SearchResults = {
 export const getCollection = () => invoke<AlbumCard[]>("get_collection");
 export const searchAlbums = (query: string, offset: number) =>
   invoke<SearchResults>("search_albums", { query, offset });
-export const addAlbum = (id: string) => invoke<AlbumCard>("add_album", { id });
+/** Adds the album with this Spotify ID, which gets a new Deadwax ID. */
+export const addAlbum = (spotifyId: string) =>
+  invoke<AlbumCard>("add_album", { spotifyId });
 
 export type AlbumTrack = {
-  id: string;
+  /** Tracks have no Deadwax IDs: this is what `playAlbum` starts from. */
+  spotifyId: string;
   disc: number;
   number: number;
   title: string;
@@ -58,7 +80,9 @@ export type AlbumTrack = {
 
 /** An album as the album page shows it (`AlbumPage` in commands.rs). */
 export type AlbumDetails = {
-  id: string;
+  id: AlbumId;
+  /** Where Open in Spotify goes. */
+  spotifyId: string;
   title: string;
   artist: string;
   year: number | null;
@@ -71,23 +95,25 @@ export type AlbumDetails = {
 };
 
 /**
- * The event Rust sends, with the album's ID, when it has stored the album's
- * high-res cover (app/src-tauri/src/artwork.rs).
+ * The event Rust sends, with the album's Deadwax ID, when it has stored the
+ * album's high-res cover (app/src-tauri/src/artwork.rs).
  */
 export const ARTWORK_FOUND = "artwork-found";
 
 /** The album page, from the cache. */
-export const getAlbum = (id: string) =>
+export const getAlbum = (id: AlbumId) =>
   invoke<AlbumDetails>("get_album", { id });
 /**
  * Fetches the album again if its cache is over a week old. Null if it was
  * fresh enough, so nothing changed.
  */
-export const refreshAlbum = (id: string) =>
+export const refreshAlbum = (id: AlbumId) =>
   invoke<AlbumDetails | null>("refresh_album", { id });
-export const removeAlbum = (id: string) => invoke<void>("remove_album", { id });
-export const openAlbumInSpotify = (id: string) =>
-  invoke<void>("open_album_in_spotify", { id });
+export const removeAlbum = (id: AlbumId) =>
+  invoke<void>("remove_album", { id });
+/** Opens the album with this Spotify ID, in or out of the collection. */
+export const openAlbumInSpotify = (spotifyId: string) =>
+  invoke<void>("open_album_in_spotify", { spotifyId });
 
 /** A Spotify Connect device, as the device picker shows it. */
 export type DeviceChoice = {
@@ -122,7 +148,10 @@ export type NowPlaying = {
     title: string;
     artist: string;
     album: string | null;
-    albumId: string | null;
+    /** The album's Deadwax ID, if it's in the collection. */
+    albumId: AlbumId | null;
+    /** Where Open in Spotify goes, in the collection or not. */
+    spotifyAlbumId: string | null;
     durationMs: number;
     /**
      * The album's high-res cover if it's in the collection and one has been
@@ -136,9 +165,15 @@ export const getDevices = () => invoke<Devices>("get_devices");
 /** Remembers the device you chose, by name. */
 export const chooseDevice = (name: string) =>
   invoke<void>("choose_device", { name });
-/** Plays the album on the named device, from the first track or `trackId`. */
-export const playAlbum = (id: string, device: string, trackId: string | null) =>
-  invoke<PlayOutcome>("play_album", { id, device, trackId });
+/**
+ * Plays the collected album on the named device, from the first track or the
+ * track with the Spotify ID `trackId`.
+ */
+export const playAlbum = (
+  id: AlbumId,
+  device: string,
+  trackId: string | null,
+) => invoke<PlayOutcome>("play_album", { id, device, trackId });
 /** Null when Spotify isn't playing anything. */
 export const getPlayback = () => invoke<NowPlaying | null>("get_playback");
 export const pausePlayback = () => invoke<void>("pause_playback");

@@ -9,6 +9,7 @@ import {
   refreshAlbum,
   removeAlbum,
   type AlbumDetails,
+  type AlbumId,
   type AlbumTrack,
 } from "./api";
 import Cover from "./Cover";
@@ -17,11 +18,11 @@ import useDevices from "./useDevices";
 import "./AlbumPage.css";
 
 type Props = {
-  id: string;
+  id: AlbumId;
   /** Back to the grid. */
   onBack: () => void;
   /** The album has left the collection. */
-  onRemoved: (id: string) => void;
+  onRemoved: (id: AlbumId) => void;
   /** Spotify has started playing the album. */
   onPlayed: () => void;
   onFailed: (error: unknown) => void;
@@ -145,10 +146,10 @@ function AlbumPage({ id, onBack, onRemoved, onPlayed, onFailed }: Props) {
                   back to it (RFC-001, "Spotify's attribution rules"). Rust
                   opens it, in the browser or the Spotify app. */}
               <a
-                href={`https://open.spotify.com/album/${album.id}`}
+                href={`https://open.spotify.com/album/${album.spotifyId}`}
                 onClick={(event) => {
                   event.preventDefault();
-                  openAlbumInSpotify(album.id).catch(onFailed);
+                  openAlbumInSpotify(album.spotifyId).catch(onFailed);
                 }}
               >
                 Open in Spotify
@@ -229,15 +230,15 @@ function Tracks({
   return (
     <ol className="tracks" aria-label={label}>
       {tracks.map((track, index) => (
-        <li key={track.id || index} className="track">
+        <li key={track.spotifyId || index} className="track">
           <span className="track-number">{track.number}</span>
           {/* A track Spotify gave no ID (a local file) can't be played. */}
-          {track.id ? (
+          {track.spotifyId ? (
             <button
               type="button"
               className="track-title"
               aria-label={`Play ${track.title}`}
-              onClick={() => onPlay?.(track.id)}
+              onClick={() => onPlay?.(track.spotifyId)}
               disabled={!onPlay}
             >
               {track.title}
