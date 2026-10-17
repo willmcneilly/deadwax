@@ -153,11 +153,11 @@ pub fn of_image(image: &[u8]) -> Result<Palette, PaletteError> {
 /// The palette of raw RGB pixels, three bytes each. No pixels at all give
 /// the neutral palette.
 pub fn of_pixels(rgb: &[u8]) -> Palette {
-    let pixels: Vec<[u8; 3]> = rgb.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect();
+    let pixels: &[[u8; 3]] = rgb.as_chunks::<3>().0;
     if pixels.is_empty() {
         return Palette::neutral();
     }
-    extract(&pixels)
+    extract(pixels)
 }
 
 type Rgb = [f64; 3];
@@ -198,7 +198,7 @@ fn extract(pixels: &[[u8; 3]]) -> Palette {
         })
         .collect();
     // Stable, like JavaScript's sort.
-    colours.sort_by(|a, b| b.count.cmp(&a.count));
+    colours.sort_by_key(|c| std::cmp::Reverse(c.count));
 
     // Merge near neighbours so one big flat area doesn't fill every slot.
     let mut merged: Vec<Swatch> = Vec::new();
@@ -208,7 +208,7 @@ fn extract(pixels: &[[u8; 3]]) -> Palette {
             None => merged.push(c),
         }
     }
-    merged.sort_by(|a, b| b.count.cmp(&a.count));
+    merged.sort_by_key(|m| std::cmp::Reverse(m.count));
     let top = &merged[..merged.len().min(12)];
 
     let dominant = merged[0].rgb;
