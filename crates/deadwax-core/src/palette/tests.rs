@@ -177,7 +177,8 @@ fn colours_are_stored_as_hex() {
 
 #[test]
 fn a_walk_that_runs_out_of_lightness_ends_at_white_or_black() {
-    // No grey reaches 22:1, so the walk runs off the end of the range.
+    // No grey reaches 22:1, so the walk runs off the end of the range, and
+    // stops at the most contrast there is.
     let grey = Lch {
         l: 0.5,
         c: 0.0,

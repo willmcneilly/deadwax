@@ -339,8 +339,8 @@ fn rgb(colour: Lch) -> Rgb {
 }
 
 /// Walks a colour's lightness away from the paper until it reaches the
-/// target. If the end of the range is reached first, which the prototype
-/// allowed, it's white or black, which always does.
+/// target. If the end of the range comes first, the walk has gone past it,
+/// so the colour is white or black: the most any text can have on that paper.
 fn reach(colour: Lch, paper: Rgb, target: f64, dark: bool) -> Rgb {
     let mut l = colour.l;
     let step = if dark { 0.01 } else { -0.01 };
@@ -348,9 +348,6 @@ fn reach(colour: Lch, paper: Rgb, target: f64, dark: bool) -> Rgb {
     while contrast(out, paper) < target && (0.0..=1.0).contains(&l) {
         l += step;
         out = rgb(Lch { l, ..colour });
-    }
-    if contrast(out, paper) < target {
-        out = if dark { [255.0; 3] } else { [0.0; 3] };
     }
     out
 }
