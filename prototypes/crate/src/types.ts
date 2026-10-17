@@ -14,6 +14,7 @@ export interface Album {
   label: string | null;
   tracks: Track[];
   key?: string; // set when `?many` repeats an album
+  coverUrl?: string; // set for a record from outside the collection
 }
 
 export const albumKey = (album: Album) => album.key ?? album.id;
@@ -22,14 +23,7 @@ export type CrateItem =
   | { kind: "divider"; id: string; label: string; count: number; tab: number }
   | { kind: "album"; id: string; album: Album };
 
-export interface Playback {
-  album: Album;
-  index: number;
-  positionMs: number;
-  paused: boolean;
-}
-
-export const cover = (album: Album, size: "sm" | "lg") => `/covers/${album.id}-${size}.jpg`;
+export const cover = (album: Album, size: "sm" | "lg") => album.coverUrl ?? `/covers/${album.id}-${size}.jpg`;
 
 // Store titles carry reissue noise: "(Remastered 2011)", "[Deluxe Edition]".
 const NOISE = /\s*[([][^)\]]*(re-?master|deluxe|edition|version|anniversary|expanded|mono|stereo)[^)\]]*[)\]]/gi;

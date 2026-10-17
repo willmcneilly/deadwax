@@ -17,6 +17,16 @@ export function SleeveFront({ album, size }: { album: Album; size: "sm" | "lg" }
   );
 }
 
+// A record from outside the collection, as Spotify shows it: its cover in a
+// plain paper sleeve, with none of the crate's wear.
+export function StrangerFront({ album }: { album: Album }) {
+  return (
+    <div className="sleeve-face stranger">
+      <img src={cover(album, "lg")} alt="" draggable={false} decoding="async" />
+    </div>
+  );
+}
+
 export function SleeveBack({
   album,
   palette,

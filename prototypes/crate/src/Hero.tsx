@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Palette } from "./palette";
-import { SleeveBack, SleeveFront } from "./Sleeve";
+import { SleeveBack, SleeveFront, StrangerFront } from "./Sleeve";
 import type { Album } from "./types";
 
 const EASE = "cubic-bezier(.2,.75,.15,1)";
@@ -8,6 +8,10 @@ const EASE = "cubic-bezier(.2,.75,.15,1)";
 // The record you've pulled out of the crate. It flies from the crate to the
 // middle of the screen, turns over to show the tracklist, and turns back to
 // hover while it plays.
+//
+// A stranger's record (playing, but not in the collection) comes up from
+// below in a plain sleeve, with no tracklist to turn over to. The
+// now-playing line offers to add it.
 export function Hero({
   album,
   palette,
@@ -19,6 +23,8 @@ export function Hero({
   onReturned,
   onPick,
   onTurn,
+  stranger,
+  starting,
   away = false,
 }: {
   album: Album;
@@ -31,6 +37,9 @@ export function Hero({
   onReturned: () => void;
   onPick: (index: number) => void;
   onTurn: () => void;
+  stranger: boolean;
+  /** Play was pressed and the needle is on its way down. */
+  starting: boolean;
   away?: boolean;
 }) {
   const lift = useRef<HTMLDivElement>(null);
@@ -82,7 +91,9 @@ export function Hero({
   const back = turns % 2 === 1;
 
   return (
-    <div className={`hero ${floating ? "floating" : ""} ${returning ? "returning" : ""} ${away ? "away" : ""}`}>
+    <div
+      className={`hero ${floating ? "floating" : ""} ${returning ? "returning" : ""} ${away ? "away" : ""} ${starting ? "starting" : ""}`}
+    >
       <div className="hero-lift" ref={lift}>
         <div className="hero-offset">
           <div className="hero-shadow" />
@@ -94,7 +105,7 @@ export function Hero({
                 onClick={() => !back && onTurn()}
               >
                 <div className="face front" aria-hidden={back}>
-                  <SleeveFront album={album} size="lg" />
+                  {stranger ? <StrangerFront album={album} /> : <SleeveFront album={album} size="lg" />}
                 </div>
                 <div className="face back" aria-hidden={!back}>
                   <SleeveBack album={album} palette={palette} current={current} onPick={onPick} />
