@@ -168,7 +168,8 @@ function commandProblems(
 export function totals(prose: string): string[] {
   // The words between describe the tests ("13 unit tests"), so a sentence running on ("port 1442 but the test") or a count of CI checks isn't one.
   const between = /^(?:but|and|or|the|a|an|of|to|in|on|that|which|checks?|jobs?)$/i;
-  return [...prose.matchAll(/\b\d[\d,]*\s+((?:[A-Za-z-]+\s+){0,2}?)(?:tests?|passed|passing)\b/gi)]
+  // A number after "PR", "#" or "DWX-" names a PR or ticket ("PR 8 quoted test names").
+  return [...prose.matchAll(/(?<!\bPR\s+|[#-])\b\d[\d,]*\s+((?:[A-Za-z-]+\s+){0,2}?)(?:tests?|passed|passing)\b/gi)]
     .filter((m) => !m[1].split(/\s+/).some((word) => between.test(word)))
     .map((m) => m[0]);
 }

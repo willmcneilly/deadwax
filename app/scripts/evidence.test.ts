@@ -146,4 +146,8 @@ describe("totals", () => {
   it("doesn't take a sentence running on, or a count of CI checks, for one", () => {
     expect(totals("It starts on port 1442 but the test uses another, and 3 checks passed.")).toEqual([]);
   });
+
+  it("doesn't take a PR or ticket number for one", () => {
+    expect(totals("PR 8 quoted test names; #12 tests it; DWX-15 tests it too.")).toEqual([]);
+  });
 });
