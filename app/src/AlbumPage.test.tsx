@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it } from "vitest";
-import { ARTWORK_FOUND, type AlbumCard, type AlbumDetails } from "./api";
+import { ALBUM_UPDATED, type AlbumCard, type AlbumDetails } from "./api";
 import Library from "./Library";
 import { backEnd, NOTHING_PLAYING } from "./mockBackEnd";
 
@@ -144,13 +144,17 @@ describe("The album page", () => {
     ).toHaveLength(1);
   });
 
-  it("swaps in the high-res cover when Rust finds it, and the grid keeps Spotify's", async () => {
-    const HIGH_RES =
-      "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg";
-    let found = false;
+  it("swaps in the 1600 from disk when Rust has the cover, and the grid gets the 320", async () => {
+    const LARGE = `cover://localhost/${IN_RAINBOWS.id}/1600`;
+    const SMALL = `cover://localhost/${IN_RAINBOWS.id}/320`;
+    let onDisk = false;
     const calls = collection({
       get_album: () =>
-        found ? { ...IN_RAINBOWS, coverUrl: HIGH_RES } : IN_RAINBOWS,
+        onDisk ? { ...IN_RAINBOWS, coverUrl: LARGE } : IN_RAINBOWS,
+      get_collection: () => [
+        onDisk ? { ...card(IN_RAINBOWS), coverUrl: SMALL } : card(IN_RAINBOWS),
+        OTHER,
+      ],
     });
 
     await openInRainbows();
@@ -158,13 +162,13 @@ describe("The album page", () => {
       screen.getByRole("img", { name: "Cover of In Rainbows" });
     expect(cover()).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
 
-    // Another album's artwork changes nothing.
-    await emit(ARTWORK_FOUND, OTHER.id);
+    // Another album's update changes nothing on this page.
+    await emit(ALBUM_UPDATED, OTHER.id);
     expect(calls.filter((c) => c.cmd === "get_album")).toHaveLength(1);
 
-    found = true;
-    await emit(ARTWORK_FOUND, IN_RAINBOWS.id);
-    await waitFor(() => expect(cover()).toHaveAttribute("src", HIGH_RES));
+    onDisk = true;
+    await emit(ALBUM_UPDATED, IN_RAINBOWS.id);
+    await waitFor(() => expect(cover()).toHaveAttribute("src", LARGE));
 
     fireEvent.click(screen.getByRole("button", { name: "← Your collection" }));
     const inGrid = await within(
@@ -172,7 +176,7 @@ describe("The album page", () => {
         name: "Your collection",
       }),
     ).findByRole("img", { name: "Cover of In Rainbows" });
-    expect(inGrid).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
+    expect(inGrid).toHaveAttribute("src", SMALL);
   });
 
   it("keeps the cached page when fetching it again fails", async () => {

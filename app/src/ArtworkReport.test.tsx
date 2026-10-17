@@ -15,6 +15,10 @@ const REPORT: Report = {
       url: "https://is1-ssl.mzstatic.com/a/10000x10000bb.jpg",
       width: 4000,
       height: 4000,
+      steps: [
+        { step: "Lookup", status: "Done", error: null },
+        { step: "Sizes", status: "Done", error: null },
+      ],
     },
     {
       id: "b",
@@ -24,6 +28,14 @@ const REPORT: Report = {
       url: "https://cdn-images.dzcdn.net/b/1000x1000.jpg",
       width: null,
       height: null,
+      steps: [
+        { step: "Lookup", status: "Done", error: null },
+        {
+          step: "Sizes",
+          status: "Failed",
+          error: "Deezer replied 404 Not Found",
+        },
+      ],
     },
     {
       id: "c",
@@ -33,6 +45,10 @@ const REPORT: Report = {
       url: null,
       width: null,
       height: null,
+      steps: [
+        { step: "Lookup", status: "Done", error: null },
+        { step: "Sizes", status: "Done", error: null },
+      ],
     },
     {
       id: "d",
@@ -42,6 +58,10 @@ const REPORT: Report = {
       url: null,
       width: null,
       height: null,
+      steps: [
+        { step: "Lookup", status: "Queued", error: null },
+        { step: "Sizes", status: "Queued", error: null },
+      ],
     },
   ],
   totals: [
@@ -79,7 +99,7 @@ describe("The Artwork report", () => {
     expect(calls.map((c) => c.cmd)).not.toContain("artwork_report");
   });
 
-  it("lists every album with its cover source and size, and totals by source", async () => {
+  it("lists every album with its cover source, size and steps, and totals by source", async () => {
     open();
     await screen.findByText(/Your collection is empty/);
 
@@ -95,10 +115,34 @@ describe("The Artwork report", () => {
           .map((cell) => cell.textContent),
       );
     expect(rows).toEqual([
-      ["In Rainbows", "Radiohead", "iTunes", "4000 × 4000"],
-      ["Kid A", "Radiohead", "Deezer", "Unknown size"],
-      ["Amnesiac", "Radiohead", "Spotify", "No cover"],
-      ["OK Computer", "Radiohead", "Not looked up yet", "No cover"],
+      [
+        "In Rainbows",
+        "Radiohead",
+        "iTunes",
+        "4000 × 4000",
+        "Lookup: Done · Sizes: Done",
+      ],
+      [
+        "Kid A",
+        "Radiohead",
+        "Deezer",
+        "Unknown size",
+        "Lookup: Done · Sizes: Failed (Deezer replied 404 Not Found)",
+      ],
+      [
+        "Amnesiac",
+        "Radiohead",
+        "Spotify",
+        "No cover",
+        "Lookup: Done · Sizes: Done",
+      ],
+      [
+        "OK Computer",
+        "Radiohead",
+        "Not looked up yet",
+        "No cover",
+        "Lookup: Queued · Sizes: Queued",
+      ],
     ]);
     const totals = within(
       within(shown).getByRole("list", { name: "Totals by source" }),
