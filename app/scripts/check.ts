@@ -144,10 +144,11 @@ async function runJobs(
   root: string,
   toRun: readonly Planned[],
   print: (text: string) => void,
+  npmCi: Job,
 ): Promise<Map<string, Outcome>> {
   const logDir = join(root, "target", "check");
   mkdirSync(logDir, { recursive: true });
-  const width = Math.max(NPM_CI.name.length, ...toRun.map((p) => p.job.name.length));
+  const width = Math.max(npmCi.name.length, ...toRun.map((p) => p.job.name.length));
   const outcomes = new Map<string, Outcome>();
   const report = (name: string, outcome: Outcome) => {
     outcomes.set(name, outcome);
@@ -156,9 +157,9 @@ async function runJobs(
 
   let npm: Promise<Outcome> | undefined;
   if (toRun.some((p) => p.job.nodeModules) && !nodeModulesCurrent(root)) {
-    npm = runOne(root, NPM_CI, logDir).then((outcome) => {
+    npm = runOne(root, npmCi, logDir).then((outcome) => {
       if (outcome.ok) writeFileSync(lockMarker(root), lockHash(root));
-      report(NPM_CI.name, outcome);
+      report(npmCi.name, outcome);
       return outcome;
     });
   }
@@ -219,6 +220,8 @@ export async function check(
   options: Options,
   jobs: readonly Job[] = JOBS,
   print: (text: string) => void = console.log,
+  /** Installs app/node_modules: the tests swap in a small command. */
+  npmCi: Job = NPM_CI,
 ): Promise<number> {
   if (options.fetch) fetchMain(root, print);
   const head = git(root, ["rev-parse", "HEAD"]);
@@ -286,7 +289,7 @@ export async function check(
   if (toRun.some((p) => p.job.cargo)) warm(root, print);
 
   print("");
-  const outcomes = await runJobs(root, toRun, print);
+  const outcomes = await runJobs(root, toRun, print, npmCi);
 
   const failed = [...outcomes].filter(([, o]) => !o.ok).map(([name]) => name);
   const treeAfter = workingTree(root);
@@ -303,7 +306,7 @@ export async function check(
   }
   pruneStamps(root);
 
-  const width = Math.max(...planned.map((p) => p.job.name.length), NPM_CI.name.length);
+  const width = Math.max(...planned.map((p) => p.job.name.length), npmCi.name.length);
   print("\nSummary:");
   for (const [name, outcome] of outcomes) print(line(width, name, outcome, root));
   for (const p of passedBefore) {

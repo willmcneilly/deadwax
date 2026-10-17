@@ -1,7 +1,7 @@
 // scripts/check against real git repositories in a temporary folder, with
 // small jobs in place of cargo and npm.
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -186,6 +186,69 @@ describe("scripts/check", () => {
     git(repo, ["push", "--quiet", "origin", "HEAD:main"]);
     write(repo, "crates/a.rs", "fn a() {}\n");
     expect(await ran()).toBe(true);
+  });
+
+  it("starts a job only after the jobs it waits for", async () => {
+    const jobs: Job[] = [
+      { name: "first", inputs: ["crates/"], command: ["sh", "-c", "sleep 0.3 && mkdir -p target && touch target/first"] },
+      { name: "second", inputs: ["crates/"], command: ["test", "-e", "target/first"], after: ["first"] },
+    ];
+    write(repo, "crates/a.rs", "fn b() {}\n");
+    const lines: string[] = [];
+    const code = await check(repo, { fetch: false }, jobs, (text) => lines.push(text));
+    expect(lines.join("\n")).toMatch(/✓ second/);
+    expect(code).toBe(0);
+  });
+
+  describe("npm ci", () => {
+    const jobs: Job[] = [
+      { name: "frontend", inputs: ["app/"], command: ["sh", "-c", "mkdir -p target && touch target/ran"], nodeModules: true },
+    ];
+    const npmCi = (command: string): Job => ({
+      name: "frontend: npm ci",
+      inputs: [],
+      command: ["sh", "-c", command],
+    });
+    const runWith = async (npm: Job) => {
+      const lines: string[] = [];
+      const code = await check(repo, { fetch: false, rerun: true }, jobs, (text) => lines.push(text), npm);
+      return { code, out: lines.join("\n") };
+    };
+
+    beforeEach(() => {
+      write(repo, "app/package-lock.json", "{}\n");
+      write(repo, "app/a.ts", "export const a = 1;\n");
+    });
+
+    it("runs before the jobs that need it, and only again when the lock file changes", async () => {
+      const install = npmCi("mkdir -p app/node_modules && echo installed >> target/npm.log");
+      mkdirSync(join(repo, "target"), { recursive: true });
+      expect((await runWith(install)).out).toMatch(/✓ frontend: npm ci[\s\S]*✓ frontend/);
+      expect((await runWith(install)).out).not.toMatch(/npm ci/);
+      write(repo, "app/package-lock.json", '{"changed":true}\n');
+      expect((await runWith(install)).out).toMatch(/✓ frontend: npm ci/);
+    });
+
+    it("doesn't start the jobs that need it when it fails", async () => {
+      const { code, out } = await runWith(npmCi("exit 1"));
+      expect(code).toBe(1);
+      expect(out).toMatch(/✗ frontend +not run: npm ci failed/);
+      expect(existsSync(join(repo, "target", "ran"))).toBe(false);
+    });
+  });
+
+  it("counts a file's mode as a change", async () => {
+    write(repo, "crates/run.sh", "echo\n");
+    commit(repo, "Add a script");
+    git(repo, ["push", "--quiet", "origin", "HEAD:main"]);
+    chmodSync(join(repo, "crates/run.sh"), 0o755);
+    expect((await run({ fetch: false })).out).toMatch(/✓ rust/);
+  });
+
+  it("leaves no copy of the index behind, so runs in the same worktree don't collide", async () => {
+    write(repo, "crates/a.rs", "fn b() {}\n");
+    await run({ fetch: false });
+    expect(readdirSync(join(repo, ".git")).filter((name) => name.startsWith("deadwax-check-index"))).toEqual([]);
   });
 
   it("with --all, runs every job", async () => {

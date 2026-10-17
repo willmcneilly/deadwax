@@ -25,7 +25,7 @@ export type Job = {
   cargo?: boolean;
 };
 
-/** A file in a git tree: its blob hash and path. */
+/** A file in a git tree: its mode and blob hash (`hash`), and its path. */
 export type TreeFile = { hash: string; path: string };
 
 export type Status =

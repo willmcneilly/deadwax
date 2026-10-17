@@ -1,7 +1,7 @@
 // The git the scripts need, run synchronously in a checkout.
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, statSync, utimesSync } from "node:fs";
+import { copyFileSync, existsSync, rmSync, statSync, utimesSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import type { TreeFile } from "./checkPlan.ts";
 
@@ -80,7 +80,9 @@ export function mainCheckout(root: string): string | undefined {
  * last `git add` (a "racily clean" entry).
  */
 export function workingTree(root: string): string {
-  const index = gitPath(root, "deadwax-check-index");
+  // One per process, so a check in the background and a push's hook in the
+  // same worktree don't fight over the copy and its lock.
+  const index = gitPath(root, `deadwax-check-index-${process.pid}`);
   const real = gitPath(root, "index");
   if (existsSync(real)) {
     copyFileSync(real, index);
@@ -88,8 +90,12 @@ export function workingTree(root: string): string {
     utimesSync(index, atime, mtime);
   }
   const env = { GIT_INDEX_FILE: index };
-  git(root, ["add", "--all"], env);
-  return git(root, ["write-tree"], env);
+  try {
+    git(root, ["add", "--all"], env);
+    return git(root, ["write-tree"], env);
+  } finally {
+    rmSync(index, { force: true });
+  }
 }
 
 /** Every file in a tree, sorted by path. */
@@ -100,7 +106,9 @@ export function treeFiles(root: string, treeish: string): TreeFile[] {
     .filter(Boolean)
     .map((line) => {
       const tab = line.indexOf("\t");
-      return { hash: line.slice(0, tab).split(" ")[2], path: line.slice(tab + 1) };
+      // The mode too, so making a script executable (or not) is a change.
+      const [mode, , hash] = line.slice(0, tab).split(" ");
+      return { hash: `${mode} ${hash}`, path: line.slice(tab + 1) };
     });
 }
 
