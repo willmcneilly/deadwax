@@ -169,54 +169,29 @@ body {
 
 /* ---------- dividers ---------- */
 
-/* Smooth card with a slim tab, in one of three materials (see
-   dividers.ts): paper, an off-white card with a soft light on it (the
-   default); ink, a near-black card; acrylic, the smoky plastic of a shop's
-   bin dividers. No texture.
+/* A smooth paper card with a slim tab and a soft light in the middle. No
+   texture.
 
    The card's top edge is exactly the tab's colour, and the tab reaches 2px
    down into the card, so no seam shows where they meet once the 3D
-   transform scales them. */
-:root.dividers-ink {
-  --div-face: #23201c;
-  --div-face-low: #191714;
-  --div-ink: #e9e1d1;
-  --div-edge: rgb(255 255 255 / 0.07);
-  --div-glow: none;
-}
-:root,
-:root.dividers-paper {
+   transform scales them. The light fades out before it reaches the top. */
+:root {
   --div-face: #eee8dc;
   --div-face-low: #ddd4c3;
   --div-ink: #24201b;
   --div-edge: rgb(255 255 255 / 0.5);
-  /* Light falling on the middle of the card. */
-  --div-glow: radial-gradient(ellipse 72% 46% at 50% 52%, rgb(255 253 248 / 0.75), rgb(255 253 248 / 0) 100%);
-}
-:root.dividers-acrylic {
-  --div-face: #4a4640;
-  --div-face-low: #33302c;
-  --div-ink: #f1e9db;
-  --div-edge: rgb(255 255 255 / 0.18);
-  --div-glow: none;
 }
 
 .divider-card {
   position: absolute;
   inset: 0;
   background:
-    var(--div-glow),
+    radial-gradient(ellipse 72% 46% at 50% 52%, rgb(255 253 248 / 0.75), rgb(255 253 248 / 0) 100%),
     linear-gradient(var(--div-face), var(--div-face-low));
   border-radius: 2px 2px 0 0;
   color: var(--div-ink);
   font-family: var(--hand);
   box-shadow: inset 0 1px 0 var(--div-edge);
-}
-:root.dividers-acrylic .divider-card {
-  /* A sheen across the plastic. */
-  background:
-    linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.06) 42%, transparent 55%),
-    linear-gradient(var(--div-face), var(--div-face-low));
 }
 .divider-tab {
   position: absolute;

@@ -3,7 +3,6 @@ import { Account } from "./Account";
 import { Colours } from "./Colours";
 import { loadFixture } from "./connect/fake";
 import { Dev } from "./Dev";
-import { restoreDividers } from "./dividers";
 import { installTextures } from "./grain";
 import { restoreTypeface } from "./typeface";
 import type { Album } from "./types";
@@ -13,7 +12,6 @@ import "./connect.css";
 
 installTextures();
 restoreTypeface();
-restoreDividers();
 
 const root = createRoot(document.getElementById("root")!);
 
