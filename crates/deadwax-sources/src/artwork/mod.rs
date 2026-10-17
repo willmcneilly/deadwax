@@ -11,9 +11,10 @@
 //! The barcode goes first everywhere because it names the exact release.
 //! Artist and title can find a different edition with a different cover.
 //!
-//! We keep only the winning image's URL, its source and its pixel size, never
-//! the image: Apple expects artwork to be loaded from Apple. The size is read
-//! from the start of the image, which is then dropped.
+//! The lookup keeps the winning image's URL, its source and its pixel size,
+//! read from the start of the image. Then the album job queue downloads the
+//! winner once (`Finder::download`) and keeps it in sizes on disk, for
+//! Deadwax's own use (RFC-002, "2. Local artwork, in sizes").
 
 mod deezer;
 mod itunes;
@@ -49,6 +50,10 @@ pub const MUSICBRAINZ_INTERVAL: Duration = Duration::from_secs(1);
 /// How much of an image we read to find its size. A JPEG's size comes after
 /// its metadata, which is usually a few kilobytes.
 const SIZE_PROBE: usize = 512 * 1024;
+
+/// The most we download for one cover. The biggest real covers are a few
+/// megabytes, so anything past this isn't a cover.
+pub const MAX_DOWNLOAD: usize = 40 * 1024 * 1024;
 
 /// How many matching MusicBrainz releases we ask the Cover Art Archive
 /// about, when the first ones have no front cover.
@@ -91,6 +96,8 @@ pub enum ArtworkError {
         service: &'static str,
         message: String,
     },
+    #[error("{service}'s cover is over {} MB", MAX_DOWNLOAD / 1024 / 1024)]
+    TooBig { service: &'static str },
 }
 
 /// What we're looking for: by barcode, or by artist and title.
@@ -165,6 +172,28 @@ impl<C: Clock + Clone> Finder<C> {
             source: ArtworkSource::Spotify,
             cover: album.largest_cover().cloned(),
         })
+    }
+
+    /// Downloads the whole image the lookup found, from `source`.
+    pub async fn download(
+        &self,
+        source: ArtworkSource,
+        cover: &Cover,
+    ) -> Result<Vec<u8>, ArtworkError> {
+        let service = source_name(source);
+        let mut response = self.send(service, self.client.get(&cover.url)).await?;
+        let mut image = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| ArtworkError::Network { service, error })?
+        {
+            if image.len() + chunk.len() > MAX_DOWNLOAD {
+                return Err(ArtworkError::TooBig { service });
+            }
+            image.extend_from_slice(&chunk);
+        }
+        Ok(image)
     }
 
     /// The cover URL of the first of `source`'s results that is `album`.
