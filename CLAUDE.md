@@ -34,7 +34,7 @@ scripts/warm                                        # give a new worktree a warm
 scripts/dev-app start                               # open this checkout's app on a free port from 1440, titled with its branch
 scripts/dev-app status                              # is it up, which commit and port, any errors since it started
 scripts/dev-app stop                                # stop it: tauri dev, Vite and the app
-scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, merge
+scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, evidence-check, sync, merge
 scripts/review-setup <pr>                           # a review round's PR, history, CI and warm worktree, in one go
 scripts/ci-wait <pr> --commit <sha>                 # wait for CI on that commit: exit 0 green, 1 red, 2 no checks, 3 timeout
 scripts/mutate --named retry-after                  # break the code on purpose, run its tests, put it back: CAUGHT or MISSED
@@ -98,7 +98,7 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 ## Working on tickets
 
-Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. A ticket's own steps (show, ready, claim, tick, merge) are each one command in `scripts/ticket`; use the `deadwax-notion` skill and its `ntn.sh` wrapper for all other Notion access. The `work-ticket` skill has the full process.
+Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. A ticket's own steps (show, ready, claim, tick, sync, merge) are each one command in `scripts/ticket`; use the `deadwax-notion` skill and its `ntn.sh` wrapper for all other Notion access. The `work-ticket` skill has the full process.
 
 - Tickets have IDs `DWX-n` and a status: Backlog · Ready · In Progress · Blocked · In Review · Done. Only start a `Ready` ticket whose dependencies are `Done` and merged.
 - Branch: `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`, from an up-to-date `main`.
@@ -107,7 +107,7 @@ Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Pro
 - Ideas Will has along the way that aren't about the current PR go in the scratchpad (`/note`, the `scratchpad` skill), and they're reviewed between projects.
 - New concepts go in the Notion **Glossary** so Will can follow how Deadwax is built: an RFC lists its new terms for review, and a ticket adds any that came up during the work.
 - When the way we work changes (a skill, a rule, a new tool or step), add an entry to the Notion **Process log**: what wasn't working, with evidence, and what changed.
-- Before In Review: tick the met criteria on the ticket and fill in its Verification notes.
+- The PR body is the one place a ticket's evidence is written: keep it as a file and run `scripts/ticket sync`, which makes the PR description, the ticket's ticks and Verification notes, and In Review from it. Name the tests that prove a criterion; never quote a total of tests.
 - Comments you post to Notion start with `🤖 Claude:`, because the CLI posts as Will.
 - Reviews run in a loop without Will: the implementer starts each round with the `review-round` workflow, which starts a fresh `pr-reviewer` agent that nobody can brief, and fixes what it finds until they agree.
 - Never merge without Will's go-ahead.

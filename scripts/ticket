@@ -1,4 +1,5 @@
 #!/bin/sh
-# A Deadwax ticket's Notion and GitHub steps: show, ready, claim, tick and merge.
+# A Deadwax ticket's Notion and GitHub steps: show, ready, claim, tick,
+# evidence-check, sync and merge.
 # `scripts/ticket --help` says how. The logic is in app/scripts/ticket.ts.
 exec node --disable-warning=ExperimentalWarning "$(dirname "$0")/../app/scripts/ticketCli.ts" "$@"
