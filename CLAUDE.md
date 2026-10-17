@@ -16,7 +16,7 @@ app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
-scripts                 checks CI runs that aren't cargo or npm commands
+scripts                 the repository's own tools (`ticket`, with `--help`; its logic is in app/scripts) and CI's release check
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
 ```
@@ -81,7 +81,7 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 ## Working on tickets
 
-Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. Use the `deadwax-notion` skill and its `ntn.sh` wrapper for all Notion access. The `work-ticket` skill has the full process.
+Work is planned in Notion (Will's personal workspace, never Stora): RFCs → Projects → Tickets, on the Deadwax page. A ticket's own steps (show, ready, claim, tick, merge) are each one command in `scripts/ticket`; use the `deadwax-notion` skill and its `ntn.sh` wrapper for all other Notion access. The `work-ticket` skill has the full process.
 
 - Tickets have IDs `DWX-n` and a status: Backlog · Ready · In Progress · Blocked · In Review · Done. Only start a `Ready` ticket whose dependencies are `Done` and merged.
 - Branch: `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`, from an up-to-date `main`.
