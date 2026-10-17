@@ -168,7 +168,7 @@ async function start(timeout: number): Promise<number> {
 async function launch(timeout: number, unlock: () => void): Promise<number> {
   const port = await pickPort(isFree);
   if (port === undefined) return fail(`No free port pair between ${FIRST_PORT} and ${LAST_PORT}.`);
-  // A detached checkout (a reviewer's, say) is named by its commit, so two don't look alike.
+  // A detached checkout (a reviewer's, say) is named by its commit, so it doesn't look like a branch's.
   const branch = git("branch", "--show-current") || git("rev-parse", "--short", "HEAD");
   const conf = JSON.parse(readFileSync(join(appDir, "src-tauri", "tauri.conf.json"), "utf8"));
 

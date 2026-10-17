@@ -138,7 +138,10 @@ function isDevProcess(command: string): boolean {
   return (
     TAURI_DEV.test(command) ||
     // `.bin/vite`, not `.bin/vitest`: another session's tests aren't an app.
-    /node_modules\/\.bin\/vite(\s|$)/.test(command) ||
+    // And not `vite build` or `vite preview`: a release build (`tauri build`,
+    // scripts/check's release job) isn't an app either, and stopping it would
+    // break the build.
+    (/node_modules\/\.bin\/vite(\s|$)/.test(command) && !/node_modules\/\.bin\/vite\s+(build|preview)(\s|$)/.test(command)) ||
     DEBUG_APP.test(command)
   );
 }

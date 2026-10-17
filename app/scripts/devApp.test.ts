@@ -109,6 +109,12 @@ describe("findDevApps", () => {
       // Another session's tests in this worktree, and an editor open on it.
       `  400    70 node ${TREE}/app/node_modules/.bin/vitest run`,
       `  401    70 /Applications/Zed.app/Contents/MacOS/zed ${TREE}`,
+      // A release build in this worktree (tauri build runs vite build, which runs esbuild).
+      `  700    80 node ${TREE}/app/node_modules/.bin/tauri build --ci`,
+      `  701   700 npm run build`,
+      `  702   701 node ${TREE}/app/node_modules/.bin/vite build`,
+      `  703   702 ${TREE}/app/node_modules/@esbuild/darwin-arm64/bin/esbuild --service=0.25.0 --ping`,
+      `  704    80 node ${TREE}/app/node_modules/.bin/vite preview`,
       // An app built into a shared target folder, so only its tauri dev names the checkout.
       `  600     1 node ${SHARED}/app/node_modules/.bin/tauri dev`,
       `  601   600 cargo run --no-default-features --color always --`,
@@ -129,9 +135,9 @@ describe("findDevApps", () => {
     expect(pids(MAIN)).toEqual([201, 202, 203]);
   });
 
-  it("leaves other projects, test runs and editors alone", () => {
+  it("leaves other projects, test runs, editors and release builds alone", () => {
     const all = [...apps.values()].flat().map((p) => p.pid);
-    for (const pid of [300, 301, 302, 303, 400, 401]) expect(all).not.toContain(pid);
+    for (const pid of [300, 301, 302, 303, 400, 401, 700, 701, 702, 703, 704]) expect(all).not.toContain(pid);
   });
 
   it("keeps a debug deadwax-app it can't place, under an unknown checkout", () => {
