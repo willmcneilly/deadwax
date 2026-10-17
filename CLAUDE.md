@@ -16,7 +16,7 @@ app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
-scripts                 the repository's own tools (`check`, `warm`, `ticket`, each with `--help`; their logic is in app/scripts) and CI's release check
+scripts                 the repository's own tools (`check`, `warm`, `ticket`; for reviewers `review-setup`, `ci-wait`, `mutate`; each with `--help`, their logic in app/scripts) and CI's release check
 .githooks               git hooks: pre-push runs `scripts/check`, post-checkout warms a new worktree
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
@@ -32,6 +32,9 @@ Run everything from the repository root unless it says `app/`.
 scripts/check                                       # the checks this change needs (below)
 scripts/warm                                        # give a new worktree a warm Rust build
 scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, merge
+scripts/review-setup <pr>                           # a review round's PR, history, CI and warm worktree, in one go
+scripts/ci-wait <pr> --commit <sha>                 # wait for CI on that commit: exit 0 green, 1 red, 2 no checks, 3 timeout
+scripts/mutate --named retry-after                  # break the code on purpose, run its tests, put it back: CAUGHT or MISSED
 git config core.hooksPath .githooks                 # once per clone; scripts/check does it on its first run
 
 # Rust
