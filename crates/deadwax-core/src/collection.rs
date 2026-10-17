@@ -16,6 +16,12 @@
 //! It's found in the background, so an album can be in the collection
 //! without one for a while.
 //!
+//! A fourth, `album_steps`, records which of the album job queue's steps
+//! each album has finished (RFC-002, "2. Local artwork, in sizes"): the
+//! lookup, then the sizes on disk (`crate::covers`). A step is recorded in
+//! the same write as its result, so a failed step records nothing and runs
+//! again later.
+//!
 //! In development builds the collection also mirrors every add and remove to
 //! the dev list (`crate::dev_list`), which survives resets. All of that is
 //! compiled under `debug_assertions`, so release builds don't contain it.
@@ -159,6 +165,31 @@ pub struct Artwork {
     pub cover: Option<Cover>,
 }
 
+/// One of the album job queue's steps, in the order they run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Step {
+    /// Looking for the sharpest cover (`set_artwork` records it).
+    Lookup,
+    /// Downloading that cover and making its sizes on disk.
+    Sizes,
+}
+
+impl Step {
+    pub const ALL: [Step; 2] = [Self::Lookup, Self::Sizes];
+
+    /// The name stored in the database.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lookup => "lookup",
+            Self::Sizes => "sizes",
+        }
+    }
+
+    fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|step| step.as_str() == name)
+    }
+}
+
 /// How long the cache is good for. Spotify's terms say to keep cached
 /// metadata reasonably up to date, so opening an album whose cache is older
 /// fetches it again (RFC-001, "The collection").
@@ -174,6 +205,8 @@ pub struct Collected {
     pub fetched_at: SystemTime,
     /// The high-res cover, once it's been looked for.
     pub artwork: Option<Artwork>,
+    /// The album job queue's steps it has finished, in order.
+    pub finished: Vec<Step>,
 }
 
 impl Collected {
@@ -182,6 +215,21 @@ impl Collected {
     pub fn is_stale(&self, now: SystemTime) -> bool {
         now.duration_since(self.fetched_at)
             .is_ok_and(|age| age > CACHE_LIFETIME)
+    }
+
+    /// The steps it hasn't finished yet, in the order they run.
+    pub fn unfinished(&self) -> Vec<Step> {
+        Step::ALL
+            .into_iter()
+            .filter(|step| !self.finished.contains(step))
+            .collect()
+    }
+
+    /// Whether its cover is on disk in sizes. An album whose lookup found
+    /// no cover at all finishes its sizes with nothing to make.
+    pub fn has_local_cover(&self) -> bool {
+        self.finished.contains(&Step::Sizes)
+            && self.artwork.as_ref().is_some_and(|a| a.cover.is_some())
     }
 }
 
@@ -214,16 +262,18 @@ pub enum CollectionError {
     TooNew(i64),
     #[error("the collection's artwork has an unknown source {0:?}")]
     UnknownSource(String),
+    #[error("the collection has an unknown step {0:?}")]
+    UnknownStep(String),
     #[cfg(debug_assertions)]
     #[error("the collection changed, but the dev list didn't: {0}")]
     DevList(#[from] DevListError),
 }
 
 /// The schema version this code writes, in SQLite's `user_version`.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 /// Schema 3 (DWX-17): every table is keyed by the Deadwax ID, and the
-/// Spotify ID is a column of `collection`.
+/// Spotify ID is a column of `collection`. Schema 4 adds `STEPS_V4`.
 const SCHEMA: &str = "
     CREATE TABLE collection (
         id         TEXT PRIMARY KEY NOT NULL,  -- AlbumId
@@ -249,6 +299,17 @@ const SCHEMA: &str = "
         width      INTEGER,
         height     INTEGER,
         found_at   INTEGER NOT NULL  -- Unix milliseconds
+    ) STRICT;
+";
+
+/// Schema 4 (DWX-18) adds this to schema 3: which steps each album has
+/// finished.
+const STEPS_V4: &str = "
+    CREATE TABLE album_steps (
+        id          TEXT NOT NULL,     -- AlbumId
+        step        TEXT NOT NULL,     -- Step::as_str
+        finished_at INTEGER NOT NULL,  -- Unix milliseconds
+        PRIMARY KEY (id, step)
     ) STRICT;
 ";
 
@@ -312,6 +373,22 @@ fn migrate_to_3(
     Ok(())
 }
 
+/// Moves a schema-3 database to schema 4 in one transaction. An album with
+/// an artwork result has finished its lookup; every album still has its
+/// sizes to make.
+fn migrate_to_4(db: &mut Connection) -> Result<(), CollectionError> {
+    let tx = db.transaction()?;
+    tx.execute_batch(&format!(
+        "{STEPS_V4}
+         INSERT INTO album_steps (id, step, finished_at)
+             SELECT id, '{lookup}', found_at FROM artwork;
+         PRAGMA user_version = 4;",
+        lookup = Step::Lookup.as_str(),
+    ))?;
+    tx.commit()?;
+    Ok(())
+}
+
 pub struct Collection {
     db: Connection,
     /// The dev list to mirror adds and removes to, in development builds.
@@ -339,10 +416,10 @@ impl Collection {
         match version {
             0 => {
                 db.execute_batch(&format!(
-                    "BEGIN; {SCHEMA} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+                    "BEGIN; {SCHEMA} {STEPS_V4} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
                 ))?;
             }
-            1 | 2 => {
+            1..=3 => {
                 if version == 1 {
                     // In one transaction, so a crash can't leave the table
                     // without the version that says it's there.
@@ -350,7 +427,10 @@ impl Collection {
                         "BEGIN; {ARTWORK_V2} PRAGMA user_version = 2; COMMIT;"
                     ))?;
                 }
-                migrate_to_3(&mut db, AlbumId::new)?;
+                if version < 3 {
+                    migrate_to_3(&mut db, AlbumId::new)?;
+                }
+                migrate_to_4(&mut db)?;
             }
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),
@@ -439,8 +519,9 @@ impl Collection {
         Ok(collected)
     }
 
-    /// Records the artwork found for the album at `now`, if the album is
-    /// still in the collection. Returns whether it was.
+    /// Records the artwork found for the album at `now`, and that its
+    /// lookup has finished, if the album is still in the collection.
+    /// Returns whether it was.
     pub fn set_artwork(
         &mut self,
         id: &AlbumId,
@@ -448,7 +529,8 @@ impl Collection {
         now: SystemTime,
     ) -> Result<bool, CollectionError> {
         let cover = artwork.cover.as_ref();
-        let stored = self.db.execute(
+        let tx = self.db.transaction()?;
+        let stored = tx.execute(
             "INSERT OR REPLACE INTO artwork (id, source, url, width, height, found_at)
              SELECT ?1, ?2, ?3, ?4, ?5, ?6
              WHERE EXISTS (SELECT 1 FROM collection WHERE id = ?1)",
@@ -461,11 +543,26 @@ impl Collection {
                 millis(now),
             ],
         )?;
-        Ok(stored == 1)
+        let stored = stored == 1 && finish(&tx, id, Step::Lookup, now)?;
+        tx.commit()?;
+        Ok(stored)
     }
 
-    /// Takes the album out of the collection, and forgets its cache and
-    /// artwork. Returns whether it was there.
+    /// Records that the album has finished `step` at `now`, if it's still
+    /// in the collection. Returns whether it was. The lookup is recorded by
+    /// `set_artwork`, with its result.
+    pub fn finish(
+        &mut self,
+        id: &AlbumId,
+        step: Step,
+        now: SystemTime,
+    ) -> Result<bool, CollectionError> {
+        finish(&self.db, id, step, now)
+    }
+
+    /// Takes the album out of the collection, and forgets its cache,
+    /// artwork and steps. Its covers on disk are the caller's to delete
+    /// (`crate::covers::Store::remove`). Returns whether it was there.
     pub fn remove(&mut self, id: &AlbumId) -> Result<bool, CollectionError> {
         let tx = self.db.transaction()?;
         let spotify_id: Option<String> = tx
@@ -477,6 +574,7 @@ impl Collection {
             .optional()?;
         tx.execute("DELETE FROM album_cache WHERE id = ?1", [id.as_str()])?;
         tx.execute("DELETE FROM artwork WHERE id = ?1", [id.as_str()])?;
+        tx.execute("DELETE FROM album_steps WHERE id = ?1", [id.as_str()])?;
         tx.commit()?;
         #[cfg(debug_assertions)]
         if let (Some(dev_list), Some(spotify_id)) = (&self.dev_list, &spotify_id) {
@@ -485,11 +583,12 @@ impl Collection {
         Ok(spotify_id.is_some())
     }
 
-    /// Empties the collection, its cache and its artwork. The dev list is
-    /// left alone: it's what you restore from afterwards.
+    /// Empties the collection, its cache, its artwork and its steps. The
+    /// dev list is left alone: it's what you restore from afterwards.
     pub fn clear(&mut self) -> Result<(), CollectionError> {
         self.db.execute_batch(
-            "DELETE FROM collection; DELETE FROM album_cache; DELETE FROM artwork;",
+            "DELETE FROM collection; DELETE FROM album_cache; DELETE FROM artwork;
+             DELETE FROM album_steps;",
         )?;
         Ok(())
     }
@@ -499,7 +598,8 @@ impl Collection {
         let mut statement = self.db.prepare(
             "SELECT c.id, c.spotify_id, c.added_at, a.title, a.artist, a.year, a.tracks,
                     a.covers, a.upc, a.fetched_at,
-                    w.source, w.url, w.width, w.height
+                    w.source, w.url, w.width, w.height,
+                    (SELECT group_concat(s.step) FROM album_steps s WHERE s.id = c.id)
              FROM collection c JOIN album_cache a USING (id)
              LEFT JOIN artwork w USING (id)
              ORDER BY c.added_at DESC, c.rowid DESC",
@@ -531,10 +631,11 @@ impl Collection {
                 row.get::<_, i64>(9)?,
                 row.get::<_, Option<String>>(10)?,
                 cover,
+                row.get::<_, Option<String>>(14)?,
             ))
         })?;
         rows.map(|row| {
-            let (id, mut album, added_at, tracks, covers, fetched_at, source, cover) = row?;
+            let (id, mut album, added_at, tracks, covers, fetched_at, source, cover, steps) = row?;
             album.tracks = serde_json::from_str(&tracks)?;
             album.covers = serde_json::from_str(&covers)?;
             let artwork = source
@@ -544,12 +645,21 @@ impl Collection {
                         .ok_or(CollectionError::UnknownSource(name))
                 })
                 .transpose()?;
+            let mut finished = steps
+                .iter()
+                .flat_map(|steps| steps.split(','))
+                .map(|name| {
+                    Step::parse(name).ok_or_else(|| CollectionError::UnknownStep(name.into()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            finished.sort();
             Ok(Collected {
                 id,
                 album,
                 added_at: time(added_at),
                 fetched_at: time(fetched_at),
                 artwork,
+                finished,
             })
         })
         .collect()
@@ -597,6 +707,21 @@ fn contains(db: &Connection, id: &AlbumId) -> Result<bool, CollectionError> {
         )
         .optional()?
         .is_some())
+}
+
+fn finish(
+    db: &Connection,
+    id: &AlbumId,
+    step: Step,
+    now: SystemTime,
+) -> Result<bool, CollectionError> {
+    let recorded = db.execute(
+        "INSERT OR REPLACE INTO album_steps (id, step, finished_at)
+         SELECT ?1, ?2, ?3
+         WHERE EXISTS (SELECT 1 FROM collection WHERE id = ?1)",
+        params![id.as_str(), step.as_str(), millis(now)],
+    )?;
+    Ok(recorded == 1)
 }
 
 fn cache(
@@ -724,6 +849,7 @@ mod tests {
                 added_at: day(1),
                 fetched_at: day(1),
                 artwork: None,
+                finished: Vec::new(),
             }]
         );
         assert!(collection.contains(&id).unwrap());
@@ -774,6 +900,7 @@ mod tests {
                 added_at: day(1),
                 fetched_at: day(5),
                 artwork: None,
+                finished: Vec::new(),
             }]
         );
     }
@@ -846,7 +973,7 @@ mod tests {
 
         assert!(matches!(
             Collection::open(&path),
-            Err(CollectionError::TooNew(4))
+            Err(CollectionError::TooNew(5))
         ));
     }
 
@@ -992,6 +1119,7 @@ mod tests {
                 added_at: day(1),
                 fetched_at: day(9),
                 artwork: None,
+                finished: Vec::new(),
             }
         );
     }
@@ -1024,6 +1152,7 @@ mod tests {
             added_at: day(1),
             fetched_at: day(1),
             artwork: None,
+            finished: Vec::new(),
         };
 
         assert!(!collected.is_stale(day(1)));
@@ -1292,7 +1421,7 @@ mod tests {
 
         let collection = Collection::open(&path).unwrap();
 
-        assert_eq!(user_version(&collection.db), 3);
+        assert_eq!(user_version(&collection.db), SCHEMA_VERSION);
         let albums = collection.albums().unwrap();
         assert_eq!(spotify_ids(&collection), ["c", "b", "a"]);
         let expected = [
@@ -1381,27 +1510,27 @@ mod tests {
     }
 
     #[test]
-    fn a_schema_1_database_migrates_to_3_and_keeps_its_albums() {
+    fn a_schema_1_database_migrates_to_the_latest_and_keeps_its_albums() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("deadwax.sqlite3");
         old_database(&path, 1, &[("a", day(1), day(1), None)]);
 
         let mut collection = Collection::open(&path).unwrap();
 
-        assert_eq!(user_version(&collection.db), 3);
+        assert_eq!(user_version(&collection.db), SCHEMA_VERSION);
         assert_eq!(spotify_ids(&collection), ["a"]);
         let id = id_of(&collection, "a");
         assert!(collection.set_artwork(&id, &itunes(), day(2)).unwrap());
     }
 
     #[test]
-    fn a_new_database_is_made_at_schema_3() {
+    fn a_new_database_is_made_at_the_latest_schema() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("deadwax.sqlite3");
 
         let collection = Collection::open(&path).unwrap();
 
-        assert_eq!(user_version(&collection.db), 3);
+        assert_eq!(user_version(&collection.db), SCHEMA_VERSION);
         let columns: Vec<String> = collection
             .db
             .prepare("SELECT name FROM pragma_table_info('collection')")
@@ -1411,5 +1540,151 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(columns, ["id", "spotify_id", "added_at"]);
+    }
+
+    #[test]
+    fn a_schema_3_database_migrates_to_4_with_the_lookups_it_had_finished() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        old_database(
+            &path,
+            2,
+            &[
+                ("a", day(1), day(1), Some(itunes())),
+                ("b", day(2), day(2), None),
+            ],
+        );
+        let mut db = Connection::open(&path).unwrap();
+        migrate_to_3(&mut db, AlbumId::new).unwrap();
+        let before: Vec<Vec<String>> = ["collection", "album_cache", "artwork"]
+            .iter()
+            .map(|table| dump(&db, table))
+            .collect();
+        drop(db);
+
+        let collection = Collection::open(&path).unwrap();
+
+        assert_eq!(user_version(&collection.db), 4);
+        let after: Vec<Vec<String>> = ["collection", "album_cache", "artwork"]
+            .iter()
+            .map(|table| dump(&collection.db, table))
+            .collect();
+        assert_eq!(after, before);
+        assert_eq!(by_spotify(&collection, "a").finished, [Step::Lookup]);
+        assert_eq!(by_spotify(&collection, "a").unfinished(), [Step::Sizes]);
+        assert_eq!(by_spotify(&collection, "b").finished, []);
+        assert_eq!(by_spotify(&collection, "b").unfinished(), Step::ALL);
+    }
+
+    // The album job queue's steps.
+
+    #[test]
+    fn a_new_album_has_every_step_to_do() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection.add(&album("a", "A"), day(1)).unwrap();
+
+        let a = by_spotify(&collection, "a");
+
+        assert_eq!(a.finished, []);
+        assert_eq!(a.unfinished(), [Step::Lookup, Step::Sizes]);
+        assert!(!a.has_local_cover());
+    }
+
+    #[test]
+    fn storing_the_artwork_finishes_the_lookup() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let id = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+
+        collection.set_artwork(&id, &itunes(), day(2)).unwrap();
+
+        assert_eq!(by_spotify(&collection, "a").finished, [Step::Lookup]);
+        assert_eq!(by_spotify(&collection, "a").unfinished(), [Step::Sizes]);
+    }
+
+    #[test]
+    fn finishing_the_sizes_gives_an_album_with_a_cover_a_local_one() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let id = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        collection.set_artwork(&id, &itunes(), day(2)).unwrap();
+
+        assert!(collection.finish(&id, Step::Sizes, day(3)).unwrap());
+        assert!(collection.finish(&id, Step::Sizes, day(4)).unwrap());
+
+        let a = by_spotify(&collection, "a");
+        assert_eq!(a.finished, [Step::Lookup, Step::Sizes]);
+        assert_eq!(a.unfinished(), []);
+        assert!(a.has_local_cover());
+    }
+
+    #[test]
+    fn an_album_with_no_cover_anywhere_finishes_without_a_local_one() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let id = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        let nothing = Artwork {
+            source: ArtworkSource::Spotify,
+            cover: None,
+        };
+        collection.set_artwork(&id, &nothing, day(2)).unwrap();
+        collection.finish(&id, Step::Sizes, day(3)).unwrap();
+
+        let a = by_spotify(&collection, "a");
+        assert_eq!(a.unfinished(), []);
+        assert!(!a.has_local_cover());
+    }
+
+    #[test]
+    fn a_step_for_an_album_not_in_the_collection_isnt_recorded() {
+        let mut collection = Collection::open_in_memory().unwrap();
+
+        assert!(
+            !collection
+                .finish(&AlbumId::new(), Step::Sizes, day(1))
+                .unwrap()
+        );
+        assert!(
+            !collection
+                .set_artwork(&AlbumId::new(), &itunes(), day(1))
+                .unwrap()
+        );
+        assert!(dump(&collection.db, "album_steps").is_empty());
+    }
+
+    #[test]
+    fn removing_or_clearing_forgets_the_steps() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let a = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        let b = collection
+            .add(&album("b", "B"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        for id in [&a, &b] {
+            collection.set_artwork(id, &itunes(), day(2)).unwrap();
+            collection.finish(id, Step::Sizes, day(2)).unwrap();
+        }
+
+        collection.remove(&a).unwrap();
+        assert_eq!(dump(&collection.db, "album_steps").len(), 2);
+        collection.add(&album("a", "A"), day(3)).unwrap();
+        assert_eq!(by_spotify(&collection, "a").finished, []);
+
+        collection.clear().unwrap();
+        assert!(dump(&collection.db, "album_steps").is_empty());
     }
 }
