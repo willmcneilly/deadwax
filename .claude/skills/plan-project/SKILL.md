@@ -1,13 +1,14 @@
 ---
 name: plan-project
 description: Turn an accepted Deadwax RFC into a project and tickets. Use when Will says /plan-project, "let's plan RFC-n", "break this into tickets", or asks to add a batch of work to an existing project. Covers sizing and ordering tickets, drafting the plan locally, reviewing it in Crit, and creating the project and tickets in Notion on sign-off.
+effort: high
 ---
 
 # Planning a project
 
 This turns an accepted RFC into work agents can pick up. The plan's job is to let Will see, before anything starts, what will be delivered in what order and how each piece will be proven. It also stops the work arriving as a flood of tiny PRs.
 
-Workflow: read the RFC → draft the plan locally → review in Crit → create in Notion on sign-off. For Notion mechanics, use the `notion` skill. For the Crit loop, use `crit:crit`.
+Workflow: read the RFC → draft the plan locally → review in Crit → create in Notion on sign-off. For Notion mechanics, use the `deadwax-notion` skill. For the Crit loop, use `crit:crit`.
 
 **Only plan from an accepted RFC.** If the RFC isn't accepted yet, say so and stop. Small work that doesn't need an RFC (a bug, a tweak inside an existing project) can go straight in as a single ticket. Tell Will when you add one.
 
@@ -82,7 +83,7 @@ Give Will a short summary: how many tickets, the order, and where the checkpoint
    - `Ready` if it has no unmet dependencies;
    - otherwise `Backlog`.
 
-   The body uses the ticket template from the `notion` skill. Write **Depends on** using real IDs (`DWX-12`), so create tickets in dependency order.
+   The body uses the ticket template from the `deadwax-notion` skill. Write **Depends on** using real IDs (`DWX-12`), so create tickets in dependency order.
 3. **Write back** to the plan file: the Notion link, `**Status:** Created`, and each ticket's `DWX-n` next to its heading.
 4. Give Will the project link and the list of `DWX-n` ticket IDs with their names.
 
