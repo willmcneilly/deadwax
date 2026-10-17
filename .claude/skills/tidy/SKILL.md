@@ -32,6 +32,8 @@ For each worktree in `.claude/worktrees/`:
 - it's the head of a merged PR and its tip equals the PR's `headRefOid` (`gh pr list --state merged --json headRefName,headRefOid`);
 - `git diff <tip> <squash commit>` is empty, for a detached HEAD left behind by a squash merge.
 
+**Before removing a worktree or its `target/`,** run `<path>/scripts/dev-app stop` if it has the script, so its app doesn't outlive its build.
+
 **Before removing a worktree, check its ignored files:** `git status --short --ignored`, leaving out `target/`, `app/node_modules/`, `app/dist/`, `app/src-tauri/gen/` and `.dev-data/` (the worktree's development database, which the dev list can restore). Anything else (a screenshot harness, notes, images) gets copied to the session scratchpad and mentioned to Will.
 
 Remove with `git worktree remove --force <path>` (forced only because ignored build output is present), then `git worktree prune`.
