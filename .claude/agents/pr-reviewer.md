@@ -26,7 +26,7 @@ Use the `notion` skill for Notion (`.claude/skills/notion/ntn.sh`, every call wi
   git fetch origin
   git worktree add ../deadwax-review-<n> origin/<branch>   # or, with a commit: git fetch origin <commit> && git worktree add --detach ../deadwax-review-<n> <commit>
   ```
-  The diff to review is `git diff $(git merge-base origin/main HEAD)...HEAD` inside the worktree. Work there for the rest of the review, and remove the worktree at the end (`git worktree remove --force ../deadwax-review-<n>`).
+  The post-checkout hook gives the worktree a warm Rust build; if it has no `target/`, run `scripts/warm` there. The diff to review is `git diff $(git merge-base origin/main HEAD)...HEAD` inside the worktree. Work there for the rest of the review, and remove the worktree at the end (`git worktree remove --force ../deadwax-review-<n>`).
 - For a large diff, hand parts of it to subagents and keep only their findings.
 - **When you were given a commit,** the PR and ticket may record what happened after it: later reviews, replies, fixes and verification notes. Don't read the PR's reviews or comments, and from the ticket read only the goal, acceptance criteria, out of scope and context. Review the code as if that commit were the PR's head.
 
@@ -40,7 +40,7 @@ Each finding gets a severity:
 1. **Scope.** Does the diff do what the ticket says, and only that? Is anything missing? Out-of-scope work is blocking unless it's trivial.
 2. **Acceptance criteria, verified independently.** For each criterion, find the evidence yourself, run the tests and commands, and confirm the test actually tests the claim. A token-refresh test must fail when the refresh is skipped; a collection test must fail when an album isn't saved.
    **For the key claims, break the code on purpose:** skip the token refresh, drop a field from a saved album, send a Spotify call without its auth header. Confirm a test or check fails, then revert. A criterion whose test can't fail isn't met.
-3. **Checks.** Run everything CI runs, locally (the commands are in `CLAUDE.md`). Unless you were given a commit, also check the PR's CI with `gh pr checks <n>`.
+3. **Checks.** Run everything CI runs, locally: `scripts/check --all --rerun` in your worktree runs every job and ignores passes recorded before, the implementer's included. Run it in the background; it ends with one line per job and the log of any that failed. Unless you were given a commit, also check the PR's CI with `gh pr checks <n>`.
 4. **Spotify rules** (in `CLAUDE.md`), on any code that talks to Spotify or handles its tokens: tokens logged, written anywhere but the place `CLAUDE.md` names, or sent to the UI; a client secret anywhere in the repo; a `429` that isn't retried after its `Retry-After`; anything that stores or downloads audio; tests that call the real Spotify API. Any violation is blocking.
 5. **Fit with the RFC and the architecture** described in `CLAUDE.md`. A departure is blocking unless the PR explains it and Will has agreed.
 6. **Design**, on any UI change. Read `DESIGN.md` first.
