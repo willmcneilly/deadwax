@@ -7,9 +7,9 @@ type Props = {
 
 /**
  * The album's cover, shown as it is: Spotify's developer policy allows no
- * cropping, blur or overlay (RFC-001, "Spotify's attribution rules"). The
- * grid shows Spotify's, and the album page the high-res one when there is
- * one.
+ * cropping, blur or overlay (RFC-001, "Spotify's attribution rules"). Once
+ * the album's cover is on disk, the grid shows its 320 and the album page its
+ * 1600; until then, both show Spotify's.
  */
 function Cover({ album, className }: Props) {
   if (!album.coverUrl) {

@@ -753,3 +753,70 @@ fn only_digits_are_barcodes() {
     assert!(!is_barcode("634904032463&entity=song"));
     assert!(!is_barcode(""));
 }
+
+// Downloading the winner.
+
+fn cover_at(server: &MockServer, image: &str) -> Cover {
+    Cover {
+        url: format!("{}/images/{image}", server.uri()),
+        width: None,
+        height: None,
+    }
+}
+
+#[tokio::test]
+async fn downloads_the_whole_cover() {
+    let server = MockServer::start().await;
+    let image: Vec<u8> = (0..=255).cycle().take(3 * 1024 * 1024).collect();
+    Mock::given(method("GET"))
+        .and(path("/images/cover.jpg"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(image.clone()))
+        .mount(&server)
+        .await;
+    let (finder, _) = finder(&server);
+
+    let downloaded = finder
+        .download(ArtworkSource::Itunes, &cover_at(&server, "cover.jpg"))
+        .await
+        .unwrap();
+
+    assert_eq!(downloaded, image);
+}
+
+#[tokio::test]
+async fn a_failed_download_is_an_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let (finder, _) = finder(&server);
+
+    let result = finder
+        .download(ArtworkSource::Deezer, &cover_at(&server, "gone.jpg"))
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(ArtworkError::Unexpected {
+            service: "Deezer",
+            ..
+        })
+    ));
+}
+
+#[tokio::test]
+async fn a_download_too_big_to_be_a_cover_is_an_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0; MAX_DOWNLOAD + 1]))
+        .mount(&server)
+        .await;
+    let (finder, _) = finder(&server);
+
+    let result = finder
+        .download(ArtworkSource::Spotify, &cover_at(&server, "huge.jpg"))
+        .await;
+
+    assert!(matches!(result, Err(ArtworkError::TooBig { .. })));
+}

@@ -4,14 +4,20 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Deadwax's collection: the albums, the database and the dev list. No network."
+description = "Deadwax's collection: the albums, the database, the covers on disk and the dev list. No network."
 
 [dependencies]
+fast_image_resize = { version = "6", features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
+
+[features]
+# Test images for other crates' tests.
+testing = []
 
 [dev-dependencies]
 tempfile = "3"

@@ -37,7 +37,10 @@ export type AlbumCard = {
   title: string;
   artist: string;
   year: number | null;
-  /** Spotify's largest cover, about 640 pixels. */
+  /**
+   * The 320 from disk (`cover://`) once the album's cover is there, otherwise
+   * Spotify's largest, about 640 pixels.
+   */
   coverUrl: string | null;
 };
 
@@ -87,18 +90,18 @@ export type AlbumDetails = {
   artist: string;
   year: number | null;
   /**
-   * The high-res cover once one has been found, otherwise Spotify's largest,
-   * about 640 pixels.
+   * The 1600 from disk (`cover://`) once the album's cover is there,
+   * otherwise Spotify's largest, about 640 pixels.
    */
   coverUrl: string | null;
   tracks: AlbumTrack[];
 };
 
 /**
- * The event Rust sends, with the album's Deadwax ID, when it has stored the
- * album's high-res cover (app/src-tauri/src/artwork.rs).
+ * The event Rust sends, with the album's Deadwax ID, when what it shows for
+ * the album has changed: its cover is on disk (app/src-tauri/src/jobs.rs).
  */
-export const ARTWORK_FOUND = "artwork-found";
+export const ALBUM_UPDATED = "album-updated";
 
 /** The album page, from the cache. */
 export const getAlbum = (id: AlbumId) =>
@@ -154,8 +157,8 @@ export type NowPlaying = {
     spotifyAlbumId: string | null;
     durationMs: number;
     /**
-     * The album's high-res cover if it's in the collection and one has been
-     * found, otherwise Spotify's largest, about 640 pixels.
+     * The album's 1600 from disk if it's in the collection and its cover is
+     * there, otherwise Spotify's largest, about 640 pixels.
      */
     coverUrl: string | null;
   } | null;

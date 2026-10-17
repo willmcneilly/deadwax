@@ -1,13 +1,18 @@
-//! Where the database lives. See RFC-001, "A dev list that survives resets".
+//! Where the database and the covers live. See RFC-001, "A dev list that
+//! survives resets", and RFC-002, "2. Local artwork, in sizes".
 //!
-//! Development builds keep it in the checkout's `.dev-data/` (ignored by
+//! Development builds keep them in the checkout's `.dev-data/` (ignored by
 //! git), so each worktree has its own and testing one branch can't damage
-//! another's albums. Release builds keep it in the app-data folder, as usual.
+//! another's albums. Release builds keep them in the app-data folder, as
+//! usual.
 
 use std::path::{Path, PathBuf};
 
 /// The database's file name, in either folder.
 pub const DATABASE_FILE: &str = "deadwax.sqlite3";
+
+/// The covers' folder, in either folder: `artwork/<deadwax-id>/`.
+pub const ARTWORK_DIR: &str = "artwork";
 
 /// The development data folder, at the top of a checkout.
 pub const DEV_DATA_DIR: &str = ".dev-data";
@@ -27,6 +32,14 @@ pub fn database_path(build: &Build, app_data_dir: &Path) -> PathBuf {
     match build {
         Build::Development { checkout } => checkout.join(DEV_DATA_DIR).join(DATABASE_FILE),
         Build::Release => app_data_dir.join(DATABASE_FILE),
+    }
+}
+
+/// Where this build keeps the covers, one folder for each album.
+pub fn artwork_dir(build: &Build, app_data_dir: &Path) -> PathBuf {
+    match build {
+        Build::Development { checkout } => checkout.join(DEV_DATA_DIR).join(ARTWORK_DIR),
+        Build::Release => app_data_dir.join(ARTWORK_DIR),
     }
 }
 
@@ -71,6 +84,23 @@ mod tests {
         assert_eq!(path, app_data.join("deadwax.sqlite3"));
         assert!(path.is_file());
         assert!(!checkout.join(".dev-data").exists());
+    }
+
+    #[test]
+    fn a_development_build_keeps_the_covers_in_the_checkout_and_a_release_build_in_app_data() {
+        let (_root, checkout, app_data) = folders();
+        let development = Build::Development {
+            checkout: checkout.clone(),
+        };
+
+        assert_eq!(
+            artwork_dir(&development, &app_data),
+            checkout.join(".dev-data/artwork")
+        );
+        assert_eq!(
+            artwork_dir(&Build::Release, &app_data),
+            app_data.join("artwork")
+        );
     }
 
     #[test]

@@ -5,8 +5,14 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it, vi } from "vitest";
-import type { AlbumCard, SearchAlbum, SearchResults } from "./api";
+import {
+  ALBUM_UPDATED,
+  type AlbumCard,
+  type SearchAlbum,
+  type SearchResults,
+} from "./api";
 import Library from "./Library";
 import { backEnd, EMPTY_COLLECTION, NOTHING_PLAYING } from "./mockBackEnd";
 
@@ -68,6 +74,35 @@ const results = () =>
 const grid = () => screen.getByRole("list", { name: "Your collection" });
 
 describe("Library", () => {
+  it("swaps an album's Spotify cover for its 320 from disk in place, when Rust has it", async () => {
+    const SMALL = `cover://localhost/${IN_RAINBOWS.id}/320`;
+    let onDisk = false;
+    backEnd({
+      get_collection: () => [
+        onDisk ? { ...IN_RAINBOWS, coverUrl: SMALL } : IN_RAINBOWS,
+        album(2),
+      ],
+      ...NOTHING_PLAYING,
+    });
+    render(<Library name="Will" onSignedOut={() => {}} />);
+    const cover = await screen.findByRole("img", {
+      name: "Cover of In Rainbows",
+    });
+    expect(cover).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
+
+    onDisk = true;
+    await emit(ALBUM_UPDATED, IN_RAINBOWS.id);
+
+    // The same element, with the new cover.
+    await waitFor(() => expect(cover).toHaveAttribute("src", SMALL));
+    expect(
+      screen.getByRole("img", { name: "Cover of In Rainbows" }),
+    ).toBe(cover);
+    expect(
+      screen.getByRole("img", { name: "Cover of Album 2" }),
+    ).toHaveAttribute("src", album(2).coverUrl);
+  });
+
   it("shows the collection as a grid of Spotify's covers", async () => {
     backEnd({
       get_collection: () => [IN_RAINBOWS, album(2, { coverUrl: null })],

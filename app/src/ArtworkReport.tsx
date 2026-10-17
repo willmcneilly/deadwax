@@ -1,6 +1,7 @@
-// The Develop menu's Artwork report: where every album's cover came from and
-// how big it is, with totals by source. It's how the artwork experiment is
-// measured (RFC-001, "High-res artwork, as an experiment").
+// The Develop menu's Artwork report: where every album's cover came from, how
+// big it is, and where its steps in the album job queue stand, with totals by
+// source (RFC-001, "High-res artwork, as an experiment", and RFC-002, "2.
+// Local artwork, in sizes").
 //
 // Development builds only. Library renders this behind import.meta.env.DEV,
 // so Vite leaves it out of a release build, as Rust leaves out its command.
@@ -27,6 +28,15 @@ export type Report = {
     /** In pixels. Null when it couldn't be read, or there's no cover. */
     width: number | null;
     height: number | null;
+    /** The album job queue's steps, in the order they run. */
+    steps: {
+      /** "Lookup" or "Sizes". */
+      step: string;
+      /** "Done", "Queued", "Failed" or "Not started". */
+      status: string;
+      /** Why it failed, for "Failed". */
+      error: string | null;
+    }[];
   }[];
   /** Albums per source, in the order they're tried. */
   totals: { source: string; albums: number }[];
@@ -42,6 +52,14 @@ function size({ url, width, height }: Report["albums"][number]): string {
   if (url === null) return "No cover";
   if (width === null || height === null) return "Unknown size";
   return `${width} × ${height}`;
+}
+
+function steps(album: Report["albums"][number]): string {
+  return album.steps
+    .map(({ step, status, error }) =>
+      error === null ? `${step}: ${status}` : `${step}: ${status} (${error})`,
+    )
+    .join(" · ");
 }
 
 function ArtworkReport({ onFailed }: Props) {
@@ -81,6 +99,7 @@ function ArtworkReport({ onFailed }: Props) {
             <th scope="col">Artist</th>
             <th scope="col">Source</th>
             <th scope="col">Size</th>
+            <th scope="col">Steps</th>
           </tr>
         </thead>
         <tbody>
@@ -90,6 +109,7 @@ function ArtworkReport({ onFailed }: Props) {
               <td>{album.artist}</td>
               <td>{album.source}</td>
               <td>{size(album)}</td>
+              <td>{steps(album)}</td>
             </tr>
           ))}
         </tbody>

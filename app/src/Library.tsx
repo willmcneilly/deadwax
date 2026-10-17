@@ -1,5 +1,7 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import {
+  ALBUM_UPDATED,
   errorMessage,
   getCollection,
   getSession,
@@ -38,6 +40,15 @@ function Library({ name, onSignedOut }: Props) {
   }, []);
 
   useEffect(load, [load]);
+
+  // When an album's cover is on disk, the grid loads again, so its card
+  // swaps Spotify's cover for its own in place.
+  useEffect(() => {
+    const unlisten = listen(ALBUM_UPDATED, () => load());
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, [load]);
 
   const added = (album: AlbumCard) =>
     setAlbums((current) => [
