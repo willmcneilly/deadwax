@@ -7,3 +7,4 @@ pub mod covers;
 #[cfg(debug_assertions)]
 pub mod dev_list;
 pub mod location;
+pub mod palette;
