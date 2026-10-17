@@ -13,12 +13,15 @@ export const TIMED_OUT = 3;
 /** Conclusions that don't fail a PR. */
 const PASSING = new Set(["success", "neutral", "skipped"]);
 
-/** A re-run job is a new check run with the same name: keep the newest of each. */
+/**
+ * A re-run job is a new check run with the same name: keep the newest of
+ * each, by ID, since a queued re-run has no start time yet.
+ */
 export function latestPerName(runs: readonly CheckRun[]): CheckRun[] {
   const latest = new Map<string, CheckRun>();
   for (const run of runs) {
     const seen = latest.get(run.name);
-    if (!seen || (run.started_at ?? "") > (seen.started_at ?? "")) latest.set(run.name, run);
+    if (!seen || run.id > seen.id) latest.set(run.name, run);
   }
   return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
 }

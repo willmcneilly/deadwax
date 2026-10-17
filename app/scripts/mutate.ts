@@ -11,6 +11,7 @@ import { gitPath } from "./git.ts";
 export const CAUGHT = 0;
 export const MISSED = 1;
 export const NOT_BUILT = 2;
+export const KILLED = 3;
 export const INTERRUPTED = 130;
 export const USAGE = 64;
 
@@ -134,8 +135,8 @@ export async function mutate(run: Run, print: (text: string) => void = console.l
   try {
     writeFileSync(run.file, mutated);
     print(`Mutated ${shown}. Running: ${run.command.join(" ")}`);
-    const code = await new Promise<number | null>((resolve, reject) => {
-      if (interrupted) return resolve(null);
+    const [code, killedBy] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+      if (interrupted) return resolve([null, null]);
       child = spawn(run.command[0], run.command.slice(1), { cwd: run.cwd, stdio: ["ignore", "pipe", "pipe"] });
       const echo = run.echo ?? echoHere;
       const keep = (chunk: Buffer, stream: "stdout" | "stderr") => {
@@ -145,11 +146,15 @@ export async function mutate(run: Run, print: (text: string) => void = console.l
       child.stdout?.on("data", (chunk: Buffer) => keep(chunk, "stdout"));
       child.stderr?.on("data", (chunk: Buffer) => keep(chunk, "stderr"));
       child.on("error", reject);
-      child.on("close", resolve);
+      child.on("close", (exit, signal) => resolve([exit, signal]));
     });
     restore();
     if (interrupted) return { code: INTERRUPTED, verdict: `INTERRUPTED. ${shown} is restored.` };
     if (code === 0) return { code: MISSED, verdict: `MISSED: the command passed with ${shown} broken.` };
+    // Killed from outside (out of memory, say) rather than failing: no test judged it.
+    if (code === null) {
+      return { code: KILLED, verdict: `KILLED: the command was killed by ${killedBy ?? "a signal"}, so no test judged it.` };
+    }
     if (didNotBuild(tail)) {
       return { code: NOT_BUILT, verdict: `DIDN'T BUILD: the mutated code didn't compile or parse, so no test judged it.` };
     }

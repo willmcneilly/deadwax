@@ -21,6 +21,8 @@ It prints the command's output, then one of:
   MISSED       the command passed with the code broken: exit 1
   DIDN'T BUILD the mutated code didn't compile or parse (cargo, tsc, or vitest
                loading it), so no test judged it: exit 2
+  KILLED       the command was killed by a signal it didn't get from here,
+               so no test judged it: exit 3
   INTERRUPTED  the file is restored: exit 130
 
 The file and the command are relative to where you run it; a named mutation's

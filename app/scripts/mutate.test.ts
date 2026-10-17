@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { git, gitPath } from "./git.ts";
-import { CAUGHT, INTERRUPTED, MISSED, NOT_BUILT, USAGE, didNotBuild, mutate, occurrences } from "./mutate.ts";
+import { CAUGHT, INTERRUPTED, KILLED, MISSED, NOT_BUILT, USAGE, didNotBuild, mutate, occurrences } from "./mutate.ts";
 import { MUTATIONS } from "./mutations.ts";
 
 const REPO = resolve(import.meta.dirname, "../..");
@@ -80,6 +80,13 @@ describe("mutate", () => {
     expect(readFileSync(file, "utf8")).toBe(ORIGINAL);
   });
 
+  it("doesn't count a command killed by a signal as caught", async () => {
+    const outcome = await run("now()", "alloc()", ["sh", "-c", "kill -KILL $$"]);
+    expect(outcome).toMatchObject({ code: KILLED });
+    expect(outcome.verdict).toMatch(/^KILLED: .*SIGKILL/);
+    expect(readFileSync(file, "utf8")).toBe(ORIGINAL);
+  });
+
   it("refuses text that doesn't occur exactly once, and leaves the file alone", async () => {
     expect((await run("missing", "x", ["true"])).code).toBe(USAGE);
     expect((await run("()", "x", ["true"])).verdict).toMatch(/occurs 2 times/);
@@ -118,7 +125,7 @@ function start(command: string) {
 }
 
 describe("the command line", () => {
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     it(`restores the file when it gets ${signal} mid-run`, async () => {
       const run = start("echo started $$; exec sleep 30");
       await run.started;

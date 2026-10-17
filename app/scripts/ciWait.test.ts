@@ -6,8 +6,11 @@ import type { CheckRun } from "./github.ts";
 const HEAD = "b".repeat(40);
 const OLDER = "a".repeat(40);
 
-function run(name: string, conclusion: string | null, sha = HEAD, started = "2026-10-11T10:00:00Z"): CheckRun {
+let nextId = 1;
+
+function run(name: string, conclusion: string | null, sha = HEAD, started: string | null = "2026-10-11T10:00:00Z"): CheckRun {
   return {
+    id: nextId++,
     name,
     head_sha: sha,
     status: conclusion === null ? "in_progress" : "completed",
@@ -22,7 +25,14 @@ describe("latestPerName", () => {
   it("keeps only the newest run of a re-run job", () => {
     const first = run("Rust", "failure", HEAD, "2026-10-11T10:00:00Z");
     const rerun = run("Rust", "success", HEAD, "2026-10-11T10:30:00Z");
-    expect(latestPerName([rerun, run("App", "success"), first])).toEqual([run("App", "success"), rerun]);
+    const app = run("App", "success");
+    expect(latestPerName([rerun, app, first])).toEqual([app, rerun]);
+  });
+
+  it("keeps a queued re-run, which hasn't started, over the run it replaces", () => {
+    const first = run("Rust", "failure");
+    const queued = { ...run("Rust", null, HEAD, null), status: "queued" };
+    expect(latestPerName([queued, first])).toEqual([queued]);
   });
 });
 

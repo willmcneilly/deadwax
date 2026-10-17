@@ -95,6 +95,8 @@ export type IssueComment = { id: number; created_at: string; body: string; user:
 export const issueComments = (pr: number) => pages<IssueComment[]>(`repos/${REPO}/issues/${pr}/comments`).flat();
 
 export type CheckRun = {
+  /** GitHub numbers check runs in the order they were created. */
+  id: number;
   name: string;
   head_sha: string;
   status: string;
