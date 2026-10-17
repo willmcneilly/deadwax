@@ -31,10 +31,11 @@ const PLAIN: &[&str] = &[
     "isize", "f32", "f64", "Option", "Vec", "Result",
 ];
 
-/// Types from elsewhere that hold only a plain value, added here on purpose.
+/// Types from elsewhere that hold only plain values, added here on purpose.
 /// `AlbumId` is a Deadwax album ID: a `String` with its own type, from
-/// `deadwax-core`.
-const KNOWN: &[&str] = &["AlbumId"];
+/// `deadwax-core`. `Palette` is an album's colours, each a `Colour` (three
+/// bytes, sent as `#rrggbb`), and a `bool`, from `deadwax_core::palette`.
+const KNOWN: &[&str] = &["AlbumId", "Palette"];
 
 /// Names that suggest something holds a credential.
 const FORBIDDEN: &[&str] = &[

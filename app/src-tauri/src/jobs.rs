@@ -6,30 +6,36 @@
 //! 1. **Lookup:** find its sharpest cover (DWX-7).
 //! 2. **Sizes:** download that cover and keep it on disk in sizes
 //!    (`deadwax_core::covers`), which `cover://` serves.
+//! 3. **Palette:** work out its colours from the 320 (`deadwax_core::palette`,
+//!    DWX-19). An album with no cover anywhere gets the neutral palette.
+//! 4. **Genre and label:** from iTunes and MusicBrainz, reusing the lookup's
+//!    replies when it has just run (DWX-19).
 //!
 //! Each album records which steps it has finished. A step is recorded with
 //! its result, so a failed step stores nothing, and the album stops there
 //! and runs again later: after `RETRY_AFTER`, when its page opens, or at the
 //! next launch, which queues every album with steps left. That's also how
-//! albums from before the queue catch up.
+//! albums from before the queue, or from before a step was added, catch up.
 //!
 //! One worker takes the queue an album at a time, so the sources' limits are
 //! kept however many are queued, and an album queued twice runs once. When
-//! an album's cover is on disk, the UI is told, so its cover updates in
-//! place.
+//! an album's cover is on disk, or its palette, genre and label are stored,
+//! the UI is told, so it updates in place.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use deadwax_core::collection::{AlbumId, Collected, Collection, Step};
-use deadwax_core::covers::{self, Store};
+use deadwax_core::covers::{self, Size, Store};
+use deadwax_core::palette::{self, Palette};
 use deadwax_sources::artwork::Finder;
 use deadwax_sources::clock::Clock;
 use tokio::sync::mpsc;
 
 /// The event the UI gets, with the album's Deadwax ID, when what it shows
-/// for the album has changed: its cover is on disk.
+/// for the album has changed: its cover is on disk, or its palette, genre
+/// and label are stored.
 pub const ALBUM_UPDATED: &str = "album-updated";
 
 /// How long a failed album waits before it's queued again. A network blip
@@ -218,8 +224,9 @@ impl AlbumJobs {
 }
 
 /// Runs the album's unfinished steps in order, stopping at the first that
-/// fails, or if the album leaves the collection. Returns whether its cover
-/// is now on disk, which changes what the UI shows.
+/// fails, or if the album leaves the collection. Returns whether what the
+/// UI shows has changed: its cover is now on disk, or its palette, genre or
+/// label is stored.
 pub async fn run<C: Clock + Clone>(
     finder: &Finder<C>,
     collection: &Mutex<Collection>,
@@ -244,12 +251,18 @@ pub async fn run<C: Clock + Clone>(
         let still_there = match step {
             Step::Lookup => look_up(finder, collection, &collected, now).await,
             Step::Sizes => make_sizes(finder, collection, covers, &collected, now).await,
+            Step::Palette => make_palette(collection, covers, &collected, now).await,
+            Step::GenreAndLabel => find_genre_and_label(finder, collection, &collected, now).await,
         }
         .map_err(fail)?;
         if !still_there {
             return Ok(false);
         }
-        changed |= step == Step::Sizes && collected.artwork.is_some_and(|a| a.cover.is_some());
+        changed |= match step {
+            Step::Lookup => false,
+            Step::Sizes => collected.artwork.is_some_and(|a| a.cover.is_some()),
+            Step::Palette | Step::GenreAndLabel => true,
+        };
     }
     Ok(changed)
 }
@@ -312,16 +325,66 @@ async fn make_sizes<C: Clock + Clone>(
     recorded.map_err(|e| e.to_string())
 }
 
+/// Works out the album's palette from its 320 and stores it. An album with
+/// no cover on disk gets the neutral palette. Returns whether the album was
+/// still in the collection.
+async fn make_palette(
+    collection: &Mutex<Collection>,
+    covers: &Store,
+    collected: &Collected,
+    now: SystemTime,
+) -> Result<bool, String> {
+    let palette = if collected.has_local_cover() {
+        let file = covers
+            .file(&collected.id, Size::Small)
+            .ok_or_else(|| "its 320 isn't on disk".to_owned())?;
+        // Reading a 320 is a few milliseconds of work.
+        tokio::task::spawn_blocking(move || {
+            let image = std::fs::read(&file).map_err(|e| e.to_string())?;
+            palette::of_image(&image).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    } else {
+        Palette::neutral()
+    };
+    collection
+        .lock()
+        .expect("collection lock")
+        .set_palette(&collected.id, &palette, now)
+        .map_err(|e| e.to_string())
+}
+
+/// Looks for the album's genre and label and stores them. Returns whether
+/// the album was still in the collection. The collection isn't locked while
+/// we wait on the web.
+async fn find_genre_and_label<C: Clock + Clone>(
+    finder: &Finder<C>,
+    collection: &Mutex<Collection>,
+    collected: &Collected,
+    now: SystemTime,
+) -> Result<bool, String> {
+    let found = finder
+        .genre_and_label(&collected.album)
+        .await
+        .map_err(|e| e.to_string())?;
+    collection
+        .lock()
+        .expect("collection lock")
+        .set_genre_and_label(&collected.id, &found, now)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use deadwax_core::collection::{Album, Artwork, ArtworkSource, Cover};
+    use deadwax_core::collection::{Album, Artwork, ArtworkSource, Cover, GenreAndLabel};
     use deadwax_core::covers::{Size, testing};
     use deadwax_sources::artwork::Endpoints;
     use deadwax_sources::clock::SystemClock;
     use serde_json::json;
-    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::matchers::{method, path, path_regex, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
@@ -419,7 +482,7 @@ mod tests {
 
         assert_eq!(changed, Ok(true));
         let a = get(&collection, &ids[0]);
-        assert_eq!(a.finished, [Step::Lookup, Step::Sizes]);
+        assert_eq!(a.finished, Step::ALL);
         assert_eq!(a.artwork.as_ref().unwrap().source, ArtworkSource::Spotify);
         assert!(a.has_local_cover());
         assert_eq!(
@@ -599,11 +662,14 @@ mod tests {
 
         let changed = run(&finder, &collection, &covers, &id, SystemTime::now()).await;
 
-        assert_eq!(changed, Ok(false));
+        // Its palette and genre and label are stored, which the UI shows.
+        assert_eq!(changed, Ok(true));
         let a = get(&collection, &id);
         assert_eq!(a.unfinished(), []);
         assert!(!a.has_local_cover());
         assert!(!dir.path().join("artwork").exists());
+        assert_eq!(a.palette, Some(Palette::neutral()));
+        assert_eq!(a.genre_and_label, Some(GenreAndLabel::default()));
     }
 
     #[tokio::test]
@@ -664,9 +730,9 @@ mod tests {
                     .set_artwork(id, &spotifys, SystemTime::now())
                     .unwrap();
             }
-            collection
-                .finish(&ids[0], Step::Sizes, SystemTime::now())
-                .unwrap();
+            for step in [Step::Sizes, Step::Palette, Step::GenreAndLabel] {
+                collection.finish(&ids[0], step, SystemTime::now()).unwrap();
+            }
         }
         let (jobs, mut receiver) = AlbumJobs::unstarted();
 
@@ -689,14 +755,11 @@ mod tests {
 
         assert_eq!(
             jobs.statuses(&a()),
-            [(Step::Lookup, NotStarted), (Step::Sizes, NotStarted)]
+            Step::ALL.map(|step| (step, NotStarted))
         );
 
         jobs.queue(&ids[0]);
-        assert_eq!(
-            jobs.statuses(&a()),
-            [(Step::Lookup, Queued), (Step::Sizes, Queued)]
-        );
+        assert_eq!(jobs.statuses(&a()), Step::ALL.map(|step| (step, Queued)));
 
         jobs.queue.pending.lock().unwrap().clear();
         collection
@@ -722,7 +785,9 @@ mod tests {
             jobs.statuses(&a()),
             [
                 (Step::Lookup, Done),
-                (Step::Sizes, Failed("Spotify replied 404 Not Found".into()))
+                (Step::Sizes, Failed("Spotify replied 404 Not Found".into())),
+                (Step::Palette, NotStarted),
+                (Step::GenreAndLabel, NotStarted),
             ]
         );
     }
@@ -845,10 +910,209 @@ mod tests {
         assert!(get(&collection, &ids[0]).has_local_cover());
         assert_eq!(
             jobs.statuses(&get(&collection, &ids[0])),
-            [
-                (Step::Lookup, StepStatus::Done),
-                (Step::Sizes, StepStatus::Done)
-            ]
+            Step::ALL.map(|step| (step, StepStatus::Done))
         );
+    }
+
+    // The palette, and the genre and label (DWX-19).
+
+    const UPC: &str = "634904032463";
+
+    /// iTunes and MusicBrainz know the album by its barcode.
+    async fn genre_and_label_by_barcode(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path("/itunes/lookup"))
+            .and(query_param("upc", UPC))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "resultCount": 1,
+                "results": [{
+                    "wrapperType": "collection",
+                    "artistName": "Radiohead",
+                    "collectionName": "In Rainbows",
+                    "primaryGenreName": "Alternative",
+                    "copyright": "℗ 2007 XL Recordings Ltd",
+                }],
+            })))
+            .with_priority(1)
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/mb/ws/2/release/"))
+            .and(query_param("query", format!("barcode:{UPC}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "count": 1,
+                "releases": [{
+                    "id": "1a33443c-3fff-450f-8298-efbc65659d32",
+                    "title": "In Rainbows",
+                    "artist-credit": [{"name": "Radiohead"}],
+                    "label-info": [{"label": {"name": "XL Recordings"}}],
+                }],
+            })))
+            .with_priority(1)
+            .mount(server)
+            .await;
+    }
+
+    /// A collection of one album with a barcode, whose Spotify cover is
+    /// `/images/cover.jpg`.
+    fn collection_with_barcode(server: &MockServer) -> (Arc<Mutex<Collection>>, AlbumId) {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let album = Album {
+            upc: Some(UPC.into()),
+            ..album("a", server, "cover.jpg")
+        };
+        let id = collection
+            .add(&album, SystemTime::now())
+            .unwrap()
+            .id()
+            .clone();
+        (Arc::new(Mutex::new(collection)), id)
+    }
+
+    fn requests(paths: Vec<wiremock::Request>) -> Vec<String> {
+        paths
+            .into_iter()
+            .map(|request| request.url.path().to_owned())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn makes_the_palette_from_the_320_and_finds_the_genre_and_label() {
+        let server = MockServer::start().await;
+        genre_and_label_by_barcode(&server).await;
+        let finder = finds_nothing(&server).await;
+        let (collection, id) = collection_with_barcode(&server);
+        let (_dir, covers) = store();
+
+        run(&finder, &collection, &covers, &id, SystemTime::now())
+            .await
+            .unwrap();
+
+        let a = get(&collection, &id);
+        assert_eq!(a.finished, Step::ALL);
+        let small = std::fs::read(covers.file(&id, Size::Small).unwrap()).unwrap();
+        assert_eq!(a.palette, Some(palette::of_image(&small).unwrap()));
+        assert_ne!(a.palette, Some(Palette::neutral()));
+        assert_eq!(
+            a.genre_and_label,
+            Some(GenreAndLabel {
+                genre: Some("Alternative".into()),
+                label: Some("XL Recordings".into()),
+            })
+        );
+        // The genre reused the lookup's iTunes reply.
+        let itunes = requests(server.received_requests().await.unwrap())
+            .into_iter()
+            .filter(|path| path == "/itunes/lookup")
+            .count();
+        assert_eq!(itunes, 1);
+    }
+
+    #[tokio::test]
+    async fn an_album_from_before_its_palette_genre_and_label_only_backfills_them() {
+        let server = MockServer::start().await;
+        genre_and_label_by_barcode(&server).await;
+        let finder = finds_nothing(&server).await;
+        let (collection, id) = collection_with_barcode(&server);
+        let (_dir, covers) = store();
+        // Its lookup and sizes were done before DWX-19.
+        let artwork = Artwork {
+            source: ArtworkSource::Spotify,
+            cover: album("a", &server, "cover.jpg").covers.pop(),
+        };
+        covers
+            .save(&id, &covers::make(&testing::jpeg(640, 640)).unwrap())
+            .unwrap();
+        {
+            let mut collection = collection.lock().unwrap();
+            collection
+                .set_artwork(&id, &artwork, SystemTime::now())
+                .unwrap();
+            collection
+                .finish(&id, Step::Sizes, SystemTime::now())
+                .unwrap();
+        }
+        let (jobs, mut receiver) = AlbumJobs::unstarted();
+        jobs.queue_unfinished(&collection).unwrap();
+        assert_eq!(AlbumJobs::queued(&mut receiver), [id.clone()]);
+
+        let changed = run(&finder, &collection, &covers, &id, SystemTime::now()).await;
+
+        assert_eq!(changed, Ok(true));
+        assert_eq!(
+            requests(server.received_requests().await.unwrap()),
+            ["/itunes/lookup", "/mb/ws/2/release/"]
+        );
+        let a = get(&collection, &id);
+        assert_eq!(a.finished, Step::ALL);
+        assert!(a.palette.is_some());
+        assert_eq!(
+            a.genre_and_label.unwrap().genre.as_deref(),
+            Some("Alternative")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_genre_and_label_keeps_the_cover_and_palette() {
+        let server = MockServer::start().await;
+        // iTunes has the cover, so the lookup doesn't ask MusicBrainz.
+        Mock::given(method("GET"))
+            .and(path("/itunes/lookup"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "results": [{
+                    "wrapperType": "collection",
+                    "artistName": "Radiohead",
+                    "collectionName": "In Rainbows",
+                    "artworkUrl100": format!("{}/images/cover.jpg", server.uri()),
+                    "primaryGenreName": "Alternative",
+                }],
+            })))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/mb/ws/2/release/"))
+            .respond_with(ResponseTemplate::new(503))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let finder = finds_nothing(&server).await;
+        let (collection, id) = collection_with_barcode(&server);
+        let (_dir, covers) = store();
+
+        let result = run(&finder, &collection, &covers, &id, SystemTime::now()).await;
+
+        assert_eq!(result.unwrap_err().step, Step::GenreAndLabel);
+        let a = get(&collection, &id);
+        assert_eq!(a.finished, [Step::Lookup, Step::Sizes, Step::Palette]);
+        assert!(a.has_local_cover());
+        assert!(a.palette.is_some());
+        assert_eq!(a.genre_and_label, None);
+    }
+
+    #[tokio::test]
+    async fn a_320_missing_from_disk_fails_the_palette_step() {
+        let server = MockServer::start().await;
+        let finder = finds_nothing(&server).await;
+        let (collection, ids) = collection(&server, "cover.jpg", &["a"]);
+        let (_dir, covers) = store();
+        {
+            let mut collection = collection.lock().unwrap();
+            let artwork = Artwork {
+                source: ArtworkSource::Spotify,
+                cover: album("a", &server, "cover.jpg").covers.pop(),
+            };
+            collection
+                .set_artwork(&ids[0], &artwork, SystemTime::now())
+                .unwrap();
+            collection
+                .finish(&ids[0], Step::Sizes, SystemTime::now())
+                .unwrap();
+        }
+
+        let result = run(&finder, &collection, &covers, &ids[0], SystemTime::now()).await;
+
+        assert_eq!(result.unwrap_err().step, Step::Palette);
+        assert_eq!(get(&collection, &ids[0]).palette, None);
     }
 }
