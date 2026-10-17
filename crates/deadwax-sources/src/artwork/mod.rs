@@ -15,21 +15,31 @@
 //! read from the start of the image. Then the album job queue downloads the
 //! winner once (`Finder::download`) and keeps it in sizes on disk, for
 //! Deadwax's own use (RFC-002, "2. Local artwork, in sizes").
+//!
+//! The same sources give each album its genre and label
+//! (`Finder::genre_and_label`, RFC-002, "3. Genre and label"). They share
+//! the lookup's rate limits, and its iTunes and MusicBrainz replies
+//! (`replies`), so asking for both rarely costs a second request.
 
 mod deezer;
+mod genre_label;
 mod itunes;
 mod musicbrainz;
 mod names;
+mod replies;
 
 use std::time::Duration;
 
 use deadwax_core::collection::{Album, Artwork, ArtworkSource, Cover};
 use reqwest::header::RANGE;
 use reqwest::{RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
 
 use crate::clock::Clock;
 use crate::limiter::Limiter;
+pub use genre_label::strip_copyright;
 pub use names::{same_artist, same_title, strip_edition};
+use replies::Replies;
 
 /// How Deadwax introduces itself. MusicBrainz asks every app to say who it
 /// is and how to reach whoever runs it: that's the project's GitHub page,
@@ -98,6 +108,11 @@ pub enum ArtworkError {
     },
     #[error("{service}'s cover is over {} MB", MAX_DOWNLOAD / 1024 / 1024)]
     TooBig { service: &'static str },
+    #[error("couldn't read {service}'s reply: {error}")]
+    Unreadable {
+        service: &'static str,
+        error: serde_json::Error,
+    },
 }
 
 /// What we're looking for: by barcode, or by artist and title.
@@ -120,9 +135,12 @@ struct Hit {
 pub struct Finder<C> {
     client: reqwest::Client,
     endpoints: Endpoints,
+    clock: C,
     itunes: Limiter<C>,
     deezer: Limiter<C>,
     musicbrainz: Limiter<C>,
+    /// Recent iTunes and MusicBrainz replies, for the next step to reuse.
+    replies: Replies,
 }
 
 impl<C: Clock + Clone> Finder<C> {
@@ -138,7 +156,9 @@ impl<C: Clock + Clone> Finder<C> {
             endpoints,
             itunes: Limiter::new(clock.clone(), ITUNES_INTERVAL),
             deezer: Limiter::new(clock.clone(), DEEZER_INTERVAL),
-            musicbrainz: Limiter::new(clock, MUSICBRAINZ_INTERVAL),
+            musicbrainz: Limiter::new(clock.clone(), MUSICBRAINZ_INTERVAL),
+            clock,
+            replies: Replies::default(),
         }
     }
 
@@ -246,6 +266,48 @@ impl<C: Clock + Clone> Finder<C> {
             });
         }
         Ok(response)
+    }
+
+    /// `request`'s reply from `service`, read as JSON. A reply to the same
+    /// URL from the last few minutes is reused; otherwise the request waits
+    /// its turn on `limiter`.
+    async fn search_json<T: DeserializeOwned>(
+        &self,
+        service: &'static str,
+        limiter: &Limiter<C>,
+        request: RequestBuilder,
+    ) -> Result<T, ArtworkError> {
+        let request = request
+            .build()
+            .map_err(|error| ArtworkError::Network { service, error })?;
+        let url = request.url().to_string();
+        let read = |body: &[u8]| {
+            serde_json::from_slice(body)
+                .map_err(|error| ArtworkError::Unreadable { service, error })
+        };
+        if let Some(body) = self.replies.get(&url, self.clock.now()) {
+            return read(&body);
+        }
+        limiter.wait().await;
+        let response = self
+            .client
+            .execute(request)
+            .await
+            .map_err(|error| ArtworkError::Network { service, error })?;
+        if !response.status().is_success() {
+            return Err(ArtworkError::Unexpected {
+                service,
+                status: response.status(),
+            });
+        }
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| ArtworkError::Network { service, error })?
+            .to_vec();
+        let reply = read(&body)?;
+        self.replies.put(url, self.clock.now(), body);
+        Ok(reply)
     }
 
     /// The cover at `url` with its pixel size, read from the start of the

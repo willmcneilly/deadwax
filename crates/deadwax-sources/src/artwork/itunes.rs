@@ -1,6 +1,9 @@
 //! The iTunes Search API: albums by barcode (`/lookup?upc=`) or by artist
 //! and title (`/search`). Apple asks for about 20 calls a minute.
 //!
+//! Its replies also carry each album's genre and copyright line, which
+//! `genre_label` reads.
+//!
 //! Its artwork URLs end in the size they ask for, such as `100x100bb.jpg`.
 //! Asking for something huge returns the original upload, which was 3,000 to
 //! 4,000 pixels in testing (RFC-001 research).
@@ -18,6 +21,22 @@ const HUGE: &str = "10000x10000bb";
 
 impl<C: Clock + Clone> Finder<C> {
     pub(super) async fn itunes(&self, by: By<'_>) -> Result<Vec<Hit>, ArtworkError> {
+        Ok(self
+            .itunes_albums(by)
+            .await?
+            .into_iter()
+            .filter_map(|album| {
+                Some(Hit {
+                    artist: album.artist_name?,
+                    title: album.collection_name?,
+                    cover: original(&album.artwork_url100?),
+                })
+            })
+            .collect())
+    }
+
+    /// The albums iTunes finds, as it describes them.
+    pub(super) async fn itunes_albums(&self, by: By<'_>) -> Result<Vec<Item>, ArtworkError> {
         let request = match by {
             By::Upc(upc) => self
                 .client
@@ -33,27 +52,11 @@ impl<C: Clock + Clone> Finder<C> {
                     ("limit", "10"),
                 ]),
         };
-        self.itunes.wait().await;
-        let reply: Reply = self
-            .send(SERVICE, request)
-            .await?
-            .json()
-            .await
-            .map_err(|error| ArtworkError::Network {
-                service: SERVICE,
-                error,
-            })?;
+        let reply: Reply = self.search_json(SERVICE, &self.itunes, request).await?;
         Ok(reply
             .results
             .into_iter()
             .filter(|result| result.wrapper_type.as_deref() == Some("collection"))
-            .filter_map(|result| {
-                Some(Hit {
-                    artist: result.artist_name?,
-                    title: result.collection_name?,
-                    cover: original(&result.artwork_url100?),
-                })
-            })
             .collect())
     }
 }
@@ -92,11 +95,15 @@ struct Reply {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Item {
+pub(super) struct Item {
     wrapper_type: Option<String>,
-    artist_name: Option<String>,
+    pub artist_name: Option<String>,
     collection_name: Option<String>,
     artwork_url100: Option<String>,
+    /// One coarse genre, such as "Alternative".
+    pub primary_genre_name: Option<String>,
+    /// Such as "℗ 2007 XL Recordings Ltd".
+    pub copyright: Option<String>,
 }
 
 #[cfg(test)]
