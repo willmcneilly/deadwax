@@ -95,6 +95,9 @@ pub fn run() {
             let collection = Arc::new(Mutex::new(open_collection(&app_data)?));
             let covers = Store::new(location::artwork_dir(&build(), &app_data));
             let emitter = app.handle().clone();
+            // Starting it queues every album with steps left, including
+            // every album from before the queue, to catch up in the
+            // background.
             let jobs = AlbumJobs::start(
                 Finder::new(SystemClock, Endpoints::default()),
                 collection.clone(),
@@ -103,10 +106,7 @@ pub fn run() {
                 move |id| {
                     let _ = emitter.emit(ALBUM_UPDATED, id);
                 },
-            );
-            // Albums with steps left, including every album from before
-            // the queue, catch up in the background.
-            jobs.queue_unfinished(&collection)?;
+            )?;
             app.manage(AppState::new(
                 config::path(&app_data),
                 collection,

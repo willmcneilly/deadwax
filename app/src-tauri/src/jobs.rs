@@ -94,7 +94,9 @@ pub struct AlbumJobs {
 }
 
 impl AlbumJobs {
-    /// Starts the worker. `updated` is called with each album whose cover
+    /// Starts the worker, and queues every album in the collection with
+    /// steps left, so albums from before the queue (or whose steps failed
+    /// last time) catch up. `updated` is called with each album whose cover
     /// is now on disk. A failed album is queued again after `retry_after`.
     pub fn start<C: Clock + Clone>(
         finder: Finder<C>,
@@ -102,9 +104,10 @@ impl AlbumJobs {
         covers: Store,
         retry_after: Duration,
         updated: impl Fn(&AlbumId) + Send + 'static,
-    ) -> Self {
+    ) -> Result<Self, String> {
         let (queue, mut receiver) = Queue::new();
         let worker = queue.clone();
+        let waiting = collection.clone();
         tauri::async_runtime::spawn(async move {
             while let Some(id) = receiver.recv().await {
                 let outcome = run(&finder, &collection, &covers, &id, SystemTime::now()).await;
@@ -136,7 +139,9 @@ impl AlbumJobs {
                 worker.pending.lock().expect("pending lock").remove(&id);
             }
         });
-        Self { queue }
+        let jobs = Self { queue };
+        jobs.queue_unfinished(&waiting)?;
+        Ok(jobs)
     }
 
     /// A queue with no worker, for tests: they read what was queued from the
@@ -158,7 +163,7 @@ impl AlbumJobs {
         self.queue.queue(id);
     }
 
-    /// Queues every album in the collection with steps left. Launching and
+    /// Queues every album in the collection with steps left. Starting and
     /// restoring from the dev list use it.
     pub fn queue_unfinished(&self, collection: &Mutex<Collection>) -> Result<(), String> {
         let unfinished: Vec<AlbumId> = collection
@@ -735,7 +740,8 @@ mod tests {
             covers.clone(),
             RETRY_AFTER,
             move |id| tell.send(id.clone()).unwrap(),
-        );
+        )
+        .unwrap();
 
         jobs.queue(&ids[0]);
         jobs.queue(&ids[0]);
@@ -760,6 +766,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn starting_the_queue_catches_up_the_albums_already_waiting() {
+        let server = MockServer::start().await;
+        let finder = finds_nothing(&server).await;
+        let (collection, ids) = collection(&server, "cover.jpg", &["a", "b"]);
+        // One from before the queue, with its lookup done, and one new.
+        let spotifys = Artwork {
+            source: ArtworkSource::Spotify,
+            cover: album("a", &server, "cover.jpg").covers.pop(),
+        };
+        collection
+            .lock()
+            .unwrap()
+            .set_artwork(&ids[0], &spotifys, SystemTime::now())
+            .unwrap();
+        let (_dir, covers) = store();
+        let (tell, mut told) = mpsc::unbounded_channel();
+
+        // Nothing is queued by hand: starting does it.
+        let _jobs = AlbumJobs::start(
+            finder,
+            collection.clone(),
+            covers.clone(),
+            RETRY_AFTER,
+            move |id| tell.send(id.clone()).unwrap(),
+        )
+        .unwrap();
+
+        let mut updated = Vec::new();
+        for _ in 0..2 {
+            let id = tokio::time::timeout(Duration::from_secs(10), told.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            updated.push(id);
+        }
+        updated.sort();
+        let mut expected = ids.clone();
+        expected.sort();
+        assert_eq!(updated, expected);
+        for id in &ids {
+            assert!(get(&collection, id).has_local_cover());
+            assert!(covers.file(id, Size::Small).is_some());
+        }
+    }
+
+    #[tokio::test]
     async fn a_failed_album_is_tried_again_later() {
         let server = MockServer::start().await;
         // The first download fails; the next works.
@@ -780,7 +832,8 @@ mod tests {
             covers.clone(),
             Duration::from_millis(50),
             move |id| tell.send(id.clone()).unwrap(),
-        );
+        )
+        .unwrap();
 
         jobs.queue(&ids[0]);
 
