@@ -1,13 +1,15 @@
 //! The Develop menu's commands: resetting the collection, restoring it from
 //! the dev list, and the Artwork report. See RFC-001, "A dev list that
-//! survives resets" and "High-res artwork, as an experiment".
+//! survives resets" and "High-res artwork, as an experiment", and RFC-002,
+//! "2. Local artwork, in sizes".
 //!
 //! Development builds only: `commands.rs` compiles this module under
 //! `debug_assertions`, so release builds don't contain it.
 
 use std::time::SystemTime;
 
-use deadwax_core::collection::{AlbumId, ArtworkSource, Collection};
+use deadwax_core::collection::{AlbumId, ArtworkSource, Collection, Step};
+use deadwax_core::covers::Store;
 use deadwax_core::dev_list::Entry;
 use deadwax_sources::clock::Clock;
 use deadwax_sources::spotify::tokens::TokenStore;
@@ -16,7 +18,7 @@ use serde::Serialize;
 use tauri::State;
 
 use super::{AppState, EXPIRED_MESSAGE, collection_error, spotify_error};
-use crate::artwork::ArtworkQueue;
+use crate::jobs::{AlbumJobs, StepStatus};
 
 /// The events the Develop menu's items send the UI.
 pub const RESET_COLLECTION: &str = "reset-collection";
@@ -65,42 +67,43 @@ pub fn dev_list_missing(state: State<'_, AppState>) -> Result<u32, String> {
     Ok(u32::try_from(missing(&state.collection)?.len()).unwrap_or(u32::MAX))
 }
 
-/// Empties this checkout's collection. The dev list keeps everything.
+/// Empties this checkout's collection and deletes its covers. The dev list
+/// keeps everything.
 #[tauri::command]
 pub fn reset_collection(state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .collection
+    reset(&state.collection, &state.covers)
+}
+
+fn reset(collection: &std::sync::Mutex<Collection>, covers: &Store) -> Result<(), String> {
+    collection
         .lock()
         .expect("collection lock")
         .clear()
-        .map_err(collection_error)
+        .map_err(collection_error)?;
+    covers
+        .clear()
+        .map_err(|e| format!("Couldn't delete the covers: {e}"))
 }
 
 /// Adds back every album in the dev list that isn't in the collection,
 /// fetching each from Spotify one at a time, with its original date added
 /// and a new Deadwax ID (the dev list keeps only Spotify IDs).
-/// Their high-res covers are looked for in the background.
+/// Their covers are looked up and downloaded in the background.
 #[tauri::command]
 pub async fn restore_from_dev_list(state: State<'_, AppState>) -> Result<RestoreReport, String> {
     let spotify = state.signed_in().await?;
-    restore_and_look_for(
-        &spotify,
-        &state.collection,
-        &state.artwork,
-        SystemTime::now(),
-    )
-    .await
+    restore_and_queue(&spotify, &state.collection, &state.jobs, SystemTime::now()).await
 }
 
-/// Restores, then queues every album without a high-res cover result.
-async fn restore_and_look_for<C: Clock, S: TokenStore>(
+/// Restores, then queues every album with steps left.
+async fn restore_and_queue<C: Clock, S: TokenStore>(
     spotify: &Spotify<C, S>,
     collection: &std::sync::Mutex<Collection>,
-    artwork: &ArtworkQueue,
+    jobs: &AlbumJobs,
     now: SystemTime,
 ) -> Result<RestoreReport, String> {
     let report = restore(spotify, collection, now).await?;
-    artwork.look_for_missing(collection)?;
+    jobs.queue_unfinished(collection)?;
     Ok(report)
 }
 
@@ -136,8 +139,8 @@ async fn restore<C: Clock, S: TokenStore>(
     Ok(report)
 }
 
-/// Where every album's cover came from, and how big it is: the measure of
-/// the artwork experiment.
+/// Where every album's cover came from, how big it is, and where each of
+/// its steps in the album job queue stands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtworkReport {
@@ -160,6 +163,37 @@ pub struct ArtworkRow {
     /// In pixels. `None` when it couldn't be read, or there's no cover.
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// The album job queue's steps, in the order they run.
+    pub steps: Vec<StepRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepRow {
+    /// "Lookup" or "Sizes".
+    pub step: String,
+    /// "Done", "Queued", "Failed" or "Not started".
+    pub status: String,
+    /// Why it failed, for "Failed".
+    pub error: Option<String>,
+}
+
+fn step_row(step: Step, status: StepStatus) -> StepRow {
+    let (status, error) = match status {
+        StepStatus::Done => ("Done", None),
+        StepStatus::Queued => ("Queued", None),
+        StepStatus::Failed(error) => ("Failed", Some(error)),
+        StepStatus::NotStarted => ("Not started", None),
+    };
+    StepRow {
+        step: match step {
+            Step::Lookup => "Lookup",
+            Step::Sizes => "Sizes",
+        }
+        .into(),
+        status: status.into(),
+        error,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -185,15 +219,23 @@ fn source_name(source: ArtworkSource) -> &'static str {
 /// The Artwork report, for the Develop menu.
 #[tauri::command]
 pub fn artwork_report(state: State<'_, AppState>) -> Result<ArtworkReport, String> {
-    report(&state.collection.lock().expect("collection lock"))
+    report(
+        &state.collection.lock().expect("collection lock"),
+        &state.jobs,
+    )
 }
 
-fn report(collection: &Collection) -> Result<ArtworkReport, String> {
+fn report(collection: &Collection, jobs: &AlbumJobs) -> Result<ArtworkReport, String> {
     let albums: Vec<ArtworkRow> = collection
         .albums()
         .map_err(collection_error)?
         .into_iter()
         .map(|collected| {
+            let steps = jobs
+                .statuses(&collected)
+                .into_iter()
+                .map(|(step, status)| step_row(step, status))
+                .collect();
             let source = collected
                 .artwork
                 .as_ref()
@@ -207,6 +249,7 @@ fn report(collection: &Collection) -> Result<ArtworkReport, String> {
                 width: cover.as_ref().and_then(|c| c.width),
                 height: cover.as_ref().and_then(|c| c.height),
                 url: cover.map(|c| c.url),
+                steps,
             }
         })
         .collect();
@@ -381,19 +424,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restoring_queues_every_restored_album_to_look_for_its_artwork() {
+    async fn restoring_queues_every_restored_album_for_its_jobs() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         mount_ok_computer(&server).await;
         let (_root, collection) =
             collection_with_dev_list(&[(IN_RAINBOWS, day(1)), (OK_COMPUTER, day(3))]);
-        let (artwork, mut queued) = ArtworkQueue::unstarted();
+        let (jobs, mut queued) = AlbumJobs::unstarted();
 
-        restore_and_look_for(&spotify, &collection, &artwork, day(10))
+        restore_and_queue(&spotify, &collection, &jobs, day(10))
             .await
             .unwrap();
 
-        let mut queued = ArtworkQueue::queued(&mut queued);
+        let mut queued = AlbumJobs::queued(&mut queued);
         queued.sort();
         let mut restored: Vec<AlbumId> = collection
             .lock()
@@ -463,11 +506,17 @@ mod tests {
     }
 
     #[test]
-    fn resetting_empties_the_collection_but_not_the_dev_list() {
-        let (_root, collection) = collection_with_dev_list(&[(IN_RAINBOWS, day(1))]);
+    fn resetting_empties_the_collection_and_deletes_the_covers_but_not_the_dev_list() {
+        let (root, collection) = collection_with_dev_list(&[(IN_RAINBOWS, day(1))]);
+        let covers = Store::new(root.path().join("artwork"));
+        let renditions =
+            deadwax_core::covers::make(&deadwax_core::covers::testing::jpeg(400, 400)).unwrap();
+        covers.save(&AlbumId::new(), &renditions).unwrap();
 
-        collection.lock().unwrap().clear().unwrap();
+        reset(&collection, &covers).unwrap();
 
+        assert!(collection.lock().unwrap().albums().unwrap().is_empty());
+        assert!(!root.path().join("artwork").exists());
         assert_eq!(missing(&collection).unwrap().len(), 1);
     }
 
@@ -520,7 +569,8 @@ mod tests {
                 .unwrap();
         }
 
-        let report = report(&collection).unwrap();
+        let (jobs, _queued) = AlbumJobs::unstarted();
+        let report = report(&collection, &jobs).unwrap();
 
         // Rows name albums by their Deadwax IDs.
         assert_eq!(report.albums[0].id, ids["e"]);
@@ -579,10 +629,70 @@ mod tests {
             )
             .unwrap();
 
-        let totals = report(&collection).unwrap().totals;
+        let (jobs, _queued) = AlbumJobs::unstarted();
+        let totals = report(&collection, &jobs).unwrap().totals;
 
         assert_eq!(totals.len(), 4);
         assert_eq!(totals[1].albums, 1);
+    }
+
+    #[test]
+    fn the_artwork_report_shows_each_albums_steps_and_where_they_stand() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let queued = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        let done = collection
+            .add(&album("b", "B"), day(2))
+            .unwrap()
+            .id()
+            .clone();
+        let spotifys = Artwork {
+            source: ArtworkSource::Spotify,
+            cover: None,
+        };
+        collection.set_artwork(&done, &spotifys, day(3)).unwrap();
+        collection.finish(&done, Step::Sizes, day(3)).unwrap();
+        let (jobs, _queued) = AlbumJobs::unstarted();
+        jobs.queue(&queued);
+
+        let report = report(&collection, &jobs).unwrap();
+
+        let steps: Vec<Vec<(&str, &str)>> = report
+            .albums
+            .iter()
+            .map(|row| {
+                row.steps
+                    .iter()
+                    .map(|s| (s.step.as_str(), s.status.as_str()))
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            steps,
+            [
+                [("Lookup", "Done"), ("Sizes", "Done")],
+                [("Lookup", "Queued"), ("Sizes", "Queued")],
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_step_shows_why() {
+        assert_eq!(
+            step_row(Step::Sizes, StepStatus::Failed("Deezer replied 404".into())),
+            StepRow {
+                step: "Sizes".into(),
+                status: "Failed".into(),
+                error: Some("Deezer replied 404".into()),
+            }
+        );
+        assert_eq!(
+            step_row(Step::Lookup, StepStatus::NotStarted).status,
+            "Not started"
+        );
     }
 
     /// The JSON `app/src/ArtworkReport.tsx` expects. Change both together.
@@ -597,6 +707,18 @@ mod tests {
                 url: Some("https://itunes/a".into()),
                 width: Some(4000),
                 height: Some(3998),
+                steps: vec![
+                    StepRow {
+                        step: "Lookup".into(),
+                        status: "Done".into(),
+                        error: None,
+                    },
+                    StepRow {
+                        step: "Sizes".into(),
+                        status: "Failed".into(),
+                        error: Some("iTunes replied 404 Not Found".into()),
+                    },
+                ],
             }],
             totals: vec![ArtworkTotal {
                 source: "iTunes".into(),
@@ -609,6 +731,13 @@ mod tests {
                 "albums": [{
                     "id": "a", "title": "A", "artist": "Radiohead", "source": "iTunes",
                     "url": "https://itunes/a", "width": 4000, "height": 3998,
+                    "steps": [
+                        {"step": "Lookup", "status": "Done", "error": null},
+                        {
+                            "step": "Sizes", "status": "Failed",
+                            "error": "iTunes replied 404 Not Found",
+                        },
+                    ],
                 }],
                 "totals": [{"source": "iTunes", "albums": 1}],
             })

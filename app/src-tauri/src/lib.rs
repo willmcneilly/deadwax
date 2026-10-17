@@ -1,25 +1,27 @@
-mod artwork;
 #[cfg(test)]
 mod command_types;
 mod commands;
 mod config;
+mod cover;
+mod jobs;
 
 use std::sync::{Arc, Mutex};
 
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
-use artwork::{ARTWORK_FOUND, ArtworkQueue};
 use commands::AppState;
 use deadwax_core::collection::Collection;
+use deadwax_core::covers::Store;
 use deadwax_core::location::{self, Build};
 use deadwax_sources::artwork::{Endpoints, Finder};
 use deadwax_sources::clock::SystemClock;
+use jobs::{ALBUM_UPDATED, AlbumJobs, RETRY_AFTER};
 
 /// The menu item that opens the setup screen, and the event it sends the UI.
 const CHANGE_CLIENT_ID: &str = "change-client-id";
 
-/// What kind of build this is, for where the database lives. A development
+/// What kind of build this is, for where the database and covers live. A development
 /// build knows its checkout from where it was compiled: this crate is
 /// `app/src-tauri` inside it.
 fn build() -> Build {
@@ -76,18 +78,37 @@ fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Resul
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Reading a file is quick, but not on the main thread.
+        .register_asynchronous_uri_scheme_protocol(cover::SCHEME, |context, request, responder| {
+            let covers = context.app_handle().state::<AppState>().covers().clone();
+            let path = request.uri().path().to_owned();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(cover::respond(&covers, &path));
+            });
+        })
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
             let collection = Arc::new(Mutex::new(open_collection(&app_data)?));
+            let covers = Store::new(location::artwork_dir(&build(), &app_data));
             let emitter = app.handle().clone();
-            let artwork = ArtworkQueue::start(
+            let jobs = AlbumJobs::start(
                 Finder::new(SystemClock, Endpoints::default()),
                 collection.clone(),
+                covers.clone(),
+                RETRY_AFTER,
                 move |id| {
-                    let _ = emitter.emit(ARTWORK_FOUND, id);
+                    let _ = emitter.emit(ALBUM_UPDATED, id);
                 },
             );
-            app.manage(AppState::new(config::path(&app_data), collection, artwork)?);
+            // Albums with steps left, including every album from before
+            // the queue, catch up in the background.
+            jobs.queue_unfinished(&collection)?;
+            app.manage(AppState::new(
+                config::path(&app_data),
+                collection,
+                covers,
+                jobs,
+            )?);
 
             let handle = app.handle();
             let menu = Menu::default(handle)?;

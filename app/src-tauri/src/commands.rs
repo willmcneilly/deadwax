@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deadwax_core::collection::{self, AlbumId, Collected, Collection};
+use deadwax_core::covers::{Size, Store};
 use deadwax_sources::clock::{Clock, SystemClock};
 use deadwax_sources::spotify::albums::{AlbumSummary, is_spotify_id};
 use deadwax_sources::spotify::playback::{Device, Playback, StartAt};
@@ -28,8 +29,9 @@ use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{Mutex, RwLock, oneshot};
 
-use crate::artwork::ArtworkQueue;
 use crate::config;
+use crate::cover;
+use crate::jobs::AlbumJobs;
 
 type Client = Spotify<SystemClock, KeychainStore>;
 
@@ -59,10 +61,12 @@ pub const EXPIRED_MESSAGE: &str = "Your Spotify sign-in has expired. Sign in aga
 pub struct AppState {
     config_path: PathBuf,
     /// A plain mutex: it's never held across an `await`. Shared with the
-    /// artwork queue's worker.
+    /// album job queue's worker.
     collection: Arc<std::sync::Mutex<Collection>>,
-    /// Looks for high-res covers in the background (DWX-7).
-    artwork: ArtworkQueue,
+    /// Each album's cover on disk, in sizes, which `cover://` serves.
+    covers: Store,
+    /// Looks up and downloads covers in the background (RFC-002).
+    jobs: AlbumJobs,
     spotify: RwLock<Option<Arc<Client>>>,
     /// Dropping this cancels the sign-in that's waiting for the browser, and
     /// closes its listener.
@@ -73,7 +77,8 @@ impl AppState {
     pub fn new(
         config_path: PathBuf,
         collection: Arc<std::sync::Mutex<Collection>>,
-        artwork: ArtworkQueue,
+        covers: Store,
+        jobs: AlbumJobs,
     ) -> Result<Self, String> {
         let config = config::load(&config_path)
             .map_err(|e| format!("Couldn't read Deadwax's config: {e}"))?;
@@ -81,10 +86,15 @@ impl AppState {
         Ok(Self {
             config_path,
             collection,
-            artwork,
+            covers,
+            jobs,
             spotify: RwLock::new(spotify),
             waiting_sign_in: Mutex::new(None),
         })
+    }
+
+    pub fn covers(&self) -> &Store {
+        &self.covers
     }
 
     async fn spotify(&self) -> Option<Arc<Client>> {
@@ -215,14 +225,29 @@ pub struct AlbumCard {
     pub title: String,
     pub artist: String,
     pub year: Option<u16>,
-    /// Spotify's largest cover, about 640 pixels.
+    /// The 320 from disk (`cover://`) once the album's cover is there,
+    /// otherwise Spotify's largest, about 640 pixels.
     pub cover_url: Option<String>,
 }
 
+/// The album's cover at `size` from disk once it's there, otherwise
+/// Spotify's largest, about 640 pixels.
+fn cover_url(collected: &Collected, size: Size) -> Option<String> {
+    if collected.has_local_cover() {
+        return Some(cover::url(&collected.id, size));
+    }
+    collected
+        .album
+        .largest_cover()
+        .map(|cover| cover.url.clone())
+}
+
 impl From<Collected> for AlbumCard {
-    fn from(Collected { id, album, .. }: Collected) -> Self {
+    fn from(collected: Collected) -> Self {
+        let cover_url = cover_url(&collected, Size::Small);
+        let Collected { id, album, .. } = collected;
         Self {
-            cover_url: album.largest_cover().map(|cover| cover.url.clone()),
+            cover_url,
             id,
             title: album.title,
             artist: album.artist,
@@ -352,34 +377,34 @@ async fn search<C: Clock, S: TokenStore>(
 
 /// Fetches the album with this Spotify ID, adds it to your collection with
 /// a new Deadwax ID, and returns it for the grid. Adding one that's already
-/// there refreshes its cache and keeps its Deadwax ID. Its high-res cover is
-/// looked for in the background.
+/// there refreshes its cache and keeps its Deadwax ID. It's queued for the
+/// album job queue, which looks up and downloads its cover.
 #[tauri::command]
 pub async fn add_album(
     state: State<'_, AppState>,
     spotify_id: String,
 ) -> Result<AlbumCard, String> {
     let spotify = state.signed_in().await?;
-    add_and_look_for(
+    add_and_queue(
         &spotify,
         &state.collection,
-        &state.artwork,
+        &state.jobs,
         &spotify_id,
         SystemTime::now(),
     )
     .await
 }
 
-/// Adds the album, then queues it to look for its high-res cover.
-async fn add_and_look_for<C: Clock, S: TokenStore>(
+/// Adds the album, then queues its jobs.
+async fn add_and_queue<C: Clock, S: TokenStore>(
     spotify: &Spotify<C, S>,
     collection: &std::sync::Mutex<Collection>,
-    artwork: &ArtworkQueue,
+    jobs: &AlbumJobs,
     spotify_id: &str,
     now: SystemTime,
 ) -> Result<AlbumCard, String> {
     let card = add(spotify, collection, spotify_id, now).await?;
-    artwork.look_for(&card.id);
+    jobs.queue(&card.id);
     Ok(card)
 }
 
@@ -405,8 +430,8 @@ pub struct AlbumPage {
     pub title: String,
     pub artist: String,
     pub year: Option<u16>,
-    /// The high-res cover once one has been found (DWX-7), otherwise
-    /// Spotify's largest, about 640 pixels.
+    /// The 1600 from disk (`cover://`) once the album's cover is there,
+    /// otherwise Spotify's largest, about 640 pixels.
     pub cover_url: Option<String>,
     pub tracks: Vec<AlbumTrack>,
 }
@@ -423,17 +448,11 @@ pub struct AlbumTrack {
 }
 
 impl From<Collected> for AlbumPage {
-    fn from(
-        Collected {
-            id, album, artwork, ..
-        }: Collected,
-    ) -> Self {
-        let high_res = artwork.and_then(|artwork| artwork.cover);
+    fn from(collected: Collected) -> Self {
+        let cover_url = cover_url(&collected, Size::Large);
+        let Collected { id, album, .. } = collected;
         Self {
-            cover_url: high_res
-                .as_ref()
-                .or(album.largest_cover())
-                .map(|cover| cover.url.clone()),
+            cover_url,
             id,
             spotify_id: album.spotify_id,
             title: album.title,
@@ -457,21 +476,21 @@ impl From<Collected> for AlbumPage {
 const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
 
 /// The album page, from the cache. It never asks Spotify: `refresh_album`
-/// does that when the cache is old. An album without an artwork result yet
-/// is queued to look for one, and `ARTWORK_FOUND` says when it's stored.
+/// does that when the cache is old. An album with steps left is queued, in
+/// case one failed, and `ALBUM_UPDATED` says when its cover is on disk.
 #[tauri::command]
 pub fn get_album(state: State<'_, AppState>, id: AlbumId) -> Result<AlbumPage, String> {
-    open_album(&state.collection, &state.artwork, &id)
+    open_album(&state.collection, &state.jobs, &id)
 }
 
 fn open_album(
     collection: &std::sync::Mutex<Collection>,
-    artwork: &ArtworkQueue,
+    jobs: &AlbumJobs,
     id: &AlbumId,
 ) -> Result<AlbumPage, String> {
     let collected = collected(&collection.lock().expect("collection lock"), id)?;
-    if collected.artwork.is_none() {
-        artwork.look_for(id);
+    if !collected.unfinished().is_empty() {
+        jobs.queue(id);
     }
     Ok(collected.into())
 }
@@ -533,13 +552,23 @@ async fn refresh<C: Clock, S: TokenStore>(
 /// fine.
 #[tauri::command]
 pub fn remove_album(state: State<'_, AppState>, id: AlbumId) -> Result<(), String> {
-    state
-        .collection
+    remove(&state.collection, &state.covers, &id)
+}
+
+/// Takes the album out of the collection, then deletes its covers.
+fn remove(
+    collection: &std::sync::Mutex<Collection>,
+    covers: &Store,
+    id: &AlbumId,
+) -> Result<(), String> {
+    collection
         .lock()
         .expect("collection lock")
-        .remove(&id)
+        .remove(id)
         .map_err(collection_error)?;
-    Ok(())
+    covers
+        .remove(id)
+        .map_err(|e| format!("Couldn't delete the album's covers: {e}"))
 }
 
 /// The album's page on Spotify. Spotify's developer policy wants every album
@@ -632,14 +661,14 @@ pub struct NowPlayingTrack {
     /// Where Open in Spotify goes, whether or not it's in the collection.
     pub spotify_album_id: Option<String>,
     pub duration_ms: u64,
-    /// The album's high-res cover if it's in the collection and one has been
-    /// found (DWX-7), otherwise Spotify's largest, about 640 pixels.
+    /// The album's 1600 from disk (`cover://`) if it's in the collection and
+    /// its cover is there, otherwise Spotify's largest, about 640 pixels.
     pub cover_url: Option<String>,
 }
 
-/// What's playing, with the high-res cover from the collection when it has
-/// one. An album played from elsewhere may not be in the collection, so
-/// Spotify's cover is the fallback.
+/// What's playing, with the cover from disk when the album is in the
+/// collection and its cover is there. An album played from elsewhere may
+/// not be in the collection, so Spotify's cover is the fallback.
 fn now_playing(playback: Playback, collection: &std::sync::Mutex<Collection>) -> NowPlaying {
     NowPlaying {
         is_playing: playback.is_playing,
@@ -666,16 +695,14 @@ fn now_playing(playback: Playback, collection: &std::sync::Mutex<Collection>) ->
                 .ok()
                 .flatten();
             let album_id = collected.as_ref().map(|c| c.id.clone());
-            let high_res = collected
-                .and_then(|collected| collected.artwork)
-                .and_then(|artwork| artwork.cover);
+            let local = collected
+                .filter(Collected::has_local_cover)
+                .map(|collected| cover::url(&collected.id, Size::Large));
             NowPlayingTrack {
                 title: track.title,
                 artist: track.artist,
-                cover_url: high_res
-                    .as_ref()
-                    .or(collection::largest(&album.covers))
-                    .map(|cover| cover.url.clone()),
+                cover_url: local
+                    .or_else(|| collection::largest(&album.covers).map(|cover| cover.url.clone())),
                 album: Some(album.title),
                 album_id,
                 spotify_album_id: Some(album.spotify_id),
@@ -1233,18 +1260,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn adding_an_album_queues_it_to_look_for_its_artwork() {
+    async fn adding_an_album_queues_its_jobs() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = empty_collection();
-        let (artwork, mut queued) = ArtworkQueue::unstarted();
+        let (jobs, mut queued) = AlbumJobs::unstarted();
 
-        add_and_look_for(&spotify, &collection, &artwork, IN_RAINBOWS, day(1))
+        add_and_queue(&spotify, &collection, &jobs, IN_RAINBOWS, day(1))
             .await
             .unwrap();
 
         assert_eq!(
-            ArtworkQueue::queued(&mut queued),
+            AlbumJobs::queued(&mut queued),
             [in_rainbows_id(&collection)]
         );
     }
@@ -1253,46 +1280,50 @@ mod tests {
     async fn an_album_that_couldnt_be_added_isnt_queued() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
-        let (artwork, mut queued) = ArtworkQueue::unstarted();
+        let (jobs, mut queued) = AlbumJobs::unstarted();
 
-        let added = add_and_look_for(
+        let added = add_and_queue(
             &spotify,
             &empty_collection(),
-            &artwork,
+            &jobs,
             "0000000000000000000000",
             day(1),
         )
         .await;
 
         assert!(added.is_err());
-        assert!(ArtworkQueue::queued(&mut queued).is_empty());
+        assert!(AlbumJobs::queued(&mut queued).is_empty());
     }
 
     #[tokio::test]
-    async fn opening_an_album_without_artwork_queues_it_and_one_with_artwork_doesnt() {
+    async fn opening_an_album_with_steps_left_queues_it_and_a_finished_one_doesnt() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
-        let (artwork, mut queued) = ArtworkQueue::unstarted();
         let id = in_rainbows_id(&collection);
 
-        open_album(&collection, &artwork, &id).unwrap();
-        assert_eq!(ArtworkQueue::queued(&mut queued), std::slice::from_ref(&id));
+        let (jobs, mut queued) = AlbumJobs::unstarted();
+        open_album(&collection, &jobs, &id).unwrap();
+        assert_eq!(AlbumJobs::queued(&mut queued), std::slice::from_ref(&id));
 
+        // The lookup alone isn't enough: the sizes are still to make.
         found_on_itunes(&collection);
-        let (artwork, mut queued) = ArtworkQueue::unstarted();
-        let page = open_album(&collection, &artwork, &id).unwrap();
-        assert!(ArtworkQueue::queued(&mut queued).is_empty());
-        assert_eq!(page.cover_url.as_deref(), Some(HIGH_RES));
-    }
+        let (jobs, mut queued) = AlbumJobs::unstarted();
+        open_album(&collection, &jobs, &id).unwrap();
+        assert_eq!(AlbumJobs::queued(&mut queued), std::slice::from_ref(&id));
 
-    const HIGH_RES: &str = "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg";
+        sizes_made(&collection);
+        let (jobs, mut queued) = AlbumJobs::unstarted();
+        let page = open_album(&collection, &jobs, &id).unwrap();
+        assert!(AlbumJobs::queued(&mut queued).is_empty());
+        assert_eq!(page.cover_url, Some(format!("cover://localhost/{id}/1600")));
+    }
 
     fn found_on_itunes(collection: &std::sync::Mutex<Collection>) {
         let artwork = collection::Artwork {
             source: collection::ArtworkSource::Itunes,
             cover: Some(collection::Cover {
-                url: HIGH_RES.into(),
+                url: "https://is1-ssl.mzstatic.com/image/thumb/x/10000x10000bb.jpg".into(),
                 width: Some(4000),
                 height: Some(4000),
             }),
@@ -1306,18 +1337,54 @@ mod tests {
         assert!(stored);
     }
 
+    /// Records that In Rainbows' sizes are on disk, as the album job queue
+    /// does once it has saved them.
+    fn sizes_made(collection: &std::sync::Mutex<Collection>) {
+        let id = in_rainbows_id(collection);
+        let recorded = collection
+            .lock()
+            .unwrap()
+            .finish(&id, collection::Step::Sizes, day(2))
+            .unwrap();
+        assert!(recorded);
+    }
+
     #[tokio::test]
-    async fn the_album_page_has_the_high_res_cover_and_the_grid_keeps_spotifys() {
+    async fn once_its_cover_is_on_disk_the_grid_has_the_320_and_the_album_page_the_1600() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
         found_on_itunes(&collection);
+        sizes_made(&collection);
+        let id = in_rainbows_id(&collection);
 
-        let page = album_page(&collection, &in_rainbows_id(&collection)).unwrap();
+        let page = album_page(&collection, &id).unwrap();
         let grid = cards(&collection.lock().unwrap()).unwrap();
 
-        assert_eq!(page.cover_url.as_deref(), Some(HIGH_RES));
-        assert_eq!(grid[0].cover_url.as_deref(), Some(IN_RAINBOWS_COVER));
+        assert_eq!(page.cover_url, Some(format!("cover://localhost/{id}/1600")));
+        assert_eq!(
+            grid[0].cover_url,
+            Some(format!("cover://localhost/{id}/320"))
+        );
+    }
+
+    #[tokio::test]
+    async fn until_its_cover_is_on_disk_an_album_shows_spotifys() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let id = in_rainbows_id(&collection);
+        let shown = || {
+            let page = album_page(&collection, &id).unwrap();
+            let grid = cards(&collection.lock().unwrap()).unwrap();
+            (page.cover_url, grid[0].cover_url.clone())
+        };
+        let spotifys = Some(IN_RAINBOWS_COVER.to_owned());
+
+        assert_eq!(shown(), (spotifys.clone(), spotifys.clone()));
+        // Found, but not downloaded yet.
+        found_on_itunes(&collection);
+        assert_eq!(shown(), (spotifys.clone(), spotifys));
     }
 
     #[tokio::test]
@@ -1335,6 +1402,7 @@ mod tests {
             .unwrap()
             .set_artwork(&id, &spotifys, day(2))
             .unwrap();
+        sizes_made(&collection);
 
         let page = album_page(&collection, &id).unwrap();
 
@@ -1342,19 +1410,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_refreshed_page_keeps_the_high_res_cover() {
+    async fn a_refreshed_page_keeps_the_cover_from_disk() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
         found_on_itunes(&collection);
+        sizes_made(&collection);
+        let id = in_rainbows_id(&collection);
 
-        let page = refresh(&spotify, &collection, &in_rainbows_id(&collection), day(30))
+        let page = refresh(&spotify, &collection, &id, day(30))
             .await
             .unwrap()
             .expect("a stale cache is fetched again");
 
         assert_eq!(page.title, "In Rainbows");
-        assert_eq!(page.cover_url.as_deref(), Some(HIGH_RES));
+        assert_eq!(page.cover_url, Some(format!("cover://localhost/{id}/1600")));
+    }
+
+    #[tokio::test]
+    async fn removing_an_album_deletes_its_covers() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let id = in_rainbows_id(&collection);
+        let dir = tempfile::tempdir().unwrap();
+        let covers = Store::new(dir.path().join("artwork"));
+        let renditions =
+            deadwax_core::covers::make(&deadwax_core::covers::testing::jpeg(400, 400)).unwrap();
+        covers.save(&id, &renditions).unwrap();
+
+        remove(&collection, &covers, &id).unwrap();
+
+        assert!(!collection.lock().unwrap().contains(&id).unwrap());
+        assert!(!dir.path().join("artwork").join(id.as_str()).exists());
+        // Removing it again is fine.
+        remove(&collection, &covers, &id).unwrap();
     }
 
     #[tokio::test]
@@ -1911,21 +2001,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn now_playing_has_the_high_res_cover_of_an_album_in_the_collection() {
+    async fn now_playing_has_the_1600_from_disk_of_an_album_in_the_collection() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
         found_on_itunes(&collection);
+        sizes_made(&collection);
+        let id = in_rainbows_id(&collection);
 
         assert_eq!(
-            cover_now(playing_in_rainbows(), &collection).as_deref(),
-            Some(HIGH_RES)
+            cover_now(playing_in_rainbows(), &collection),
+            Some(format!("cover://localhost/{id}/1600"))
         );
     }
 
     #[tokio::test]
     async fn now_playing_falls_back_to_spotifys_largest_cover() {
-        // In the collection, but no high-res cover found yet.
+        // In the collection, but its cover isn't on disk yet.
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
@@ -2025,7 +2117,7 @@ mod tests {
                     album_id: Some("deadwax-id".into()),
                     spotify_album_id: Some(IN_RAINBOWS.into()),
                     duration_ms: 255_386,
-                    cover_url: Some(HIGH_RES.into()),
+                    cover_url: Some("cover://localhost/deadwax-id/1600".into()),
                 }),
             })
             .unwrap(),
@@ -2040,7 +2132,7 @@ mod tests {
                     "albumId": "deadwax-id",
                     "spotifyAlbumId": IN_RAINBOWS,
                     "durationMs": 255_386,
-                    "coverUrl": HIGH_RES,
+                    "coverUrl": "cover://localhost/deadwax-id/1600",
                 },
             })
         );
