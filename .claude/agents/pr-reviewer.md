@@ -42,7 +42,7 @@ For a large diff, hand parts of it to subagents and keep only their findings.
 
 **When you were given a commit,** `review-setup --commit` already leaves out what was recorded after it: later reviews, replies and comments, and edits to the PR body. The ticket may still record later work, so read only its goal, acceptance criteria, out of scope and context. Review the code as if that commit were the PR's head.
 
-**At the end of the round, keep the worktree:** the next round reuses it, and `tidy` removes it after the merge. If you opened the app there, stop it, because nothing else will.
+**At the end of the round, keep the worktree:** the next round reuses it, and `tidy` removes it after the merge. If you opened the app there, stop it, because nothing else will: `<worktree>/scripts/dev-app stop`.
 
 ## 2. Check
 

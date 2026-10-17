@@ -16,7 +16,7 @@ app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
-scripts                 the repository's own tools (`check`, `warm`, `ticket`; for reviewers `review-setup`, `ci-wait`, `mutate`; each with `--help`, their logic in app/scripts) and CI's release check
+scripts                 the repository's own tools (`check`, `warm`, `ticket`, `dev-app`; for reviewers `review-setup`, `ci-wait`, `mutate`; each with `--help`, their logic in app/scripts) and CI's release check
 .githooks               git hooks: pre-push runs `scripts/check`, post-checkout warms a new worktree
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
@@ -31,6 +31,9 @@ Run everything from the repository root unless it says `app/`.
 ```bash
 scripts/check                                       # the checks this change needs (below)
 scripts/warm                                        # give a new worktree a warm Rust build
+scripts/dev-app start                               # open this checkout's app on a free port from 1440, titled with its branch
+scripts/dev-app status                              # is it up, which commit and port, any errors since it started
+scripts/dev-app stop                                # stop it: tauri dev, Vite and the app
 scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, merge
 scripts/review-setup <pr>                           # a review round's PR, history, CI and warm worktree, in one go
 scripts/ci-wait <pr> --commit <sha>                 # wait for CI on that commit: exit 0 green, 1 red, 2 no checks, 3 timeout
@@ -48,7 +51,7 @@ npm ci
 npm run typecheck                                   # tsc -b
 npm run lint                                        # eslint, then stylelint
 npm test                                            # vitest, jsdom
-npm run tauri dev                                   # open the app with hot reload
+npm run tauri dev                                   # open the app with hot reload, on port 1440 (agents: scripts/dev-app, above)
 npm run tauri build -- --ci -- --locked             # release build: target/release/bundle/macos/Deadwax.app
 
 # After a release build (from the root)
