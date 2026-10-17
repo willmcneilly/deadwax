@@ -44,7 +44,8 @@ pub fn respond(covers: &Store, path: &str) -> Response<Vec<u8>> {
         .expect("a plain response builds")
 }
 
-fn not_found() -> Response<Vec<u8>> {
+/// The reply to anything that isn't one size of a cover on disk.
+pub fn not_found() -> Response<Vec<u8>> {
     Response::builder()
         .status(StatusCode::NOT_FOUND)
         .header(header::CACHE_CONTROL, "no-store")

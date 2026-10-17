@@ -80,7 +80,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // Reading a file is quick, but not on the main thread.
         .register_asynchronous_uri_scheme_protocol(cover::SCHEME, |context, request, responder| {
-            let covers = context.app_handle().state::<AppState>().covers().clone();
+            // Nothing to serve before setup has made the state.
+            let Some(state) = context.app_handle().try_state::<AppState>() else {
+                return responder.respond(cover::not_found());
+            };
+            let covers = state.covers().clone();
             let path = request.uri().path().to_owned();
             tauri::async_runtime::spawn_blocking(move || {
                 responder.respond(cover::respond(&covers, &path));
