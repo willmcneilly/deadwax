@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Deadwax's collection: the albums, the database, the covers on disk and the dev list. No network."
+description = "Deadwax's collection: the albums, the database, the covers on disk, their palettes and the dev list. No network."
 
 [dependencies]
 fast_image_resize = { version = "6", features = ["image"] }

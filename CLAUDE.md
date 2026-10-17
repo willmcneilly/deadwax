@@ -9,7 +9,7 @@ The foundations are in RFC-001 (`docs/rfcs/rfc-001-foundations.md`): a rough end
 ```
 Cargo.toml              workspace (Rust 2024 edition), release profile
 rust-toolchain.toml     the pinned Rust version, with rustfmt and clippy
-crates/deadwax-core     the collection, the database, covers on disk and the dev list. No network.
+crates/deadwax-core     the collection, the database, covers on disk, their palettes and the dev list. No network.
 crates/deadwax-sources  the web clients: Spotify (sign-in, rate limits), iTunes, Deezer, MusicBrainz
 app/                    Tauri app: React + TypeScript, Vite, npm
 app/src                 the UI. `theme.css` holds the CSS variables
