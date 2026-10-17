@@ -2,6 +2,11 @@
 // albums.json gets its tracklist and two sizes of artwork, saved under public/.
 // Run once with `npm run fixture`. The output is ignored by git.
 //
+// `npm run fixture` builds the collection (albums.json into data/albums.json),
+// then the search catalogue: albums that aren't in the collection, for the
+// fake Spotify search (catalogue.json into data/catalogue.json). Pass a list's
+// name to build only that one: `npm run fixture -- catalogue`.
+//
 // The iTunes API allows roughly 20 requests a minute, so requests are spaced
 // out, and a 429 waits for its Retry-After.
 
@@ -49,62 +54,65 @@ async function download(url, path) {
   await writeFile(path, Buffer.from(await res.arrayBuffer()));
 }
 
-const wanted = JSON.parse(await readFile(join(root, "scripts", "albums.json"), "utf8"));
 await mkdir(coversDir, { recursive: true });
 await mkdir(dataDir, { recursive: true });
 
-const out = [];
-for (const want of wanted) {
-  console.log(`${want.artist} — ${want.title}`);
-  const term = encodeURIComponent(`${want.artist} ${want.title}`);
-  const search = await getJson(
-    `https://itunes.apple.com/search?term=${term}&entity=album&limit=25&country=gb`,
-  );
-  // The album itself: right artist, title contains what we asked for, and not
-  // a single, live record, instrumental or remix version.
-  const candidates = search.results.filter(
-    (r) =>
-      norm(r.artistName).includes(norm(want.artist).slice(0, 8)) &&
-      norm(r.collectionName).includes(norm(want.title)) &&
-      !/single|instrumental|remix|live|karaoke|tribute|acapella/i.test(
-        r.collectionName.replace(want.title, ""),
-      ),
-  );
-  // Prefer the plain album over deluxe editions and anniversary reissues.
-  const pick = candidates.sort((a, b) => a.collectionName.length - b.collectionName.length)[0];
-  if (!pick) {
-    console.log("  not found, skipping");
-    continue;
+const lists = process.argv[2] ? [process.argv[2]] : ["albums", "catalogue"];
+for (const list of lists) {
+  const wanted = JSON.parse(await readFile(join(root, "scripts", `${list}.json`), "utf8"));
+  const out = [];
+  for (const want of wanted) {
+    console.log(`${want.artist} — ${want.title}`);
+    const term = encodeURIComponent(`${want.artist} ${want.title}`);
+    const search = await getJson(
+      `https://itunes.apple.com/search?term=${term}&entity=album&limit=25&country=gb`,
+    );
+    // The album itself: right artist, title contains what we asked for, and not
+    // a single, live record, instrumental or remix version.
+    const candidates = search.results.filter(
+      (r) =>
+        norm(r.artistName).includes(norm(want.artist).slice(0, 8)) &&
+        norm(r.collectionName).includes(norm(want.title)) &&
+        !/single|instrumental|remix|live|karaoke|tribute|acapella/i.test(
+          r.collectionName.replace(want.title, ""),
+        ),
+    );
+    // Prefer the plain album over deluxe editions and anniversary reissues.
+    const pick = candidates.sort((a, b) => a.collectionName.length - b.collectionName.length)[0];
+    if (!pick) {
+      console.log("  not found, skipping");
+      continue;
+    }
+
+    const lookup = await getJson(
+      `https://itunes.apple.com/lookup?id=${pick.collectionId}&entity=song&country=gb`,
+    );
+    const tracks = lookup.results
+      .filter((r) => r.wrapperType === "track")
+      .map((r) => ({
+        disc: r.discNumber,
+        number: r.trackNumber,
+        title: r.trackName,
+        durationMs: r.trackTimeMillis,
+      }))
+      .sort((a, b) => a.disc - b.disc || a.number - b.number);
+
+    const id = String(pick.collectionId);
+    const art = pick.artworkUrl100;
+    await download(art.replace("100x100bb", "600x600bb"), join(coversDir, `${id}-sm.jpg`));
+    await download(art.replace("100x100bb", "1500x1500bb"), join(coversDir, `${id}-lg.jpg`));
+
+    out.push({
+      id,
+      genre: want.genre,
+      title: pick.collectionName,
+      artist: pick.artistName,
+      year: Number(pick.releaseDate?.slice(0, 4)) || null,
+      label: pick.copyright ?? null,
+      tracks,
+    });
   }
 
-  const lookup = await getJson(
-    `https://itunes.apple.com/lookup?id=${pick.collectionId}&entity=song&country=gb`,
-  );
-  const tracks = lookup.results
-    .filter((r) => r.wrapperType === "track")
-    .map((r) => ({
-      disc: r.discNumber,
-      number: r.trackNumber,
-      title: r.trackName,
-      durationMs: r.trackTimeMillis,
-    }))
-    .sort((a, b) => a.disc - b.disc || a.number - b.number);
-
-  const id = String(pick.collectionId);
-  const art = pick.artworkUrl100;
-  await download(art.replace("100x100bb", "600x600bb"), join(coversDir, `${id}-sm.jpg`));
-  await download(art.replace("100x100bb", "1500x1500bb"), join(coversDir, `${id}-lg.jpg`));
-
-  out.push({
-    id,
-    genre: want.genre,
-    title: pick.collectionName,
-    artist: pick.artistName,
-    year: Number(pick.releaseDate?.slice(0, 4)) || null,
-    label: pick.copyright ?? null,
-    tracks,
-  });
+  await writeFile(join(dataDir, `${list}.json`), JSON.stringify(out, null, 2));
+  console.log(`\nWrote ${out.length} albums to data/${list}.json.`);
 }
-
-await writeFile(join(dataDir, "albums.json"), JSON.stringify(out, null, 2));
-console.log(`\nWrote ${out.length} albums.`);

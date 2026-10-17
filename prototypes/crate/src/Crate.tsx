@@ -81,7 +81,7 @@ export const Crate = memo(function Crate({
 
 function Divider({ label, count, tab }: { label: string; count: number; tab: number }) {
   return (
-    <div className="divider-card" style={{ ["--tab" as string]: `${8 + tab * 30}%` }}>
+    <div className="divider-card" style={{ ["--tab" as string]: `${6 + tab * 35}%` }}>
       <div className="divider-tab">
         <span>{label}</span>
       </div>

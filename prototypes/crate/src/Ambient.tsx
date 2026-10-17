@@ -4,7 +4,16 @@ import { css, type Palette } from "./palette";
 // The slowly evolving field behind a playing record: a few soft pools of the
 // album's key colours drifting over a dark ground. The colours are registered
 // CSS properties, so changing album crossfades rather than snaps.
-export function Ambient({ palette, on }: { palette: Palette; on: boolean }) {
+//
+// It warms up while Spotify gets going (the needle is dropping), and settles
+// lower while paused.
+export function Ambient({
+  palette,
+  level,
+}: {
+  palette: Palette;
+  level: "off" | "warming" | "on" | "paused";
+}) {
   const k = palette.key;
   const style = {
     "--deep": css(palette.deep),
@@ -15,7 +24,7 @@ export function Ambient({ palette, on }: { palette: Palette; on: boolean }) {
     "--c4": css(k[4 % k.length]),
   } as CSSProperties;
   return (
-    <div className={`ambient ${on ? "on" : ""}`} style={style}>
+    <div className={`ambient ${level}`} style={style}>
       <div className="pool p0" />
       <div className="pool p1" />
       <div className="pool p2" />

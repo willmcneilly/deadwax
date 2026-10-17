@@ -5,9 +5,6 @@
   --paper: #f1e9db;
   --wood: #6e4b2e;
   --wood-dark: #3f2a19;
-  --card: #b99a68;
-  --card-dark: #9c7e50;
-  --marker: #1d1a17;
   --sleeve-rear: #26211c;
 
   --s: min(70vh, 68vw); /* a sleeve in the crate */
@@ -131,7 +128,7 @@ body {
   transition: opacity 230ms;
   pointer-events: none;
 }
-.slot.divider .shade { inset: -14% 0 0; }
+.slot.divider .shade { inset: -6.5% 0 0; }
 .no-shade .shade { display: none; }
 
 .sleeve-rear {
@@ -172,34 +169,48 @@ body {
 
 /* ---------- dividers ---------- */
 
+/* A smooth paper card with a slim tab and a soft light in the middle. No
+   texture.
+
+   The card's top edge is exactly the tab's colour, and the tab reaches 2px
+   down into the card, so no seam shows where they meet once the 3D
+   transform scales them. The light fades out before it reaches the top. */
+:root {
+  --div-face: #eee8dc;
+  --div-face-low: #ddd4c3;
+  --div-ink: #24201b;
+  --div-edge: rgb(255 255 255 / 0.5);
+}
+
 .divider-card {
   position: absolute;
   inset: 0;
   background:
-    var(--grain) 0 0 / 256px,
-    linear-gradient(170deg, var(--card), var(--card-dark));
+    radial-gradient(ellipse 72% 46% at 50% 52%, rgb(255 253 248 / 0.75), rgb(255 253 248 / 0) 100%),
+    linear-gradient(var(--div-face), var(--div-face-low));
   border-radius: 2px 2px 0 0;
-  color: var(--marker);
+  color: var(--div-ink);
   font-family: var(--hand);
-  box-shadow: inset 0 0 calc(var(--s) * 0.06) rgb(0 0 0 / 0.25);
+  box-shadow: inset 0 1px 0 var(--div-edge);
 }
 .divider-tab {
   position: absolute;
   left: var(--tab);
-  bottom: 100%;
-  width: 30%;
-  height: 14%;
+  bottom: calc(100% - 2px);
+  width: 18%;
+  height: calc(6.5% + 2px);
   display: grid;
   place-items: center;
-  background: inherit;
-  background-position: 0 0;
-  border-radius: 7px 7px 0 0;
-  font-size: calc(var(--s) * 0.075);
+  background: var(--div-face);
+  border-radius: 4px 4px 0 0;
+  box-shadow: inset 0 1px 0 var(--div-edge);
+  font-size: calc(var(--s) * 0.04);
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
 }
-.divider-tab span { transform: rotate(-2deg) translateY(4%); }
+.divider-tab span { transform: translateY(2%); }
 .divider-body {
   position: absolute;
   inset: 0;
@@ -208,15 +219,15 @@ body {
   text-align: center;
 }
 .divider-big {
-  font-size: calc(var(--s) * 0.2);
+  font-size: calc(var(--s) * 0.16);
   font-weight: 700;
   transform: rotate(-3deg);
   line-height: 1;
 }
 .divider-count {
-  margin-top: 0.6em;
-  font-size: calc(var(--s) * 0.06);
-  opacity: 0.7;
+  margin-top: 0.7em;
+  font-size: calc(var(--s) * 0.045);
+  opacity: 0.6;
 }
 
 /* ---------- caption ---------- */
