@@ -127,7 +127,7 @@ export function realServices(checkout: string): Services & { run(dryRun: boolean
         headRefName: string;
         headRefOid: string;
         statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
-        reviews: { body: string; submittedAt: string }[];
+        reviews: { body: string; submittedAt: string; commit: { oid: string } | null }[];
       }>("pr", "view", String(number), "--json", "number,url,state,headRefName,headRefOid,statusCheckRollup,reviews");
       const checks: Check[] = pr.statusCheckRollup.map((c) => ({
         name: c.name ?? c.context ?? "a check",
@@ -135,7 +135,7 @@ export function realServices(checkout: string): Services & { run(dryRun: boolean
         conclusion: c.conclusion ?? undefined,
         state: c.state ?? undefined,
       }));
-      const reviews = [...pr.reviews].sort((a, b) => a.submittedAt.localeCompare(b.submittedAt)).map((r) => r.body);
+      const reviews = [...pr.reviews].sort((a, b) => a.submittedAt.localeCompare(b.submittedAt)).map((r) => ({ body: r.body, commit: r.commit?.oid ?? "" }));
       return { number: pr.number, url: pr.url, state: pr.state, branch: pr.headRefName, headSha: pr.headRefOid, checks, reviews };
     },
 

@@ -36,7 +36,8 @@ Commands:
 
   merge DWX-n
       Refuses unless the ticket is In Review (or Done), the newest review on
-      its PR says Ready to merge, and CI is green on the PR's head commit.
+      its PR says Ready to merge and was of the PR's head commit, and CI is
+      green on that commit.
       Squash merges the PR and deletes its remote branch (git push origin
       --delete, not gh's --delete-branch, which fails from a worktree). Sets
       the ticket Done, sets each Backlog ticket it unblocks to Ready, sets the

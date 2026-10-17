@@ -21,6 +21,8 @@ export type PrState = "OPEN" | "MERGED" | "CLOSED";
 
 export type Check = { name: string; status?: string; conclusion?: string; state?: string };
 
+export type Review = { body: string; commit: string };
+
 export type Pr = {
   number: number;
   url: string;
@@ -28,8 +30,8 @@ export type Pr = {
   branch: string;
   headSha: string;
   checks: Check[];
-  /** Every review's body, oldest first. */
-  reviews: string[];
+  /** Every review, oldest first: its body and the commit it reviewed. */
+  reviews: Review[];
 };
 
 /** What the commands read. Reads happen in a dry run too: they decide what it would do. */
@@ -218,12 +220,16 @@ export function ciState(checks: Check[]): "passing" | "pending" | "failed" | "no
 /** Why a PR can't merge, or undefined if it can. */
 export function whyNotMergeable(pr: Pr): string | undefined {
   if (pr.state === "CLOSED") return `PR #${pr.number} is closed without merging.`;
-  const reviews = pr.reviews.filter(isReview);
+  const reviews = pr.reviews.filter((r) => isReview(r.body));
   const newest = reviews.at(-1);
   if (!newest) return `PR #${pr.number} has no review yet. Run the review-round workflow.`;
-  const said = verdict(newest);
+  const said = verdict(newest.body);
   if (said !== "Ready to merge") {
     return `The newest review of PR #${pr.number} says ${said ?? "neither Ready to merge nor Changes needed"}.`;
+  }
+  // A push after the review would otherwise merge unreviewed once its CI is green.
+  if (newest.commit !== pr.headSha) {
+    return `The newest review of PR #${pr.number} is of ${newest.commit.slice(0, 7)}, not the head commit ${pr.headSha.slice(0, 7)}. Run another review round.`;
   }
   const ci = ciState(pr.checks);
   if (ci !== "passing") {

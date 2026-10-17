@@ -141,7 +141,7 @@ Then stop and wait for Will.
 
 **"Merge":**
 1. Run `scripts/ticket merge DWX-n`. It does the merge's GitHub and Notion steps, and prints what's ready afterwards:
-   - It refuses unless the newest review says Ready to merge and CI is green on the PR's head commit. If it refuses, tell Will what's wrong instead of merging.
+   - It refuses unless the newest review says Ready to merge and was of the PR's head commit, and CI is green on that commit. If it refuses, tell Will what's wrong instead of merging.
    - It squash merges, so there's one commit per ticket on `main`, titled `DWX-<n>: …`, then deletes the remote branch with `git push origin --delete`. Never `gh pr merge --delete-branch`: from a worktree it fails, because it tries to switch to `main`, which is checked out in Will's main checkout.
    - It sets the ticket `Done`, sets each `Backlog` ticket whose **Depends on** are now all `Done` and merged to `Ready`, and sets the project `Done` if every ticket in it is.
    - If it stops partway (a failed Notion call, say), run it again: it skips a merge that's already happened.

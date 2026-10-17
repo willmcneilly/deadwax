@@ -5,6 +5,7 @@ import {
   type Pr,
   type PrState,
   type Project,
+  type Review,
   Refusal,
   type Services,
   type Ticket,
@@ -24,6 +25,10 @@ import {
 } from "./ticket.ts";
 
 const PROJECT = "project-page";
+const HEAD = "abcdef1234567";
+
+/** A review of `commit`, the fake PR's head commit unless it says otherwise. */
+const review = (body: string, commit = HEAD): Review => ({ body, commit });
 
 /** A fake Notion and GitHub: tickets are [id, status, depends on, PR state] with PR n = 10000 + id. */
 function fake(
@@ -59,18 +64,18 @@ function fake(
       url: `https://github.com/willmcneilly/deadwax/pull/${number}`,
       state: states.get(number) ?? "OPEN",
       branch: "dwx-1-thing",
-      headSha: "abcdef1234567",
+      headSha: HEAD,
       checks: [{ name: "Rust", status: "COMPLETED", conclusion: "SUCCESS" }],
-      reviews: ["🤖 Claude (review):\n\n**Verdict: Ready to merge.**"],
+      reviews: [review("🤖 Claude (review):\n\n**Verdict: Ready to merge.**")],
       ...extra.pr,
     }),
   };
 }
 
 /** A Run that records each action, as a dry run would print it. */
-function recorder(response?: string): { run: (a: Action) => string | undefined; actions: Action[] } {
+function recorder(): { run: (a: Action) => string | undefined; actions: Action[] } {
   const actions: Action[] = [];
-  return { actions, run: (a) => (actions.push(a), response) };
+  return { actions, run: (a) => (actions.push(a), undefined) };
 }
 
 const summaries = (actions: Action[]) => actions.map((a) => a.summary);
@@ -280,14 +285,21 @@ describe("whyNotMergeable", () => {
   });
 
   it("goes by the newest reviewer review, skipping replies", () => {
-    const reviews = ["🤖 Claude (review): **Ready to merge.**", "🤖 Claude (re-review of abc): **Changes needed.**", "Fixed in 123."];
+    const reviews = ["🤖 Claude (review): **Ready to merge.**", "🤖 Claude (re-review of abc): **Changes needed.**", "Fixed in 123."].map((b) => review(b));
     expect(whyNotMergeable({ ...pr, reviews })).toBe("The newest review of PR #10001 says Changes needed.");
     expect(whyNotMergeable({ ...pr, reviews: reviews.slice(1).reverse() })).toBe("The newest review of PR #10001 says Changes needed.");
-    expect(whyNotMergeable({ ...pr, reviews: [...reviews, "🤖 Claude (re-review of def): Ready to merge."] })).toBeUndefined();
+    expect(whyNotMergeable({ ...pr, reviews: [...reviews, review("🤖 Claude (re-review of def): Ready to merge.")] })).toBeUndefined();
+  });
+
+  it("refuses when the newest review is of an earlier commit, even with CI green", () => {
+    const reviews = [review("🤖 Claude (review): **Verdict: Ready to merge.**", "0123456789abc")];
+    expect(whyNotMergeable({ ...pr, reviews })).toBe(
+      "The newest review of PR #10001 is of 0123456, not the head commit abcdef1. Run another review round.",
+    );
   });
 
   it("refuses with no review, or CI not green", () => {
-    expect(whyNotMergeable({ ...pr, reviews: ["LGTM"] })).toMatch(/has no review yet/);
+    expect(whyNotMergeable({ ...pr, reviews: [review("LGTM")] })).toMatch(/has no review yet/);
     expect(whyNotMergeable({ ...pr, checks: [{ name: "Rust", status: "IN_PROGRESS" }] })).toBe(
       "PR #10001 has CI still running (Rust) on abcdef1.",
     );
@@ -341,7 +353,7 @@ describe("merge", () => {
 
   it("refuses when the newest review isn't Ready to merge, changing nothing", () => {
     const { run, actions } = recorder();
-    const services = fake(rows, { pr: { reviews: ["🤖 Claude (review): **Verdict: Changes needed.**"] } });
+    const services = fake(rows, { pr: { reviews: [review("🤖 Claude (review): **Verdict: Changes needed.**")] } });
     expect(() => merge(services, run, 7)).toThrow("Not merging: The newest review of PR #10007 says Changes needed.");
     expect(actions).toEqual([]);
   });
