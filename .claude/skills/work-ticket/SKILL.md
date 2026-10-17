@@ -22,6 +22,7 @@ A ticket is done when a reviewer and Will can trust it without reading every lin
 1. Update `main` (`git fetch && git switch main && git pull --ff-only`).
 2. Create a branch named `dwx-<n>-<short-slug>`, e.g. `dwx-2-spotify-sign-in`.
    - If another ticket is in progress in this checkout, or it has uncommitted work that isn't yours, use a git worktree instead of switching branches.
+   - In a new worktree, run `scripts/warm`, which gives it a warm Rust build from the main checkout's in a few seconds. It does nothing if the worktree has one already, and the post-checkout hook usually has.
 3. Run `scripts/ticket claim DWX-n --branch <branch>`. It refuses, and says why, unless the ticket is Ready with its dependencies merged. Then it sets the ticket `In Progress`, sets the project `Active` if it was `Planned`, and comments `🤖 Claude: Started on branch <branch>.` on the ticket.
 4. Rename this session to the PR title, `DWX-<n>: <ticket name>`, with the `set_session_title` tool (the `ccd_session_mgmt` one) and `session_id: "self"`, so the sidebar, the PR and the commit on `main` share one name. If that tool isn't available (a terminal session), skip this step.
 
@@ -60,7 +61,11 @@ Will decides each one between projects: adopt it into `DESIGN.md`, revise it in 
 
 Before opening the PR:
 
-1. **Run every check CI runs, locally,** and fix everything they report: fmt, clippy with warnings as errors, all tests, the frontend checks and the app build. The exact commands are in `CLAUDE.md`. Never open a PR you know is red.
+1. **Run `scripts/check`,** and fix everything it reports. It runs the checks this change needs (see `CLAUDE.md`), in parallel, and ends with one line per job and the log of any that failed. Never open a PR you know is red.
+   - When Rust changed it takes minutes, so run it in the background and wait for the notification.
+   - Running it again on code that has passed is instant, so run it whenever you need to know, rather than re-running single commands by hand.
+   - If it says `origin/main` has moved on, bring main in first, then run it again.
+   - `git push` runs it too, through the pre-push hook, and is instant after a pass.
 2. **Go through the acceptance criteria one by one.** For each, record the evidence: the test that proves it, the command you ran and what it showed, or a screenshot for UI.
 3. **Manual checks you can't do yourself.** You can't sign in to Spotify as Will, hear what plays, or see the Sonos speakers and TV in Will's home. Do what you can (run it against mocked Spotify responses, check the logs, take screenshots), then list exactly what Will should try and what they should hear or see. **Never claim you verified something you didn't.**
 4. **Self-review the diff:**
