@@ -355,6 +355,16 @@ fn reach(colour: Lch, paper: Rgb, target: f64, dark: bool) -> Rgb {
     out
 }
 
+/// `text` if it's at least 4.5:1 on `paper` as stored, otherwise `ink`,
+/// which always is.
+fn readable(text: Colour, ink: Colour, paper: Colour) -> Colour {
+    if text.contrast(paper) >= TEXT_CONTRAST {
+        text
+    } else {
+        ink
+    }
+}
+
 fn print_colours(dominant: Rgb, candidates: &[Rgb]) -> Palette {
     let Lch { l, c, h } = oklch(dominant);
     let dark = l < 0.62;
@@ -438,11 +448,8 @@ fn print_colours(dominant: Rgb, candidates: &[Rgb]) -> Palette {
         muted = next;
         t += 0.02;
     }
-    let mut muted = Colour::from_rgb(muted);
     let ground = Colour::from_rgb(ground);
-    if muted.contrast(ground) < TEXT_CONTRAST {
-        muted = Colour::from_rgb(ink);
-    }
+    let muted = readable(Colour::from_rgb(muted), Colour::from_rgb(ink), ground);
 
     Palette {
         key: Vec::new(),

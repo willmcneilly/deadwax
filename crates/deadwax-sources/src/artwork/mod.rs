@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use deadwax_core::collection::{Album, Artwork, ArtworkSource, Cover};
 use reqwest::header::RANGE;
-use reqwest::{RequestBuilder, Response, StatusCode};
+use reqwest::{Client, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 
 use crate::clock::Clock;
@@ -289,18 +289,10 @@ impl<C: Clock + Clone> Finder<C> {
             return read(&body);
         }
         limiter.wait().await;
-        let response = self
-            .client
-            .execute(request)
-            .await
-            .map_err(|error| ArtworkError::Network { service, error })?;
-        if !response.status().is_success() {
-            return Err(ArtworkError::Unexpected {
-                service,
-                status: response.status(),
-            });
-        }
-        let body = response
+        let request = RequestBuilder::from_parts(Client::clone(&self.client), request);
+        let body = self
+            .send(service, request)
+            .await?
             .bytes()
             .await
             .map_err(|error| ArtworkError::Network { service, error })?

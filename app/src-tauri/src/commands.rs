@@ -477,7 +477,8 @@ const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
 
 /// The album page, from the cache. It never asks Spotify: `refresh_album`
 /// does that when the cache is old. An album with steps left is queued, in
-/// case one failed, and `ALBUM_UPDATED` says when its cover is on disk.
+/// case one failed, and `ALBUM_UPDATED` says when its cover is on disk or
+/// its palette, genre and label are stored.
 #[tauri::command]
 pub fn get_album(state: State<'_, AppState>, id: AlbumId) -> Result<AlbumPage, String> {
     open_album(&state.collection, &state.jobs, &id)
@@ -1343,8 +1344,8 @@ mod tests {
         assert!(stored);
     }
 
-    /// Records that In Rainbows' sizes are on disk, as the album job queue
-    /// does once it has saved them.
+    /// Records In Rainbows' palette, genre and label, as the album job queue
+    /// does once it has found them.
     fn palette_genre_and_label_found(collection: &std::sync::Mutex<Collection>) {
         let id = in_rainbows_id(collection);
         let mut collection = collection.lock().unwrap();
@@ -1354,6 +1355,8 @@ mod tests {
         assert!(collection.set_genre_and_label(&id, &found, day(2)).unwrap());
     }
 
+    /// Records that In Rainbows' sizes are on disk, as the album job queue
+    /// does once it has saved them.
     fn sizes_made(collection: &std::sync::Mutex<Collection>) {
         let id = in_rainbows_id(collection);
         let recorded = collection

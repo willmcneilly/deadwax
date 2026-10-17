@@ -174,3 +174,27 @@ fn colours_are_stored_as_hex() {
     assert!(serde_json::from_str::<Colour>(r#""12345678""#).is_err());
     assert!(serde_json::from_str::<Colour>(r##""#gg0000""##).is_err());
 }
+
+#[test]
+fn a_walk_that_runs_out_of_lightness_ends_at_white_or_black() {
+    // No grey reaches 22:1, so the walk runs off the end of the range.
+    let grey = Lch {
+        l: 0.5,
+        c: 0.0,
+        h: 0.0,
+    };
+    assert_eq!(reach(grey, [128.0; 3], 22.0, true), [255.0; 3]);
+    assert_eq!(reach(grey, [128.0; 3], 22.0, false), [0.0; 3]);
+}
+
+#[test]
+fn secondary_text_that_rounds_below_4_5_to_1_becomes_ink() {
+    let paper = Colour([30, 26, 22]);
+    let ink = Colour([238, 230, 214]);
+    let faint = Colour([90, 85, 80]);
+    let quiet = Colour([176, 166, 150]);
+    assert!(faint.contrast(paper) < TEXT_CONTRAST);
+
+    assert_eq!(readable(faint, ink, paper), ink);
+    assert_eq!(readable(quiet, ink, paper), quiet);
+}
