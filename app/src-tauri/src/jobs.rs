@@ -1034,7 +1034,7 @@ mod tests {
         }
         let (jobs, mut receiver) = AlbumJobs::unstarted();
         jobs.queue_unfinished(&collection).unwrap();
-        assert_eq!(AlbumJobs::queued(&mut receiver), [id.clone()]);
+        assert_eq!(AlbumJobs::queued(&mut receiver), std::slice::from_ref(&id));
 
         let changed = run(&finder, &collection, &covers, &id, SystemTime::now()).await;
 
