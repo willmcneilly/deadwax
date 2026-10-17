@@ -22,6 +22,10 @@
 //! the same write as its result, so a failed step records nothing and runs
 //! again later.
 //!
+//! Two more hold what the later steps work out (RFC-002, "2. Local artwork"
+//! and "3. Genre and label"): `palette`, the colours from each album's cover
+//! (`crate::palette`), and `genre_label`, its genre and label.
+//!
 //! In development builds the collection also mirrors every add and remove to
 //! the dev list (`crate::dev_list`), which survives resets. All of that is
 //! compiled under `debug_assertions`, so release builds don't contain it.
@@ -37,6 +41,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
 use crate::dev_list::{DevList, DevListError};
+use crate::palette::Palette;
 
 /// An album's Deadwax ID: random, made when the album is added, and never
 /// changed. Commands take and return it; only the Spotify client sees
@@ -172,22 +177,43 @@ pub enum Step {
     Lookup,
     /// Downloading that cover and making its sizes on disk.
     Sizes,
+    /// Working out its colours from the 320 (`set_palette` records it).
+    Palette,
+    /// Finding its genre and label (`set_genre_and_label` records it).
+    GenreAndLabel,
 }
 
 impl Step {
-    pub const ALL: [Step; 2] = [Self::Lookup, Self::Sizes];
+    pub const ALL: [Step; 4] = [
+        Self::Lookup,
+        Self::Sizes,
+        Self::Palette,
+        Self::GenreAndLabel,
+    ];
 
     /// The name stored in the database.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Lookup => "lookup",
             Self::Sizes => "sizes",
+            Self::Palette => "palette",
+            Self::GenreAndLabel => "genre-label",
         }
     }
 
     fn parse(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|step| step.as_str() == name)
     }
+}
+
+/// An album's genre and label, from iTunes and MusicBrainz. Either can be
+/// missing: no source had it.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct GenreAndLabel {
+    /// One coarse genre, such as "Alternative", for the crate's dividers.
+    pub genre: Option<String>,
+    /// The record label, such as "XL Recordings".
+    pub label: Option<String>,
 }
 
 /// How long the cache is good for. Spotify's terms say to keep cached
@@ -205,6 +231,10 @@ pub struct Collected {
     pub fetched_at: SystemTime,
     /// The high-res cover, once it's been looked for.
     pub artwork: Option<Artwork>,
+    /// Its colours, once they've been worked out.
+    pub palette: Option<Palette>,
+    /// Its genre and label, once they've been looked for.
+    pub genre_and_label: Option<GenreAndLabel>,
     /// The album job queue's steps it has finished, in order.
     pub finished: Vec<Step>,
 }
@@ -270,7 +300,7 @@ pub enum CollectionError {
 }
 
 /// The schema version this code writes, in SQLite's `user_version`.
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 /// Schema 3 (DWX-17): every table is keyed by the Deadwax ID, and the
 /// Spotify ID is a column of `collection`. Schema 4 adds `STEPS_V4`.
@@ -310,6 +340,23 @@ const STEPS_V4: &str = "
         step        TEXT NOT NULL,     -- Step::as_str
         finished_at INTEGER NOT NULL,  -- Unix milliseconds
         PRIMARY KEY (id, step)
+    ) STRICT;
+";
+
+/// Schema 5 (DWX-19) adds these to schema 4: each album's palette, and its
+/// genre and label.
+const DETAILS_V5: &str = "
+    CREATE TABLE palette (
+        id       TEXT PRIMARY KEY NOT NULL,  -- AlbumId
+        colours  TEXT NOT NULL,              -- JSON: Palette
+        made_at  INTEGER NOT NULL            -- Unix milliseconds
+    ) STRICT;
+
+    CREATE TABLE genre_label (
+        id       TEXT PRIMARY KEY NOT NULL,  -- AlbumId
+        genre    TEXT,
+        label    TEXT,
+        found_at INTEGER NOT NULL            -- Unix milliseconds
     ) STRICT;
 ";
 
@@ -389,6 +436,16 @@ fn migrate_to_4(db: &mut Connection) -> Result<(), CollectionError> {
     Ok(())
 }
 
+/// Moves a schema-4 database to schema 5. Every album still has its
+/// palette and its genre and label to find, so the album job queue backfills
+/// them.
+fn migrate_to_5(db: &mut Connection) -> Result<(), CollectionError> {
+    db.execute_batch(&format!(
+        "BEGIN; {DETAILS_V5} PRAGMA user_version = 5; COMMIT;"
+    ))?;
+    Ok(())
+}
+
 pub struct Collection {
     db: Connection,
     /// The dev list to mirror adds and removes to, in development builds.
@@ -416,10 +473,11 @@ impl Collection {
         match version {
             0 => {
                 db.execute_batch(&format!(
-                    "BEGIN; {SCHEMA} {STEPS_V4} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+                    "BEGIN; {SCHEMA} {STEPS_V4} {DETAILS_V5}
+                     PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
                 ))?;
             }
-            1..=3 => {
+            1..=4 => {
                 if version == 1 {
                     // In one transaction, so a crash can't leave the table
                     // without the version that says it's there.
@@ -430,7 +488,10 @@ impl Collection {
                 if version < 3 {
                     migrate_to_3(&mut db, AlbumId::new)?;
                 }
-                migrate_to_4(&mut db)?;
+                if version < 4 {
+                    migrate_to_4(&mut db)?;
+                }
+                migrate_to_5(&mut db)?;
             }
             SCHEMA_VERSION => {}
             newer => return Err(CollectionError::TooNew(newer)),
@@ -548,9 +609,52 @@ impl Collection {
         Ok(stored)
     }
 
+    /// Records the album's palette, made at `now`, and that its palette
+    /// step has finished, if the album is still in the collection. Returns
+    /// whether it was.
+    pub fn set_palette(
+        &mut self,
+        id: &AlbumId,
+        palette: &Palette,
+        now: SystemTime,
+    ) -> Result<bool, CollectionError> {
+        let tx = self.db.transaction()?;
+        let stored = tx.execute(
+            "INSERT OR REPLACE INTO palette (id, colours, made_at)
+             SELECT ?1, ?2, ?3
+             WHERE EXISTS (SELECT 1 FROM collection WHERE id = ?1)",
+            params![id.as_str(), serde_json::to_string(palette)?, millis(now)],
+        )?;
+        let stored = stored == 1 && finish(&tx, id, Step::Palette, now)?;
+        tx.commit()?;
+        Ok(stored)
+    }
+
+    /// Records the album's genre and label, found at `now`, and that their
+    /// step has finished, if the album is still in the collection. Returns
+    /// whether it was.
+    pub fn set_genre_and_label(
+        &mut self,
+        id: &AlbumId,
+        found: &GenreAndLabel,
+        now: SystemTime,
+    ) -> Result<bool, CollectionError> {
+        let tx = self.db.transaction()?;
+        let stored = tx.execute(
+            "INSERT OR REPLACE INTO genre_label (id, genre, label, found_at)
+             SELECT ?1, ?2, ?3, ?4
+             WHERE EXISTS (SELECT 1 FROM collection WHERE id = ?1)",
+            params![id.as_str(), found.genre, found.label, millis(now)],
+        )?;
+        let stored = stored == 1 && finish(&tx, id, Step::GenreAndLabel, now)?;
+        tx.commit()?;
+        Ok(stored)
+    }
+
     /// Records that the album has finished `step` at `now`, if it's still
-    /// in the collection. Returns whether it was. The lookup is recorded by
-    /// `set_artwork`, with its result.
+    /// in the collection. Returns whether it was. The lookup, the palette
+    /// and the genre and label are recorded with their results, by
+    /// `set_artwork`, `set_palette` and `set_genre_and_label`.
     pub fn finish(
         &mut self,
         id: &AlbumId,
@@ -561,7 +665,7 @@ impl Collection {
     }
 
     /// Takes the album out of the collection, and forgets its cache,
-    /// artwork and steps. Its covers on disk are the caller's to delete
+    /// artwork, palette, genre and label, and steps. Its covers on disk are the caller's to delete
     /// (`crate::covers::Store::remove`). Returns whether it was there.
     pub fn remove(&mut self, id: &AlbumId) -> Result<bool, CollectionError> {
         let tx = self.db.transaction()?;
@@ -575,6 +679,8 @@ impl Collection {
         tx.execute("DELETE FROM album_cache WHERE id = ?1", [id.as_str()])?;
         tx.execute("DELETE FROM artwork WHERE id = ?1", [id.as_str()])?;
         tx.execute("DELETE FROM album_steps WHERE id = ?1", [id.as_str()])?;
+        tx.execute("DELETE FROM palette WHERE id = ?1", [id.as_str()])?;
+        tx.execute("DELETE FROM genre_label WHERE id = ?1", [id.as_str()])?;
         tx.commit()?;
         #[cfg(debug_assertions)]
         if let (Some(dev_list), Some(spotify_id)) = (&self.dev_list, &spotify_id) {
@@ -583,12 +689,13 @@ impl Collection {
         Ok(spotify_id.is_some())
     }
 
-    /// Empties the collection, its cache, its artwork and its steps. The
+    /// Empties the collection, its cache, its artwork, its palettes, genres
+    /// and labels, and its steps. The
     /// dev list is left alone: it's what you restore from afterwards.
     pub fn clear(&mut self) -> Result<(), CollectionError> {
         self.db.execute_batch(
             "DELETE FROM collection; DELETE FROM album_cache; DELETE FROM artwork;
-             DELETE FROM album_steps;",
+             DELETE FROM album_steps; DELETE FROM palette; DELETE FROM genre_label;",
         )?;
         Ok(())
     }
@@ -599,9 +706,12 @@ impl Collection {
             "SELECT c.id, c.spotify_id, c.added_at, a.title, a.artist, a.year, a.tracks,
                     a.covers, a.upc, a.fetched_at,
                     w.source, w.url, w.width, w.height,
-                    (SELECT group_concat(s.step) FROM album_steps s WHERE s.id = c.id)
+                    (SELECT group_concat(s.step) FROM album_steps s WHERE s.id = c.id),
+                    p.colours, g.id IS NOT NULL, g.genre, g.label
              FROM collection c JOIN album_cache a USING (id)
              LEFT JOIN artwork w USING (id)
+             LEFT JOIN palette p USING (id)
+             LEFT JOIN genre_label g USING (id)
              ORDER BY c.added_at DESC, c.rowid DESC",
         )?;
         let rows = statement.query_map([], |row| {
@@ -632,10 +742,27 @@ impl Collection {
                 row.get::<_, Option<String>>(10)?,
                 cover,
                 row.get::<_, Option<String>>(14)?,
+                row.get::<_, Option<String>>(15)?,
+                row.get::<_, bool>(16)?.then_some(GenreAndLabel {
+                    genre: row.get(17)?,
+                    label: row.get(18)?,
+                }),
             ))
         })?;
         rows.map(|row| {
-            let (id, mut album, added_at, tracks, covers, fetched_at, source, cover, steps) = row?;
+            let (
+                id,
+                mut album,
+                added_at,
+                tracks,
+                covers,
+                fetched_at,
+                source,
+                cover,
+                steps,
+                palette,
+                genre_and_label,
+            ) = row?;
             album.tracks = serde_json::from_str(&tracks)?;
             album.covers = serde_json::from_str(&covers)?;
             let artwork = source
@@ -659,6 +786,10 @@ impl Collection {
                 added_at: time(added_at),
                 fetched_at: time(fetched_at),
                 artwork,
+                palette: palette
+                    .map(|colours| serde_json::from_str(&colours))
+                    .transpose()?,
+                genre_and_label,
                 finished,
             })
         })
@@ -849,6 +980,8 @@ mod tests {
                 added_at: day(1),
                 fetched_at: day(1),
                 artwork: None,
+                palette: None,
+                genre_and_label: None,
                 finished: Vec::new(),
             }]
         );
@@ -900,6 +1033,8 @@ mod tests {
                 added_at: day(1),
                 fetched_at: day(5),
                 artwork: None,
+                palette: None,
+                genre_and_label: None,
                 finished: Vec::new(),
             }]
         );
@@ -973,7 +1108,7 @@ mod tests {
 
         assert!(matches!(
             Collection::open(&path),
-            Err(CollectionError::TooNew(5))
+            Err(CollectionError::TooNew(v)) if v == SCHEMA_VERSION + 1
         ));
     }
 
@@ -1119,6 +1254,8 @@ mod tests {
                 added_at: day(1),
                 fetched_at: day(9),
                 artwork: None,
+                palette: None,
+                genre_and_label: None,
                 finished: Vec::new(),
             }
         );
@@ -1152,6 +1289,8 @@ mod tests {
             added_at: day(1),
             fetched_at: day(1),
             artwork: None,
+            palette: None,
+            genre_and_label: None,
             finished: Vec::new(),
         };
 
@@ -1564,14 +1703,17 @@ mod tests {
 
         let collection = Collection::open(&path).unwrap();
 
-        assert_eq!(user_version(&collection.db), 4);
+        assert_eq!(user_version(&collection.db), SCHEMA_VERSION);
         let after: Vec<Vec<String>> = ["collection", "album_cache", "artwork"]
             .iter()
             .map(|table| dump(&collection.db, table))
             .collect();
         assert_eq!(after, before);
         assert_eq!(by_spotify(&collection, "a").finished, [Step::Lookup]);
-        assert_eq!(by_spotify(&collection, "a").unfinished(), [Step::Sizes]);
+        assert_eq!(
+            by_spotify(&collection, "a").unfinished(),
+            [Step::Sizes, Step::Palette, Step::GenreAndLabel]
+        );
         assert_eq!(by_spotify(&collection, "b").finished, []);
         assert_eq!(by_spotify(&collection, "b").unfinished(), Step::ALL);
     }
@@ -1586,7 +1728,7 @@ mod tests {
         let a = by_spotify(&collection, "a");
 
         assert_eq!(a.finished, []);
-        assert_eq!(a.unfinished(), [Step::Lookup, Step::Sizes]);
+        assert_eq!(a.unfinished(), Step::ALL);
         assert!(!a.has_local_cover());
     }
 
@@ -1602,7 +1744,10 @@ mod tests {
         collection.set_artwork(&id, &itunes(), day(2)).unwrap();
 
         assert_eq!(by_spotify(&collection, "a").finished, [Step::Lookup]);
-        assert_eq!(by_spotify(&collection, "a").unfinished(), [Step::Sizes]);
+        assert_eq!(
+            by_spotify(&collection, "a").unfinished(),
+            [Step::Sizes, Step::Palette, Step::GenreAndLabel]
+        );
     }
 
     #[test]
@@ -1620,7 +1765,7 @@ mod tests {
 
         let a = by_spotify(&collection, "a");
         assert_eq!(a.finished, [Step::Lookup, Step::Sizes]);
-        assert_eq!(a.unfinished(), []);
+        assert_eq!(a.unfinished(), [Step::Palette, Step::GenreAndLabel]);
         assert!(a.has_local_cover());
     }
 
@@ -1640,7 +1785,7 @@ mod tests {
         collection.finish(&id, Step::Sizes, day(3)).unwrap();
 
         let a = by_spotify(&collection, "a");
-        assert_eq!(a.unfinished(), []);
+        assert_eq!(a.unfinished(), [Step::Palette, Step::GenreAndLabel]);
         assert!(!a.has_local_cover());
     }
 
@@ -1686,5 +1831,139 @@ mod tests {
 
         collection.clear().unwrap();
         assert!(dump(&collection.db, "album_steps").is_empty());
+    }
+
+    // The palette, and the genre and label (schema 5).
+
+    fn in_rainbows() -> GenreAndLabel {
+        GenreAndLabel {
+            genre: Some("Alternative".into()),
+            label: Some("XL Recordings".into()),
+        }
+    }
+
+    #[test]
+    fn stores_the_palette_and_the_genre_and_label_with_their_steps() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let id = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        assert_eq!(by_spotify(&collection, "a").palette, None);
+        assert_eq!(by_spotify(&collection, "a").genre_and_label, None);
+
+        assert!(
+            collection
+                .set_palette(&id, &Palette::neutral(), day(2))
+                .unwrap()
+        );
+        assert!(
+            collection
+                .set_genre_and_label(&id, &in_rainbows(), day(2))
+                .unwrap()
+        );
+
+        let a = by_spotify(&collection, "a");
+        assert_eq!(a.palette, Some(Palette::neutral()));
+        assert_eq!(a.genre_and_label, Some(in_rainbows()));
+        assert_eq!(a.finished, [Step::Palette, Step::GenreAndLabel]);
+    }
+
+    #[test]
+    fn an_album_with_no_genre_or_label_anywhere_has_looked_for_them() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let id = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+
+        collection
+            .set_genre_and_label(&id, &GenreAndLabel::default(), day(2))
+            .unwrap();
+
+        let a = by_spotify(&collection, "a");
+        assert_eq!(a.genre_and_label, Some(GenreAndLabel::default()));
+        assert_eq!(a.finished, [Step::GenreAndLabel]);
+    }
+
+    #[test]
+    fn a_palette_or_genre_for_an_album_not_in_the_collection_isnt_stored() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let gone = AlbumId::new();
+
+        assert!(
+            !collection
+                .set_palette(&gone, &Palette::neutral(), day(1))
+                .unwrap()
+        );
+        assert!(
+            !collection
+                .set_genre_and_label(&gone, &in_rainbows(), day(1))
+                .unwrap()
+        );
+        assert!(dump(&collection.db, "palette").is_empty());
+        assert!(dump(&collection.db, "genre_label").is_empty());
+        assert!(dump(&collection.db, "album_steps").is_empty());
+    }
+
+    #[test]
+    fn removing_or_clearing_forgets_the_palette_and_the_genre_and_label() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let mut ids = Vec::new();
+        for id in ["a", "b"] {
+            let added = collection.add(&album(id, id), day(1)).unwrap();
+            let id = added.id().clone();
+            collection
+                .set_palette(&id, &Palette::neutral(), day(1))
+                .unwrap();
+            collection
+                .set_genre_and_label(&id, &in_rainbows(), day(1))
+                .unwrap();
+            ids.push(id);
+        }
+
+        collection.remove(&ids[0]).unwrap();
+        assert_eq!(dump(&collection.db, "palette").len(), 1);
+        assert_eq!(dump(&collection.db, "genre_label").len(), 1);
+        collection.clear().unwrap();
+        assert!(dump(&collection.db, "palette").is_empty());
+        assert!(dump(&collection.db, "genre_label").is_empty());
+    }
+
+    #[test]
+    fn a_schema_4_database_migrates_to_5_with_its_steps_and_every_album_to_backfill() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deadwax.sqlite3");
+        old_database(&path, 2, &[("a", day(1), day(1), Some(itunes()))]);
+        let mut db = Connection::open(&path).unwrap();
+        migrate_to_3(&mut db, AlbumId::new).unwrap();
+        migrate_to_4(&mut db).unwrap();
+        let id: String = db
+            .query_row("SELECT id FROM collection", [], |row| row.get(0))
+            .unwrap();
+        db.execute(
+            "INSERT INTO album_steps (id, step, finished_at) VALUES (?1, 'sizes', 0)",
+            [&id],
+        )
+        .unwrap();
+        let tables = ["collection", "album_cache", "artwork", "album_steps"];
+        let before: Vec<Vec<String>> = tables.iter().map(|table| dump(&db, table)).collect();
+        drop(db);
+
+        let collection = Collection::open(&path).unwrap();
+
+        assert_eq!(user_version(&collection.db), 5);
+        let after: Vec<Vec<String>> = tables
+            .iter()
+            .map(|table| dump(&collection.db, table))
+            .collect();
+        assert_eq!(after, before);
+        let a = by_spotify(&collection, "a");
+        assert_eq!(a.finished, [Step::Lookup, Step::Sizes]);
+        assert_eq!(a.unfinished(), [Step::Palette, Step::GenreAndLabel]);
+        assert_eq!(a.palette, None);
+        assert_eq!(a.genre_and_label, None);
     }
 }
