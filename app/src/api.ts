@@ -99,7 +99,8 @@ export type AlbumDetails = {
 
 /**
  * The event Rust sends, with the album's Deadwax ID, when what it shows for
- * the album has changed: its cover is on disk (app/src-tauri/src/jobs.rs).
+ * the album has changed: its cover is on disk, or its palette, genre and label
+ * are stored (app/src-tauri/src/jobs.rs).
  */
 export const ALBUM_UPDATED = "album-updated";
 

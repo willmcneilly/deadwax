@@ -1,5 +1,6 @@
 //! MusicBrainz and the Cover Art Archive. MusicBrainz finds the release, by
-//! barcode or by artist and title. The Cover Art Archive has its cover, by
+//! barcode or by artist and title, with its labels (which `genre_label`
+//! reads). The Cover Art Archive has its cover, by
 //! the release's ID.
 //!
 //! MusicBrainz allows one request a second, and wants every app to say who
@@ -21,6 +22,23 @@ pub const COVER_ART_ARCHIVE: &str = "the Cover Art Archive";
 impl<C: Clock + Clone> Finder<C> {
     /// The releases MusicBrainz finds. Each hit's `cover` is its release ID.
     pub(super) async fn musicbrainz(&self, by: By<'_>) -> Result<Vec<Hit>, ArtworkError> {
+        Ok(self
+            .musicbrainz_releases(by)
+            .await?
+            .into_iter()
+            .map(|release| Hit {
+                artist: release.artist(),
+                title: release.title,
+                cover: release.id,
+            })
+            .collect())
+    }
+
+    /// The releases MusicBrainz finds, as it describes them.
+    pub(super) async fn musicbrainz_releases(
+        &self,
+        by: By<'_>,
+    ) -> Result<Vec<Release>, ArtworkError> {
         let query = match by {
             By::Upc(upc) => format!("barcode:{upc}"),
             By::Name { artist, title } => {
@@ -35,29 +53,10 @@ impl<C: Clock + Clone> Finder<C> {
             .client
             .get(format!("{}/ws/2/release/", self.endpoints.musicbrainz))
             .query(&[("query", query.as_str()), ("fmt", "json"), ("limit", "10")]);
-        self.musicbrainz.wait().await;
         let reply: Reply = self
-            .send(SERVICE, request)
-            .await?
-            .json()
-            .await
-            .map_err(|error| ArtworkError::Network {
-                service: SERVICE,
-                error,
-            })?;
-        Ok(reply
-            .releases
-            .into_iter()
-            .map(|release| Hit {
-                artist: release
-                    .artist_credit
-                    .iter()
-                    .map(|credit| format!("{}{}", credit.name, credit.joinphrase))
-                    .collect(),
-                title: release.title,
-                cover: release.id,
-            })
-            .collect())
+            .search_json(SERVICE, &self.musicbrainz, request)
+            .await?;
+        Ok(reply.releases)
     }
 
     /// The release's front cover in the Cover Art Archive, if it has one.
@@ -127,11 +126,34 @@ struct Reply {
 }
 
 #[derive(Deserialize)]
-struct Release {
+pub(super) struct Release {
     id: String,
     title: String,
     #[serde(rename = "artist-credit", default)]
     artist_credit: Vec<Credit>,
+    #[serde(rename = "label-info", default)]
+    pub label_info: Vec<LabelInfo>,
+}
+
+impl Release {
+    /// The whole artist credit, as one name.
+    pub fn artist(&self) -> String {
+        self.artist_credit
+            .iter()
+            .map(|credit| format!("{}{}", credit.name, credit.joinphrase))
+            .collect()
+    }
+}
+
+/// One of a release's labels, with its catalogue number.
+#[derive(Deserialize)]
+pub(super) struct LabelInfo {
+    pub label: Option<Label>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct Label {
+    pub name: String,
 }
 
 /// One artist in a release's credit. The whole credit is each name followed

@@ -477,7 +477,8 @@ const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
 
 /// The album page, from the cache. It never asks Spotify: `refresh_album`
 /// does that when the cache is old. An album with steps left is queued, in
-/// case one failed, and `ALBUM_UPDATED` says when its cover is on disk.
+/// case one failed, and `ALBUM_UPDATED` says when its cover is on disk or
+/// its palette, genre and label are stored.
 #[tauri::command]
 pub fn get_album(state: State<'_, AppState>, id: AlbumId) -> Result<AlbumPage, String> {
     open_album(&state.collection, &state.jobs, &id)
@@ -1312,7 +1313,13 @@ mod tests {
         open_album(&collection, &jobs, &id).unwrap();
         assert_eq!(AlbumJobs::queued(&mut queued), std::slice::from_ref(&id));
 
+        // Nor the sizes: the palette, genre and label are still to find.
         sizes_made(&collection);
+        let (jobs, mut queued) = AlbumJobs::unstarted();
+        open_album(&collection, &jobs, &id).unwrap();
+        assert_eq!(AlbumJobs::queued(&mut queued), std::slice::from_ref(&id));
+
+        palette_genre_and_label_found(&collection);
         let (jobs, mut queued) = AlbumJobs::unstarted();
         let page = open_album(&collection, &jobs, &id).unwrap();
         assert!(AlbumJobs::queued(&mut queued).is_empty());
@@ -1335,6 +1342,17 @@ mod tests {
             .set_artwork(&id, &artwork, day(2))
             .unwrap();
         assert!(stored);
+    }
+
+    /// Records In Rainbows' palette, genre and label, as the album job queue
+    /// does once it has found them.
+    fn palette_genre_and_label_found(collection: &std::sync::Mutex<Collection>) {
+        let id = in_rainbows_id(collection);
+        let mut collection = collection.lock().unwrap();
+        let palette = deadwax_core::palette::Palette::neutral();
+        assert!(collection.set_palette(&id, &palette, day(2)).unwrap());
+        let found = collection::GenreAndLabel::default();
+        assert!(collection.set_genre_and_label(&id, &found, day(2)).unwrap());
     }
 
     /// Records that In Rainbows' sizes are on disk, as the album job queue
