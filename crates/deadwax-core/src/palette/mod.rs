@@ -143,9 +143,9 @@ pub fn of_image(image: &[u8]) -> Result<Palette, PaletteError> {
         .decode()?
         .into_rgb8();
     let mut sample = Image::new(SAMPLE, SAMPLE, PixelType::U8x3);
-    // Averaging boxes of pixels, as a browser's canvas does when it shrinks
-    // an image a long way. Lanczos would ring, inventing colours at edges.
-    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Box));
+    // A bilinear filter, which came closest to the prototype's canvas in
+    // Chromium on real covers. Lanczos would ring, inventing colours at edges.
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Bilinear));
     Resizer::new().resize(&decoded, &mut sample, &options)?;
     Ok(of_pixels(sample.buffer()))
 }
