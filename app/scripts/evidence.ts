@@ -43,9 +43,12 @@ const isName = (word: string) => /[A-Za-z0-9]_[A-Za-z0-9]/.test(word) || /[a-z][
  * written: "opens from the playback bar, simply fullscreen, and Escape leaves it".
  * Three or more words of letters (with apostrophes, inner hyphens and a comma
  * after), so code, output and commands (`aspect-ratio: 1`, `🤖 Claude:`,
- * `show DWX-14`, `clippy -D warnings`) aren't taken for one.
+ * `show DWX-14`, `clippy -D warnings`) aren't taken for one. A capital letter
+ * on its own, other than A and I, is shorthand (`N pages get`, for ntn.sh).
  */
-const isPhrase = (text: string) => /^[A-Za-z][A-Za-z'’]*(?:-[A-Za-z'’]+)*,?(?: [A-Za-z][A-Za-z'’]*(?:-[A-Za-z'’]+)*,?){2,}$/.test(text);
+const isPhrase = (text: string) =>
+  /^[A-Za-z][A-Za-z'’]*(?:-[A-Za-z'’]+)*,?(?: [A-Za-z][A-Za-z'’]*(?:-[A-Za-z'’]+)*,?){2,}$/.test(text) &&
+  !text.split(" ").some((word) => /^[B-HJ-Z],?$/.test(word));
 
 /** The text of every inline code span outside fenced blocks, and every line of the shell blocks. */
 export function quoted(markdown: string): { spans: string[]; shell: string[]; prose: string } {

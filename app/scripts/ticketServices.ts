@@ -3,7 +3,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Tree } from "./evidence.ts";
 import { cleanEnv, git, tryGit } from "./git.ts";
 import {
@@ -25,29 +25,47 @@ type PageJson = { id: string; properties: Record<string, Record<string, unknown>
 
 const plain = (text: RichText | undefined) => (text ?? []).map((t) => t.plain_text).join("");
 
+/** Whether `word` is in `line` as a whole word, as git grep -w counts one: not next to a letter, digit or underscore. */
+const hasWord = (line: string, word: string) => {
+  for (let at = line.indexOf(word); at !== -1; at = line.indexOf(word, at + 1)) {
+    if (!/\w/.test(line[at - 1] ?? "") && !/\w/.test(line[at + word.length] ?? "")) return true;
+  }
+  return false;
+};
+
 /**
  * The checkout as a `Tree`: its working tree, counting files not yet added
- * (but not ignored ones), or with `ref`, that commit.
+ * (but not ignored ones), or with `ref`, that commit. `leaveOut` is the PR
+ * body being checked, which, untracked in the working tree, would otherwise
+ * vouch for its own names.
  */
-export function gitTree(checkout: string, ref?: string): Tree {
+export function gitTree(checkout: string, ref?: string, leaveOut?: string): Tree {
+  const own = leaveOut === undefined || ref ? undefined : relative(checkout, resolve(leaveOut));
+  const left = own !== undefined && !own.startsWith("..") && !isAbsolute(own) ? own : undefined;
   let files: string[] | undefined;
   const where = ref ? [ref] : ["--untracked"];
-  /** Which of `patterns` git grep finds as fixed strings, with `flags` and limited to `paths`. Exits 1 when nothing matches. */
-  const found = (patterns: string[], flags: string[], paths: string[]) =>
-    new Set(
-      (tryGit(checkout, ["grep", "-I", "-o", "-h", "-F", ...flags, ...patterns.flatMap((p) => ["-e", p]), ...where, "--", ...paths]) ?? "")
-        .split("\n")
-        .filter(Boolean),
-    );
+  const paths = (extra: string[]) => [".", ...extra, ...(left ? [`:(exclude,literal)${left}`] : [])];
+  /**
+   * Which of `patterns` git grep finds, by `has`. It prints whole lines, not
+   * just the matches (-o), because -o gives only the longest match at each
+   * place, so a phrase inside a longer one would never be found. Exits 1 when
+   * nothing matches.
+   */
+  const found = (patterns: string[], flags: string[], extra: string[], has: (line: string, pattern: string) => boolean) => {
+    const lines = (tryGit(checkout, ["grep", "-I", "-h", "-F", ...flags, ...patterns.flatMap((p) => ["-e", p]), ...where, "--", ...paths(extra)]) ?? "")
+      .split("\n")
+      .filter(Boolean);
+    return new Set(patterns.filter((p) => lines.some((line) => has(line, p))));
+  };
   return {
     files() {
       files ??= (ref ? git(checkout, ["ls-tree", "-r", "--name-only", ref]) : git(checkout, ["ls-files", "--cached", "--others", "--exclude-standard"]))
         .split("\n")
-        .filter(Boolean);
+        .filter((f) => f && f !== left);
       return files;
     },
-    wordsFound: (words) => found(words, ["-w"], ["."]),
-    phrasesFound: (phrases) => found(phrases, [], [".", ":(exclude)*.md"]),
+    wordsFound: (words) => found(words, ["-w"], [], hasWord),
+    phrasesFound: (phrases) => found(phrases, [], [":(exclude)*.md"], (line, phrase) => line.includes(phrase)),
     read: (path) => (ref ? git(checkout, ["show", `${ref}:${path}`]) : readFileSync(join(checkout, path), "utf8")),
     // By the working tree's ignore rules, whatever the ref: they say what's local state.
     ignored: (path) => tryGit(checkout, ["check-ignore", "--no-index", "-q", path]) !== undefined,

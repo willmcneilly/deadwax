@@ -155,7 +155,7 @@ function main(argv: string[]): number {
         const file = rest.shift();
         if (file === undefined) throw new Usage("evidence-check needs a file: the PR body.");
         noMore();
-        const problems = evidenceProblems(readFileSync(file, "utf8"), gitTree(checkout, ref));
+        const problems = evidenceProblems(readFileSync(file, "utf8"), gitTree(checkout, ref, file));
         if (problems.length > 0) throw new Refusal(describeProblems(file, problems));
         out = [`Every reference in ${file} is in ${ref ?? "the working tree"}.`];
         break;
@@ -167,7 +167,7 @@ function main(argv: string[]): number {
         const file = rest.shift();
         if (file === undefined) throw new Usage("sync needs a file: the PR body.");
         noMore();
-        out = sync(services, run, gitTree(checkout), id, pr, file, readFileSync(file, "utf8"));
+        out = sync(services, run, gitTree(checkout, undefined, file), id, pr, file, readFileSync(file, "utf8"));
         break;
       }
       default:

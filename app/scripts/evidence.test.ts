@@ -64,6 +64,8 @@ describe("classify", () => {
     expect(classify("parseDependsOn()")).toMatchObject({ kind: "name", names: ["parseDependsOn"] });
     expect(classify("shows the cover, title, artist and year")).toEqual({ kind: "phrase", ref: "shows the cover, title, artist and year" });
     expect(classify("isn't shown until the Develop menu asks for it")).toMatchObject({ kind: "phrase" });
+    expect(classify("plays A side then B side")).toBeUndefined();
+    expect(classify("I can add a album")).toMatchObject({ kind: "phrase" });
     expect(classify("collection.rs:42")).toMatchObject({ kind: "path", path: "collection.rs" });
     expect(classify("app/scripts/")).toMatchObject({ kind: "path", path: "app/scripts" });
     expect(classify("RUST_LOG=debug cargo test -p deadwax-core")).toMatchObject({ kind: "command" });
@@ -72,6 +74,7 @@ describe("classify", () => {
       "Ready",
       "In Review",
       "show DWX-14",
+      "N pages get",
       "clippy -D warnings",
       "aspect-ratio: 1; object-fit: contain",
       ".rs",

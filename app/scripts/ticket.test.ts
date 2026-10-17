@@ -419,6 +419,18 @@ describe("pairCriteria", () => {
     );
   });
 
+  it("pairs a line with the longest checkbox text that starts it, when a shorter one does too", () => {
+    const nested: Todo[] = [
+      { blockId: "short", text: "The check passes", checked: false },
+      { blockId: "long", text: "The check passes on PR 8", checked: false },
+    ];
+    const pairs = pairCriteria(nested, [
+      { text: "**The check passes on PR 8.** At 4a90161.", checked: true },
+      { text: "**The check passes.** Everywhere.", checked: true },
+    ]);
+    expect(pairs.map((p) => p.todo.blockId)).toEqual(["long", "short"]);
+  });
+
   it("refuses two PR lines for one checkbox", () => {
     expect(() =>
       pairCriteria(todos, [
