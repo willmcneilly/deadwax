@@ -38,7 +38,8 @@ Mixing Colours and Music Has the Right to Children. Claude researched and wrote
 each one from the sources listed at its end.
 
 The dividers are a smooth card with a slim tab, in one of three materials:
-ink (near-black, the default), paper (off-white) or acrylic (smoky plastic).
+paper (off-white, with a soft light on it; the default), ink (near-black) or
+acrylic (smoky plastic).
 Switch them from the dev panel (backtick).
 
 `?colours` shows every album's printed colours (paper, text, accent) with

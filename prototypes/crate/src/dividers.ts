@@ -1,8 +1,8 @@
 // What the crate's dividers are made of, switchable while we decide (from
-// the dev panel): ink, paper or acrylic. A class on <html> picks the colours
+// the dev panel): paper (the default), ink or acrylic. A class on <html> picks the colours
 // in styles.css.
 
-export const MATERIALS = ["ink", "paper", "acrylic"] as const;
+export const MATERIALS = ["paper", "ink", "acrylic"] as const;
 export type Material = (typeof MATERIALS)[number];
 
 export function setDividers(m: Material) {
@@ -15,7 +15,7 @@ export function setDividers(m: Material) {
 }
 
 export function currentDividers(): Material {
-  return MATERIALS.find((m) => document.documentElement.classList.contains(`dividers-${m}`)) ?? "ink";
+  return MATERIALS.find((m) => document.documentElement.classList.contains(`dividers-${m}`)) ?? "paper";
 }
 
 export function restoreDividers() {
@@ -25,5 +25,5 @@ export function restoreDividers() {
   } catch {
     // fine without it
   }
-  setDividers(MATERIALS.find((m) => m === saved) ?? "ink");
+  setDividers(MATERIALS.find((m) => m === saved) ?? "paper");
 }
