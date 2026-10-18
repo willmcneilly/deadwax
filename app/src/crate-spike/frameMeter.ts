@@ -18,6 +18,8 @@ export type FrameStats = {
   intervalMs: number;
   /** Frames the display had time for that weren't drawn. */
   dropped: number;
+  /** Gaps more than half a frame late: the hitches you see. */
+  late: number;
   /** The longest gap between two frames. */
   longestMs: number;
   /** The 95th and 99th percentile gaps. */
@@ -37,24 +39,25 @@ const round = (n: number) => Math.round(n * 10) / 10;
 
 /**
  * The stats for frames drawn at these times (requestAnimationFrame's
- * timestamps, in milliseconds). A gap is counted as dropped frames when it's
- * more than half a frame longer than `intervalMs`: a gap of 33 ms at 60 Hz is
- * one dropped frame, and 50 ms is two.
+ * timestamps, in milliseconds). Dropped frames are the frames the stretch had
+ * time for, at `intervalMs`, less the frames drawn, so a frame that's a little
+ * late and the next a little early count as none. A gap more than half a
+ * frame longer than `intervalMs` is late: at 60 Hz, a gap of 33 ms is one late
+ * frame, and so is 50 ms.
  */
 export function frameStats(times: number[], intervalMs = FRAME_MS): FrameStats {
   const gaps = times.slice(1).map((t, i) => t - times[i]);
   const sorted = [...gaps].sort((a, b) => a - b);
   const durationMs = times.length > 1 ? times[times.length - 1] - times[0] : 0;
-  const dropped = gaps.reduce(
-    (sum, gap) => sum + Math.max(0, Math.round(gap / intervalMs) - 1),
-    0,
-  );
+  const dropped = Math.max(0, Math.round(durationMs / intervalMs) - gaps.length);
+  const late = gaps.filter((gap) => gap > intervalMs * 1.5).length;
   return {
     frames: gaps.length,
     durationMs: round(durationMs),
     fps: durationMs ? round((gaps.length * 1000) / durationMs) : 0,
     intervalMs: round(intervalMs),
     dropped,
+    late,
     longestMs: round(sorted[sorted.length - 1] ?? 0),
     p95Ms: round(percentile(sorted, 95)),
     p99Ms: round(percentile(sorted, 99)),

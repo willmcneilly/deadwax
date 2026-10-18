@@ -20,11 +20,18 @@ describe("frameStats", () => {
     const frame = 1000 / 60;
     const stats = frameStats(times([frame, frame * 2, frame, frame * 3, frame]));
     expect(stats.dropped).toBe(3);
+    expect(stats.late).toBe(2);
     expect(stats.longestMs).toBe(50);
   });
 
   it("doesn't count the jitter of a frame that's a little late", () => {
-    expect(frameStats(times([16, 18, 15, 20, 17])).dropped).toBe(0);
+    expect(frameStats(times([16, 18, 15, 20, 17]))).toMatchObject({ dropped: 0, late: 0 });
+  });
+
+  it("doesn't count a late frame made up by an early one as dropped", () => {
+    const stats = frameStats(times([16.7, 26, 7.4, 16.7]));
+    expect(stats.dropped).toBe(0);
+    expect(stats.late).toBe(1);
   });
 
   it("counts 120 Hz frames as on time against the 60 fps budget", () => {

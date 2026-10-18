@@ -30,8 +30,7 @@ import { runScenario, type Controller } from "./scenarios";
 import { installTextures, poolImage, vignetteImage, WEAR_VARIANTS } from "./textures";
 import "./crateSpike.css";
 
-const BEHIND = 11; // records drawn behind the one in front
-const AHEAD = 3; // and already flipped past
+const AHEAD = 3; // records drawn already flipped past
 const MANY = 400; // the stress test's crate
 
 type Album = {
@@ -140,7 +139,7 @@ function crateItems(albums: Album[]): Item[] {
 }
 
 // Where a record sits relative to the one in front (d = 0). The prototype's.
-function place(d: number, jitter: number): CSSProperties {
+function place(d: number, jitter: number, behind: number): CSSProperties {
   if (d < 0) {
     return {
       transform: `translate3d(${jitter * 6}px, 4%, 60px) rotateX(-72deg) rotateZ(${jitter * 1.2}deg)`,
@@ -150,26 +149,30 @@ function place(d: number, jitter: number): CSSProperties {
   if (d === 0) return { transform: "translate3d(0, 0, 0) rotateX(5deg)" };
   return {
     transform: `translate3d(${jitter * 5}px, 0, ${-14 - d * 20}px) rotateX(${13 + Math.min(d, 8) * 0.6}deg) rotateZ(${jitter * 0.9}deg)`,
-    opacity: d > BEHIND - 1 ? 0 : 1,
+    opacity: d > behind - 1 ? 0 : 1,
   };
 }
 
 /** The size a slot draws: the front two get the 640, the rest the 320. */
-const slotSize = (d: number) => (d <= 1 ? "640" : "320");
+const slotSize = (d: number, sizes: Effects["sizes"]) => (sizes === "640" || d <= 1 ? "640" : "320");
 
 const Crate = memo(function Crate({
   items,
   focus,
   hiddenKey,
   state,
+  behind,
+  sizes,
 }: {
   items: Item[];
   focus: number;
   hiddenKey: string | null;
   state: "rest" | "dim";
+  behind: number;
+  sizes: Effects["sizes"];
 }) {
   const slots = [];
-  for (let i = Math.max(0, focus - AHEAD); i <= Math.min(items.length - 1, focus + BEHIND); i++) {
+  for (let i = Math.max(0, focus - AHEAD); i <= Math.min(items.length - 1, focus + behind); i++) {
     const item = items[i];
     const d = i - focus;
     const jitter = (hash(item.key) - 0.5) * 2;
@@ -179,7 +182,7 @@ const Crate = memo(function Crate({
         className={`spike-slot ${item.kind} ${d < 0 ? "past" : ""}`}
         data-front={d === 0 || undefined}
         style={{
-          ...place(d, jitter),
+          ...place(d, jitter, behind),
           zIndex: 100 - d,
           visibility: item.key === hiddenKey ? "hidden" : undefined,
           ["--shade" as string]: d > 0 ? Math.min(0.08 + d * 0.055, 0.75) : d < 0 ? 0.55 : 0,
@@ -188,7 +191,7 @@ const Crate = memo(function Crate({
         {item.kind === "album" ? (
           <>
             <div className="spike-face" style={wear(item.album)}>
-              <img src={cover(item.album, slotSize(d))} alt="" draggable={false} decoding="async" />
+              <img src={cover(item.album, slotSize(d, sizes))} alt="" draggable={false} decoding="async" />
               <div className="spike-wear" />
             </div>
             <div className="spike-rear" />
@@ -400,11 +403,11 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
   useEffect(() => {
     if (!effects.decodeAhead) return;
     const urls: string[] = [];
-    for (let i = Math.max(0, focus - AHEAD); i <= Math.min(items.length - 1, focus + BEHIND + 4); i++) {
+    for (let i = Math.max(0, focus - AHEAD); i <= Math.min(items.length - 1, focus + effects.behind + 4); i++) {
       const item = items[i];
       if (item.kind !== "album") continue;
       const d = i - focus;
-      urls.push(cover(item.album, slotSize(d)), cover(item.album, slotSize(d - 1)));
+      urls.push(cover(item.album, slotSize(d, effects.sizes)), cover(item.album, slotSize(d - 1, effects.sizes)));
       if (d >= 0 && d <= 1) urls.push(cover(item.album, "1600"));
     }
     const cache = decoded.current;
@@ -421,7 +424,7 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
       cache.set(url, img);
     }
     while (cache.size > 48) cache.delete(cache.keys().next().value as string);
-  }, [effects.decodeAhead, focus, items]);
+  }, [effects.decodeAhead, effects.behind, effects.sizes, focus, items]);
 
   // The pretend poll: every 2 seconds while playing, as the app asks Spotify.
   useEffect(() => {
@@ -544,6 +547,8 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
           focus={focus}
           hiddenKey={heroItem?.key ?? null}
           state={searching || hero ? "dim" : "rest"}
+          behind={effects.behind}
+          sizes={effects.sizes}
         />
         {hero && heroAlbum && (
           <Hero

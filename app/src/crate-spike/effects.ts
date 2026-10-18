@@ -17,6 +17,10 @@ export type Effects = {
   under: "dim" | "hidden";
   /** Decode the covers about to be drawn before they're needed. */
   decodeAhead: boolean;
+  /** The crate's covers: the 640 for the front two and the 320 behind, or the 640 for all. */
+  sizes: "mixed" | "640";
+  /** How many records are drawn behind the one in front. */
+  behind: number;
   /** Replace the playback state on every poll, even when nothing changed. */
   pollRedraw: boolean;
 };
@@ -31,6 +35,8 @@ export const PROTOTYPE: Effects = {
   filter: true,
   under: "dim",
   decodeAhead: false,
+  sizes: "mixed",
+  behind: 11,
   pollRedraw: true,
 };
 
