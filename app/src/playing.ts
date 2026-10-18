@@ -23,6 +23,12 @@ export const POLL_MS = 2000;
  */
 const DRIFT_MS = 1500;
 
+/**
+ * How long a pause or resume shown straight away holds against an answer
+ * that still says otherwise: Spotify can take a moment to report it.
+ */
+const HOLD_MS = 3000;
+
 /** Spotify's last answer, and when it came, from `Date.now()`. */
 export type Heard = { now: NowPlaying | null; at: number };
 
@@ -69,6 +75,8 @@ export function usePlayback(onNews: (heard: Heard) => void) {
   const [error, setError] = useState<string | null>(null);
   const [asked, setAsked] = useState(0);
   const last = useRef<Heard | undefined>(undefined);
+  /** A pause or resume shown straight away, until Spotify agrees. */
+  const held = useRef<{ isPlaying: boolean; until: number } | null>(null);
   const news = useRef(onNews);
   useEffect(() => {
     news.current = onNews;
@@ -77,19 +85,29 @@ export function usePlayback(onNews: (heard: Heard) => void) {
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    /** Takes Spotify's answer, if it says something new. */
+    function hear(now: NowPlaying | null) {
+      // A pause or resume shown straight away holds until Spotify agrees,
+      // or for a few seconds if it doesn't.
+      const hold = held.current;
+      if (hold && now && now.isPlaying !== hold.isPlaying && Date.now() < hold.until) {
+        return;
+      }
+      held.current = null;
+      const next = settle(last.current, now, Date.now());
+      if (next === last.current) return;
+      last.current = next;
+      setHeard(next);
+      news.current(next);
+    }
     async function poll() {
       // A hidden window asks nothing, and catches up when it's shown.
       if (document.visibilityState !== "hidden") {
         try {
           const now = await getPlayback();
           if (stopped) return;
-          const next = settle(last.current, now, Date.now());
           setError(null);
-          if (next !== last.current) {
-            last.current = next;
-            setHeard(next);
-            news.current(next);
-          }
+          hear(now);
         } catch (e) {
           if (stopped) return;
           setError(errorMessage(e));
@@ -115,6 +133,7 @@ export function usePlayback(onNews: (heard: Heard) => void) {
     const was = last.current;
     if (!was?.now) return;
     const at = Date.now();
+    held.current = { isPlaying: !was.now.isPlaying, until: at + HOLD_MS };
     last.current = {
       at,
       now: {

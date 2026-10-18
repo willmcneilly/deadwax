@@ -297,7 +297,12 @@ function Library({ name, onSignedOut }: Props) {
 
   // The needle drops (Sleeve.tsx): the record turns to its front and floats
   // while Spotify gets going, then plays, or turns back if it didn't start.
+  // An earlier drop's wait for Spotify is cancelled by a new one, so it
+  // can't fire during it.
+  const confirmWait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(confirmWait.current), []);
   const starting = (album: AlbumCard) => (track: AlbumTrack, device: string) => {
+    clearTimeout(confirmWait.current);
     setPending({ album, track, device, resolvedAt: null });
     setTurns((t) => (t % 2 ? t + 1 : t));
     setPulled((o) => o && { ...o, nowPlaying: true });
@@ -307,13 +312,16 @@ function Library({ name, onSignedOut }: Props) {
     setPending((p) => p && { ...p, resolvedAt: at });
     playback.askNow();
     // If Spotify doesn't confirm it in time, show whatever it says.
-    setTimeout(() => {
-      setPending((p) => (p?.resolvedAt === at ? null : p));
+    clearTimeout(confirmWait.current);
+    confirmWait.current = setTimeout(() => {
+      confirmWait.current = undefined;
+      setPending(null);
       const latest = playback.latest();
       if (latest) followRef.current(latest);
     }, CONFIRM_MS);
   };
   const notStarted = () => {
+    clearTimeout(confirmWait.current);
     setPending(null);
     setTurns((t) => (t % 2 ? t : t + 1));
     setPulled((o) => o && { ...o, nowPlaying: false });
@@ -356,6 +364,7 @@ function Library({ name, onSignedOut }: Props) {
       // pressed: then the glow comes up fully and the clock runs.
       if (pending) {
         if (pending.resolvedAt && next.at >= pending.resolvedAt && confirms(pending, next.now)) {
+          clearTimeout(confirmWait.current);
           setPending(null);
         }
         return;
@@ -379,12 +388,13 @@ function Library({ name, onSignedOut }: Props) {
     playback.askNow();
   }
 
-  /** Space: pause or resume, shown straight away. */
+  /** Space: pause or resume, shown straight away. False if nothing's playing. */
   const togglePause = () => {
     const now = heard?.now;
-    if (!now || pending) return;
+    if (!now || pending) return false;
     playback.toggled();
     void control(now.isPlaying ? pausePlayback : resumePlayback);
+    return true;
   };
   /** ← →, while the record out is what's playing. */
   const skips = (liveOut || advertOut) && !pending;
@@ -488,10 +498,9 @@ function Library({ name, onSignedOut }: Props) {
         else if (stranger) setStranger((s) => s && { ...s, returning: true });
       } else if (searching) {
         return;
-      } else if (e.key === " ") {
-        // Also so a focused track isn't pressed again.
+      } else if (e.key === " " && togglePause()) {
+        // So a focused track isn't pressed again as well.
         e.preventDefault();
-        togglePause();
       } else if (skips && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
         e.preventDefault();
         void control(e.key === "ArrowRight" ? nextTrack : previousTrack);

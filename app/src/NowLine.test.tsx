@@ -154,10 +154,15 @@ describe("Dropping the needle", () => {
       }),
     );
 
-    // Spotify hasn't started yet: it still says nothing is playing.
+    // Spotify hasn't started yet: it says nothing is playing, then it's
+    // still playing the track from before.
     await poll();
     expect(side()).toBe("Side B · 2 · starting");
     expect(clock()).toHaveTextContent("0:00");
+    play(IN_RAINBOWS, track(1));
+    await poll();
+    expect(side()).toBe("Side B · 2 · starting");
+    expect(glow()).toHaveClass("warming");
 
     play(IN_RAINBOWS, RECKONER);
     await poll();
@@ -172,7 +177,64 @@ describe("Dropping the needle", () => {
   it("highlights the playing track on the sleeve's back by its Spotify ID", async () => {
     await playNude();
 
-    expect(playingOnBack()).toBe("Play Nude");
+    // Spotify says Nude by its ID, at a place on the album that's another
+    // track's: the ID wins.
+    play(IN_RAINBOWS, { ...NUDE, number: 9 });
+    await poll();
+
+    await waitFor(() => expect(playingOnBack()).toBe("Play Nude"));
+    expect(side()).toBe("Side A · 3");
+  });
+
+  it("highlights it by its disc and number when Spotify relinked it to another ID", async () => {
+    await playNude();
+
+    play(IN_RAINBOWS, { ...track(4), spotifyId: "relinked" });
+    await poll();
+
+    await waitFor(() => expect(playingOnBack()).toBe("Play Weird Fishes/Arpeggi"));
+    expect(side()).toBe("Side A · 4");
+  });
+
+  it("is confirmed by the track's Spotify ID", async () => {
+    playingBackEnd();
+    render(<Library name="Will" onSignedOut={() => {}} />);
+    await turnOverInRainbows();
+    fireEvent.click(screen.getByRole("button", { name: "Play Reckoner" }));
+    await waitFor(() => expect(glow()).toHaveClass("warming"));
+
+    // Reckoner by its ID, with Spotify placing it elsewhere on the album.
+    play(IN_RAINBOWS, { ...RECKONER, number: 1 });
+    await poll();
+
+    await waitFor(() => expect(glow()).toHaveClass("on"));
+  });
+
+  it("isn't cut short by an earlier needle drop's wait", async () => {
+    playingBackEnd();
+    render(<Library name="Will" onSignedOut={() => {}} />);
+    await turnOverInRainbows();
+    fireEvent.click(screen.getByRole("button", { name: "Play Nude" }));
+    await waitFor(() => expect(side()).toBe("Side A · 3 · starting"));
+
+    // Two seconds later, Nude goes back and Pink Moon comes out instead.
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull(),
+    );
+    for (const key of ["]", "]", "Enter", "Enter"]) fireEvent.keyDown(window, { key });
+    fireEvent.click(screen.getByRole("button", { name: "Turn Pink Moon over" }));
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("Living Room"),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Play Pink Moon" }));
+    await waitFor(() => expect(side()).toBe("Side A · 1 · starting"));
+
+    // Past the time Nude's wait would have ended, Pink Moon is still dropping.
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(side()).toBe("Side A · 1 · starting");
+    expect(screen.getByRole("button", { name: "Turn Pink Moon over" })).toBeInTheDocument();
   });
 
   it("turns back to the tracklist, saying so, when the device is missing", async () => {
@@ -192,12 +254,20 @@ describe("Dropping the needle", () => {
   });
 
   it("pauses with Space and skips with ← →", async () => {
-    const calls = await playNude();
+    const calls = await playNude(
+      // Spotify hasn't caught up with the pause yet.
+      playingBackEnd({ pause_playback: () => null }),
+    );
 
     fireEvent.keyDown(window, { key: " " });
     await waitFor(() => expect(calls.map((c) => c.cmd)).toContain("pause_playback"));
     expect(side()).toBe("Side A · 3 · paused");
     expect(glow()).toHaveClass("paused");
+
+    // Spotify takes a moment: its next answers still say playing, and the
+    // pause stays shown.
+    await poll();
+    expect(side()).toBe("Side A · 3 · paused");
 
     fireEvent.keyDown(window, { key: "ArrowRight" });
     fireEvent.keyDown(window, { key: "ArrowLeft" });
