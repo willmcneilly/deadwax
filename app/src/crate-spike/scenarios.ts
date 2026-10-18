@@ -3,6 +3,7 @@
 // within 100 ms, and the glow's drift dropping no frames.
 
 import { frameStats, recordFrames, type FrameStats } from "./frameMeter";
+import type { LargeTimes } from "./CrateSpike";
 import type { Run } from "./remote";
 
 /** What a scenario can do to the spike. */
@@ -23,8 +24,8 @@ export type Controller = {
   setSearch: (on: boolean) => void;
   /** Scrolls the search overlay by this many pixels. */
   scrollSearch: (by: number) => void;
-  /** Resolves with the milliseconds from the pull to the large cover painted. */
-  largePainted: () => Promise<number>;
+  /** Resolves with the milliseconds from the pull to the large cover loaded, decoded and painted. */
+  largePainted: () => Promise<LargeTimes>;
   /** The longest React commit since the last call, in milliseconds. */
   takeLongestCommit: () => number;
 };
@@ -79,6 +80,7 @@ async function flip(c: Controller, run: Run) {
 /** Pulls records out one after another, timing the large cover and the flight. */
 async function pull(c: Controller, run: Run) {
   const times: number[] = [];
+  const steps: LargeTimes[] = [];
   const flights: FrameStats[] = [];
   const count = c.count();
   const tries = Math.min(8, count);
@@ -90,7 +92,9 @@ async function pull(c: Controller, run: Run) {
     const large = c.largePainted();
     const flight = recordFrames();
     c.pull(run.cold ?? false);
-    times.push(Math.round(await large));
+    const step = await large;
+    steps.push(step);
+    times.push(step.painted);
     await wait(900);
     flights.push(frameStats(flight.stop()));
     c.putBack();
@@ -99,6 +103,7 @@ async function pull(c: Controller, run: Run) {
   return {
     largeMs: times,
     largeWorstMs: Math.max(...times),
+    largeSteps: steps,
     flightDropped: flights.reduce((sum, f) => sum + f.dropped, 0),
     flightLongestMs: Math.max(...flights.map((f) => f.longestMs)),
   };

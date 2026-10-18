@@ -237,6 +237,8 @@
     0 30px 80px var(--spike-shadow-deep);
 }
 
+.no-hero-shadow .spike-hero .spike-face { box-shadow: 0 2px 4px var(--spike-shadow); }
+
 @keyframes spike-float {
   0%, 100% { transform: translate3d(0, -1.1%, 0) rotateX(1.4deg) rotateZ(-0.35deg); }
   50% { transform: translate3d(0, 1.1%, 0) rotateX(-1deg) rotateZ(0.35deg); }

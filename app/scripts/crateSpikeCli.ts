@@ -30,15 +30,15 @@ type Plan = {
   seconds?: number;
 };
 
-// Simplifications, in the order the runs apply them on top of the prototype.
+// What DWX-20 kept: the prototype with only the cuts that bought frames or
+// time. The glow's gradients, the blur, the moving grain, the crate under
+// search and redrawing on each poll all stay, because they cost none.
 const FINAL: Effects = {
   textures: "blob",
-  grain: "still",
-  glow: "images",
-  backdrop: false,
-  under: "hidden",
+  behind: 6,
+  filter: false,
+  lazyBack: true,
   decodeAhead: true,
-  pollRedraw: false,
 };
 
 /** Flipping's later runs each change one thing on top of these two. */
@@ -77,7 +77,13 @@ export const PLANS: Plan[] = [
       { ...base, label: `${name}: cold, no filter`, cold: true, effects: { filter: false } },
       { ...base, label: `${name}: warm`, effects: {} },
       { ...base, label: `${name}: decode ahead`, effects: { decodeAhead: true } },
+      { ...base, label: `${name}: decode ahead, no filter`, effects: { decodeAhead: true, filter: false } },
+      { ...base, label: `${name}: decode ahead, no filter, no flight`, effects: { decodeAhead: true, filter: false, flight: false } },
+      { ...base, label: `${name}: decode ahead, no filter, lazy back`, effects: { decodeAhead: true, filter: false, lazyBack: true } },
+      { ...base, label: `${name}: decode ahead, no filter, no deep shadow`, effects: { decodeAhead: true, filter: false, heroShadow: false } },
+      { ...base, label: `${name}: decode ahead, no filter, large first`, effects: { decodeAhead: true, filter: false, largeFirst: true } },
       { ...base, label: `${name}: final`, effects: FINAL },
+      { ...base, label: `${name}: final, no deep shadow`, effects: { ...FINAL, heroShadow: false } },
     ];
   }),
 
@@ -123,6 +129,7 @@ type Result = {
   longestCommitMs?: number;
   largeMs?: number[];
   largeWorstMs?: number;
+  largeSteps?: { loaded: number; decoded: number; painted: number; first: number }[];
   flightDropped?: number;
   flightLongestMs?: number;
   flipWorkMs?: { median: number; longest: number; reactMedian: number };
@@ -204,7 +211,7 @@ function describe(plan: Plan, results: Result[], each: (f: (r: Result) => string
     case "glow":
       return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | commit ${each((r) => `${r.longestCommitMs ?? "-"}`)} ms |`;
     case "pull":
-      return `| ${plan.label} | large worst ${each((r) => `${r.largeWorstMs}`)} ms | all ${results.map((r) => r.largeMs?.join("/")).join(" · ")} | flight dropped ${each((r) => `${r.flightDropped}`)} |`;
+      return `| ${plan.label} | large worst ${each((r) => `${r.largeWorstMs}`)} ms | all ${results.map((r) => r.largeMs?.join("/")).join(" · ")} | first frame ${results.map((r) => r.largeSteps?.map((t) => t.first).join("/")).join(" · ")} ms | flight dropped ${each((r) => `${r.flightDropped}`)} |`;
     case "search":
       return `| ${plan.label} | opening ${each((r) => frames(r.opening))} | scrolling ${each((r) => frames(r.scrolling))} |`;
   }

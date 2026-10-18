@@ -236,21 +236,31 @@ function Hero({
   largeUrl,
   from,
   floating,
+  flight,
+  lazyBack,
+  largeFirst,
   onLargePainted,
 }: {
   album: Album;
   largeUrl: string;
   from: DOMRect;
   floating: boolean;
-  onLargePainted: (at: number) => void;
+  flight: boolean;
+  /** Build the back only once the sleeve is first turned over. */
+  lazyBack: boolean;
+  /** Draw the 1600 from the first frame, rather than the 640 until the 1600 is decoded. */
+  largeFirst: boolean;
+  onLargePainted: (at: { loaded: number; decoded: number; painted: number; first: number }) => void;
 }) {
   const lift = useRef<HTMLDivElement>(null);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(largeFirst);
   const [turns, setTurns] = useState(0);
+  // When the sleeve's first frame is on screen.
+  const [firstFrame] = useState(painted);
 
   useEffect(() => {
     const el = lift.current;
-    if (!el) return;
+    if (!el || !flight) return;
     const r = el.getBoundingClientRect();
     const dx = from.left + from.width / 2 - (r.left + r.width / 2);
     const dy = from.top + from.height / 2 - (r.top + r.height / 2);
@@ -258,7 +268,7 @@ function Hero({
       [{ transform: `translate(${dx}px, ${dy}px) scale(${from.width / r.width})` }, { transform: "none" }],
       { duration: 760, easing: "cubic-bezier(.2,.75,.15,1)" },
     );
-  }, [from]);
+  }, [from, flight]);
 
   const p = album.palette;
   const back = {
@@ -281,7 +291,7 @@ function Hero({
             >
               <div className="spike-hero-face">
                 <div className="spike-face" style={wear(album)}>
-                  <img src={cover(album, "640")} alt="" draggable={false} />
+                  {!largeFirst && <img src={cover(album, "640")} alt="" draggable={false} />}
                   <img
                     className={`large ${ready ? "ready" : ""}`}
                     src={largeUrl}
@@ -289,20 +299,24 @@ function Hero({
                     draggable={false}
                     onLoad={(e) => {
                       const img = e.currentTarget;
+                      const loaded = performance.now();
+                      let decoded = loaded;
                       void img
                         .decode()
                         .catch(() => {})
                         .then(() => {
+                          decoded = performance.now();
                           setReady(true);
-                          return painted();
+                          return Promise.all([painted(), firstFrame]);
                         })
-                        .then(() => onLargePainted(performance.now()));
+                        .then(([shown, first]) => onLargePainted({ loaded, decoded, painted: shown, first }));
                     }}
                   />
                   <div className="spike-wear" />
                 </div>
               </div>
               <div className="spike-hero-face back">
+                {(!lazyBack || turns > 0) && (
                 <div className="spike-face back" style={back}>
                   <div className="spike-back">
                     <p>{album.artist}</p>
@@ -318,6 +332,7 @@ function Hero({
                   </div>
                   <div className="spike-wear" />
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -350,6 +365,12 @@ function Ambient({ palette, on, glow }: { palette: Palette; on: boolean; glow: E
   );
 }
 
+/**
+ * Milliseconds from pulling a record out to its large cover loaded, decoded
+ * and on screen, and to the sleeve's own first frame on screen.
+ */
+export type LargeTimes = { loaded: number; decoded: number; painted: number; first: number };
+
 /** What the pretend poll returns while "playing". */
 type Playback = { title: string; progressMs: number };
 
@@ -367,7 +388,7 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
 
   const searchRef = useRef<HTMLDivElement>(null);
   const pulledAt = useRef(0);
-  const largeWaiters = useRef<((ms: number) => void)[]>([]);
+  const largeWaiters = useRef<((ms: LargeTimes) => void)[]>([]);
   const longestCommit = useRef(0);
   const decoded = useRef(new Map<string, HTMLImageElement>());
   const busts = useRef(0);
@@ -546,9 +567,15 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
     go().catch((e: unknown) => postResult({ id: run.id, run, error: String(e) }));
   }, [run, collection]);
 
-  const onLargePainted = useCallback((at: number) => {
-    const ms = at - pulledAt.current;
-    for (const resolve of largeWaiters.current.splice(0)) resolve(ms);
+  const onLargePainted = useCallback((at: { loaded: number; decoded: number; painted: number; first: number }) => {
+    const since = (t: number) => Math.round(t - pulledAt.current);
+    const times = {
+      loaded: since(at.loaded),
+      decoded: since(at.decoded),
+      painted: since(at.painted),
+      first: since(at.first),
+    };
+    for (const resolve of largeWaiters.current.splice(0)) resolve(times);
   }, []);
 
   if (error) return <div className="crate-spike">{error}</div>;
@@ -583,6 +610,9 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
             largeUrl={hero.largeUrl}
             from={hero.from}
             floating={playing}
+            flight={effects.flight}
+            lazyBack={effects.lazyBack}
+            largeFirst={effects.largeFirst}
             onLargePainted={onLargePainted}
           />
         )}

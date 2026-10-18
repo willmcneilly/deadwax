@@ -25,6 +25,14 @@ export type Effects = {
   motion: "transition" | "none";
   /** The crate in 3D, as the prototype has it, or flat: the same places in 2D. */
   scene: "3d" | "flat";
+  /** The pulled-out record flies out of the crate, or appears in place. */
+  flight: boolean;
+  /** The pulled-out sleeve's back is built only when it's first turned over. */
+  lazyBack: boolean;
+  /** The pulled-out sleeve draws the 1600 from its first frame, not the 640 until the 1600 is ready. */
+  largeFirst: boolean;
+  /** The pulled-out sleeve's deep shadow: a live 80px blur, or none. */
+  heroShadow: boolean;
   /** The grain and wear images, as the prototype's `data:` URLs or as `blob:` URLs. */
   textures: "data" | "blob";
   /** Replace the playback state on every poll, even when nothing changed. */
@@ -46,6 +54,10 @@ export const PROTOTYPE: Effects = {
   motion: "transition",
   scene: "3d",
   textures: "data",
+  flight: true,
+  lazyBack: false,
+  largeFirst: false,
+  heroShadow: true,
   pollRedraw: true,
 };
 
@@ -61,6 +73,7 @@ export function effectClasses(e: Effects): string {
     e.shade ? "" : "no-shade",
     e.backdrop ? "" : "no-backdrop",
     e.filter ? "" : "no-filter",
+    e.heroShadow ? "" : "no-hero-shadow",
   ]
     .filter(Boolean)
     .join(" ");
