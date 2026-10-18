@@ -29,6 +29,9 @@
   height: var(--h);
   perspective: 1800px;
   pointer-events: auto;
+
+  /* The flights' transforms are worked out from its top left (Sleeve.tsx). */
+  transform-origin: 0 0;
 }
 
 .sleeve-flipper {

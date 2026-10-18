@@ -32,6 +32,7 @@ import DevList from "./DevList";
 import PlaybackBar from "./PlaybackBar";
 import Search from "./Search";
 import Sleeve from "./Sleeve";
+import { frontPlace, type Place } from "./place";
 import { installTextures } from "./textures";
 import "./Library.css";
 
@@ -44,7 +45,7 @@ type Props = {
 /** The record you've pulled out of the crate, and where it came from. */
 type Out = {
   key: string;
-  from: DOMRect;
+  from: Place | null;
   returning: boolean;
   /** Development builds' measuring: load its 1600 as if never seen. */
   bust?: number;
@@ -151,12 +152,7 @@ function Library({ name, onSignedOut }: Props) {
       const item = itemsRef.current[indexRef.current];
       if (!item) return;
       if (item.kind === "divider") return step(1);
-      const el = room.current?.querySelector(
-        ".crate-slot[data-front] .sleeve-face",
-      );
-      const from =
-        el?.getBoundingClientRect() ??
-        new DOMRect(innerWidth / 2 - 200, innerHeight / 2, 400, 400);
+      const from = frontPlace(room.current);
       setTurns(0);
       setPulled({ key: item.key, from, returning: false, bust });
     },

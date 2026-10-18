@@ -24,6 +24,7 @@ import {
 } from "./api";
 import { SleeveFront } from "./Crate";
 import DevicePicker from "./DevicePicker";
+import type { Place } from "./place";
 import { duration, sides } from "./sides";
 import { wearStyle } from "./textures";
 import useDevices from "./useDevices";
@@ -39,8 +40,11 @@ const FLY_BACK = {
 
 type Props = {
   album: AlbumCard;
-  /** Its place in the crate, on screen: it flies out from there, and back. */
-  from: DOMRect;
+  /**
+   * Its place in the crate, in 3D: it flies out from there, and back. Null
+   * where the browser can't say, and then it simply appears.
+   */
+  from: Place | null;
   /** How many times it's been turned over: odd shows the back. */
   turns: number;
   onTurn: () => void;
@@ -112,22 +116,23 @@ function Sleeve({
   }, [id]);
 
   /**
-   * The transform that puts the sleeve over its place in the crate. It's
-   * worked out from where the sleeve sits without any flight on it (its
-   * layout box, not getBoundingClientRect), so a flight already running
-   * can't throw it off. React runs this effect twice in development, and the
-   * second run used to measure the first flight's start, fly nowhere, and
-   * replace it: the sleeve just appeared.
+   * The transform that lays the sleeve exactly over its place in the crate,
+   * leaning back in the crate's perspective as the crate draws it, so it
+   * doesn't change shape as it lands. It's worked out from where the sleeve
+   * sits without any flight on it (its layout box, not
+   * getBoundingClientRect), so a flight already running can't throw it off:
+   * React runs this effect twice in development, and the second run used to
+   * measure the first flight's start, fly nowhere, and replace it.
    */
   const toCrate = () => {
     const el = lift.current;
     const parent = el?.offsetParent?.getBoundingClientRect();
-    if (!el || !parent || !el.offsetWidth) return "none";
-    const left = parent.left + el.offsetLeft;
-    const top = parent.top + el.offsetTop;
-    const dx = from.left + from.width / 2 - (left + el.offsetWidth / 2);
-    const dy = from.top + from.height / 2 - (top + el.offsetHeight / 2);
-    return `translate(${dx}px, ${dy}px) scale(${from.width / el.offsetWidth})`;
+    if (!from || !el || !parent || !el.offsetWidth) return "none";
+    return new DOMMatrix()
+      .translate(-(parent.left + el.offsetLeft), -(parent.top + el.offsetTop))
+      .multiply(from.matrix)
+      .scale(from.size / el.offsetWidth)
+      .toString();
   };
 
   useLayoutEffect(() => {
@@ -182,7 +187,7 @@ function Sleeve({
   const medium = album.covers?.medium;
 
   return (
-    <div className={`sleeve-out ${returning ? "returning" : ""}`}>
+    <div className="sleeve-out">
       <div className="sleeve-lift" ref={lift}>
         <div
           className="sleeve-flipper"
