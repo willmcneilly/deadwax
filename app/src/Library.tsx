@@ -121,6 +121,8 @@ function Library({ name, onSignedOut }: Props) {
   const flipTo = useCallback((to: number) => {
     const list = itemsRef.current;
     const at = Math.max(0, Math.min(list.length - 1, to));
+    // Two flips in one frame each count, before React has drawn the first.
+    indexRef.current = at;
     setFocus({ key: list[at]?.key ?? null, index: at });
   }, []);
   const step = useCallback(

@@ -4,7 +4,7 @@
 
 Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter. **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still.
 
-This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document.
+This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21) are under "Patterns".
 
 ## The frame budget
 
@@ -168,6 +168,63 @@ These came out of the measurements. Each UI ticket keeps to them, and a ticket t
 6. **In a 3D scene,** these are allowed: transforms and opacity, CSS transitions of them, pre-drawn images (wear, shade), and box shadows on the sleeves. Not allowed: CSS filters, and anything that makes WebKit redo style for the whole scene on each change (rule 1).
 7. **Animate only `transform` and `opacity`.** The glow's drift, the float, the flight and the flip all do, so Core Animation runs them outside the page.
 8. **Keep the playback state when a poll brings nothing new,** so nothing re-renders.
+
+## Patterns
+
+### The crate
+
+The collection is a crate of records in a dark room (`app/src/Crate.tsx`, `Library.tsx`). The room is dark in light and dark mode alike.
+
+- **Flipping.** The scroll wheel flips one record a notch, and a trackpad's small movements add up to one. The arrow keys flip one at a time. `]` and `[` (or Page Down and Up, or Shift with the wheel) jump to the next or previous divider. Clicking a record behind brings it to the front.
+- **Sorting.** Three quiet buttons at the top left: Genre, Artist A–Z and Decade. Each section is sorted by artist (ignoring a leading "The"), then year. Albums with no genre go under **Unsorted**, and with no year under **Undated**, both at the back. Changing the order keeps the record in front.
+- **Dividers.** A handwritten paper card in front of each section, with the section's name, how many records it holds, and a tab that moves along the top from one divider to the next, so neighbouring tabs don't hide each other.
+- **The caption** above the crate names the record in front (artist, then title and year) or the divider's section.
+- **What's drawn.** The record in front, 6 behind it and 3 already flipped past (rule 2). The front two draw the 640, the rest the 320. The sleeves further back are shaded.
+- **Wear** shows on a sleeve only when its cover is on disk and came from somewhere other than Spotify. Spotify's own covers are shown as they are (RFC-002, resolved open question 1), and so is any cover still loading from Spotify.
+- **Textures** (the wear and the room's moving grain) are drawn once and handed to CSS as `blob:` URLs on the root (`app/src/textures.ts`, rule 1).
+
+### The sleeve
+
+Pulling out the record in front (a click, or Enter) brings out its sleeve (`app/src/Sleeve.tsx`).
+
+- **It flies out** from its place in the crate, which stays empty, and the crate drops and dims behind it. Escape, or a click in the room around it, flies it back.
+- **The front** is the cover large: the 640 at once, and the 1600, decoded while the record was in front (rule 5), over it once it's ready. No filter (rule 3).
+- **Turning it over** (a click on it, or Enter) shows its back. The back is built the first time it's turned (rule 4). A click on the back's paper, or Enter, turns it to the front again.
+- **The back** is printed in the album's colours: the artist in its accent, the title, the tracklist in sides (each disc split where its running time passes halfway, so A and B, then C and D), each track with its place on its side ("B3") and its length. Under them, the year and label. At the foot, **Open in Spotify**, and under it, quietly, **Take it out of the crate**, which asks "Take it out of the crate?" with **Take it out** and **Keep it**. A long tracklist is set smaller so it fits.
+- **Picking a track** plays the album from that track on the device chosen under the sleeve. Until DWX-22 and DWX-23, that's the device picker and the playback bar.
+
+### Album colours
+
+A sleeve's printed colours come from its cover, so they're data, not tokens. Rust works them out (the album job queue's palette step, with ink at least 7:1 on the paper and the accent and secondary text at least 4.5:1). `AlbumColours` is the one component that puts them on the page, as custom properties on the element it draws:
+
+| Property | What it is |
+|---|---|
+| `--album-ground` | The paper: the back of the sleeve |
+| `--album-rear` | The paper's reverse |
+| `--album-ink` | Body text |
+| `--album-muted` | Secondary text |
+| `--album-accent` | The album's colour: the artist, the side headings, Open in Spotify |
+| `--album-deep` | The room behind the glow |
+| `--album-glow-1` to `--album-glow-5` | The glow's colours, the key colours repeated if there are fewer |
+
+Other CSS reads them with a fallback to `theme.css`'s `--sleeve-*` colours, for an album whose palette isn't worked out yet: `var(--album-ink, var(--sleeve-ink))`. The lint allows colours in a `style` prop only in `AlbumColours.tsx`, and refuses `--album-*` set anywhere else.
+
+### The real crate, measured
+
+`scripts/crate-spike --crate` runs the spike's flip and pull scenarios on the app's own crate (sign in first; `CrateMeter`, in development builds only). Measured on 2026-10-18 on the same MacBook Pro, the window filling the screen, three runs each:
+
+| Against the budget | The spike's final cuts (DWX-20) | The real crate | Met? |
+|---|---|---|---|
+| Flipping the real crate, every 100 ms | 58.9–60 fps, 0–5 dropped | 60 fps, 0 dropped, longest gap 21–23 ms | Yes |
+| Flipping the real crate, every 40 ms | 59–59.9 fps, 0–2 dropped | 60 fps, 0 dropped, longest gap 18–20 ms | Yes |
+| Flipping 400 records, every 100 ms | 59.5–60 fps, 0–5 dropped | 60 fps, 0 dropped, longest gap 22–25 ms | Yes |
+| Flipping 400 records, every 40 ms | 59.5–60 fps, 0–2 dropped | 60 fps, 0 dropped, longest gap 19–25 ms | Yes |
+| The large cover, real crate | 57 ms median, 19 of 21 within 100 ms, worst 147 ms | 31 ms median, 21 of 21 within 100 ms, worst 50 ms | Yes |
+| The large cover, 400 records | 54 ms median, 23 of 24 within 100 ms, worst 118 ms | 31 ms median, 24 of 24 within 100 ms, worst 42 ms | Yes |
+| The large cover, cold (never seen), real crate | 199 ms median (the prototype) | 48 ms median, 21 of 21 within 100 ms, worst 69 ms | Yes |
+| The large cover, cold, 400 records | 250 ms median (the prototype) | 49 ms median, 24 of 24 within 100 ms, worst 67 ms | Yes |
+
+Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. The glow and search aren't built yet (DWX-22 and DWX-24), so they're not measured here. The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
 
 ## Do's and Don'ts
 
