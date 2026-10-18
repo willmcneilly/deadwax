@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it } from "vitest";
-import type { AlbumDetails, PlayOutcome } from "./api";
+import { ALBUM_UPDATED, type AlbumDetails, type PlayOutcome } from "./api";
 import {
   COLLECTION,
   IN_RAINBOWS,
@@ -116,13 +117,14 @@ describe("The sleeve", () => {
     sleeveBackEnd();
     await pullOutInRainbows();
 
-    expect(
-      screen.queryByRole("group", { name: "The back of In Rainbows" }),
-    ).not.toBeInTheDocument();
+    // The back's side is there, hidden, but nothing is built on it.
+    const backSide = document.querySelector(".sleeve-side.back") as HTMLElement;
+    expect(backSide).toBeEmptyDOMElement();
 
     await turnOver();
 
     expect(back()).toBeInTheDocument();
+    expect(backSide.querySelector(".back-inner")).toBe(back());
   });
 
   it("turns over to its tracklist in sides, with the year and the label", async () => {
@@ -273,6 +275,22 @@ describe("The sleeve", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lets the crate flip again when the record that was out has left it", async () => {
+    let collection = COLLECTION;
+    sleeveBackEnd({ get_collection: () => collection });
+    await pullOutInRainbows();
+
+    collection = COLLECTION.filter((a) => a.id !== IN_RAINBOWS.id);
+    await emit(ALBUM_UPDATED, IN_RAINBOWS.id);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull(),
+    );
+    const before = front();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(front()).not.toBe(before);
+  });
+
   it("stays out, saying why, when taking it out fails", async () => {
     sleeveBackEnd({
       remove_album: () => {
@@ -305,7 +323,7 @@ describe("The sleeve", () => {
     expect(calls).toContainEqual({ cmd: "refresh_album", args: { id: IN_RAINBOWS.id } });
   });
 
-  it("says so when the album can't be loaded", async () => {
+  it("says so when the tracklist can't be loaded, and still opens in Spotify", async () => {
     sleeveBackEnd({
       get_album: () => {
         throw "That album isn't in your collection.";
@@ -316,6 +334,11 @@ describe("The sleeve", () => {
 
     expect(await within(back()).findByRole("alert")).toHaveTextContent(
       "That album isn't in your collection.",
+    );
+    // Open in Spotify is there all the same.
+    expect(within(back()).getByRole("link", { name: "Open in Spotify" })).toHaveAttribute(
+      "href",
+      `https://open.spotify.com/album/${IN_RAINBOWS.spotifyId}`,
     );
   });
 });

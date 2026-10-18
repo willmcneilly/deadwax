@@ -19,6 +19,7 @@ export const PALETTE: Palette = {
 /** From iTunes, on disk, with everything found. */
 export const IN_RAINBOWS = card(1, {
   id: "0b1c7e1e-6a0e-4c43-9f1e-2b8f6f1d9a01",
+  spotifyId: "5vkqYmiPBYLaalcmjujWxK",
   title: "In Rainbows",
   artist: "Radiohead",
   year: 2007,
@@ -50,6 +51,7 @@ export const A_LOVE_SUPREME = card(3, {
 
 /** Only Spotify had its cover, so it's on disk but never worn. No genre yet. */
 export const PINK_MOON = card(4, {
+  spotifyId: "5mwD9Jg8LqZ5N5ekmjzRGW",
   title: "Pink Moon",
   artist: "Nick Drake",
   year: 1972,
@@ -63,7 +65,7 @@ export const COLLECTION = [PINK_MOON, KIND_OF_BLUE, IN_RAINBOWS, A_LOVE_SUPREME]
 /** In Rainbows' tracklist, from the cache: one disc, two sides. */
 export const IN_RAINBOWS_DETAILS: AlbumDetails = {
   id: IN_RAINBOWS.id,
-  spotifyId: "5vkqYmiPBYLaalcmjujWxK",
+  spotifyId: IN_RAINBOWS.spotifyId,
   title: "In Rainbows",
   artist: "Radiohead",
   year: 2007,

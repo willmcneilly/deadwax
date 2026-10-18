@@ -176,7 +176,7 @@ These came out of the measurements. Each UI ticket keeps to them, and a ticket t
 The collection is a crate of records in a dark room (`app/src/Crate.tsx`, `Library.tsx`). The room is dark in light and dark mode alike.
 
 - **Flipping.** The scroll wheel flips one record a notch, and a trackpad's small movements add up to one. The arrow keys flip one at a time. `]` and `[` (or Page Down and Up, or Shift with the wheel) jump to the next or previous divider. Clicking a record behind brings it to the front.
-- **Sorting.** Three quiet buttons at the top left: Genre, Artist A–Z and Decade. Each section is sorted by artist (ignoring a leading "The"), then year. Albums with no genre go under **Unsorted**, and with no year under **Undated**, both at the back. Changing the order keeps the record in front.
+- **Sorting.** Three quiet buttons at the top left: Genre, Artist A–Z and Decade. Each section is sorted by artist (ignoring a leading "The"), then year; a decade by year, then artist. Albums with no genre go under **Unsorted**, and with no year under **Undated**, both at the back. Changing the order keeps the record in front.
 - **Dividers.** A handwritten paper card in front of each section, with the section's name, how many records it holds, and a tab that moves along the top from one divider to the next, so neighbouring tabs don't hide each other.
 - **The caption** above the crate names the record in front (artist, then title and year) or the divider's section.
 - **What's drawn.** The record in front, 6 behind it and 3 already flipped past (rule 2). The front two draw the 640, the rest the 320. The sleeves further back are shaded.

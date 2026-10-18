@@ -15,6 +15,7 @@ const ALBUMS: AlbumCard[] = [
     genre: "Rock",
   }),
   card(6, { title: "Untitled", artist: "!!!", year: null, genre: "Dance" }),
+  card(7, { title: "Buena Vista Social Club", artist: "Buena Vista Social Club", year: 1997, genre: "World" }),
 ];
 
 /** Each item as a line: a divider's label and count, or an album's title. */
@@ -37,6 +38,8 @@ describe("The crate's order", () => {
       "  Kind of Blue",
       "Rock (1)",
       "  The Velvet Underground & Nico",
+      "World (1)",
+      "  Buena Vista Social Club",
       "Unsorted (1)",
       "  Pink Moon",
     ]);
@@ -46,6 +49,8 @@ describe("The crate's order", () => {
     expect(lines(crateItems(ALBUMS, "artist"))).toEqual([
       "# (1)",
       "  Untitled",
+      "B (1)",
+      "  Buena Vista Social Club",
       "J (1)",
       "  A Love Supreme",
       "M (1)",
@@ -59,7 +64,7 @@ describe("The crate's order", () => {
     ]);
   });
 
-  it("sorts by decade, oldest first, with Undated at the back", () => {
+  it("sorts by decade, oldest first and by year within each, with Undated at the back", () => {
     expect(lines(crateItems(ALBUMS, "decade"))).toEqual([
       "1950s (1)",
       "  Kind of Blue",
@@ -68,6 +73,8 @@ describe("The crate's order", () => {
       "  The Velvet Underground & Nico",
       "1970s (1)",
       "  Pink Moon",
+      "1990s (1)",
+      "  Buena Vista Social Club",
       "2000s (1)",
       "  In Rainbows",
       "Undated (1)",
@@ -79,7 +86,7 @@ describe("The crate's order", () => {
     const tabs = crateItems(ALBUMS, "genre").flatMap((item) =>
       item.kind === "divider" ? [item.tab] : [],
     );
-    expect(tabs).toEqual([0, 1, 2, 0, 1]);
+    expect(tabs).toEqual([0, 1, 2, 0, 1, 2]);
   });
 
   it("gives each album its own key, or the one it's given", () => {

@@ -336,17 +336,15 @@ function SleeveBack({
           {/* Spotify's developer policy wants every album to link back to
               it (RFC-001, "Spotify's attribution rules"). Rust opens it, in
               the browser or the Spotify app. */}
-          {details && (
-            <a
-              href={`https://open.spotify.com/album/${details.spotifyId}`}
-              onClick={(event) => {
-                event.preventDefault();
-                openAlbumInSpotify(details.spotifyId).catch(onFailed);
-              }}
-            >
-              Open in Spotify
-            </a>
-          )}
+          <a
+            href={`https://open.spotify.com/album/${album.spotifyId}`}
+            onClick={(event) => {
+              event.preventDefault();
+              openAlbumInSpotify(album.spotifyId).catch(onFailed);
+            }}
+          >
+            Open in Spotify
+          </a>
           {confirming ? (
             <span className="back-confirm" role="group" aria-label="Take it out of the crate?">
               Take it out of the crate?

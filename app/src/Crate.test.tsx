@@ -158,9 +158,13 @@ describe("The crate", () => {
 
   it("draws the 640 for the front two records and the 320 behind them", async () => {
     await openCrate();
+    const cover = (name: string) => slot(name).querySelector("img")?.getAttribute("src");
+    // In Rainbows in front, the Jazz divider next, then A Love Supreme third.
+    expect(cover("In Rainbows")).toBe(fromDisk(IN_RAINBOWS.id).medium);
+    expect(cover("A Love Supreme")).toBe(fromDisk(A_LOVE_SUPREME.id).small);
+
     fireEvent.click(slot("A Love Supreme"));
 
-    const cover = (name: string) => slot(name).querySelector("img")?.getAttribute("src");
     expect(cover("A Love Supreme")).toBe(fromDisk(A_LOVE_SUPREME.id).medium);
     expect(cover("Kind of Blue")).toBe(fromDisk(KIND_OF_BLUE.id).medium);
     expect(cover("Pink Moon")).toBe(fromDisk(PINK_MOON.id).small);

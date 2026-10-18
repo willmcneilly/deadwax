@@ -52,6 +52,7 @@ export function card(n: number, extra: Partial<AlbumCard> = {}): AlbumCard {
   const spotify = `https://i.scdn.co/image/cover${n}`;
   return {
     id: `deadwax-${n}`,
+    spotifyId: `spotify${n}`,
     title: `Album ${n}`,
     artist: `Artist ${n}`,
     year: 2000 + n,

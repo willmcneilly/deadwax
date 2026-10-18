@@ -74,6 +74,8 @@ export type CoverUrls = {
  */
 export type AlbumCard = {
   id: AlbumId;
+  /** Where Open in Spotify goes. */
+  spotifyId: string;
   title: string;
   artist: string;
   year: number | null;

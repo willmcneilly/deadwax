@@ -1,6 +1,7 @@
 // How the crate is sorted, and where its dividers go (RFC-002, "4. The UI").
 // Each order decides what a section is (a genre, a letter, a decade) and the
-// order inside it: by artist, ignoring a leading "The", then by year.
+// order inside it: by artist, ignoring a leading "The", then by year. Inside
+// a decade, records go by year first, then artist.
 
 import type { AlbumCard } from "./api";
 

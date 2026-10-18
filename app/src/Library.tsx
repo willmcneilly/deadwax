@@ -68,7 +68,7 @@ function Library({ name, onSignedOut }: Props) {
   const [order, setOrder] = useState<Order>("genre");
   // The first record, behind the first divider.
   const [focus, setFocus] = useState<Focus>({ key: null, index: 1 });
-  const [out, setOut] = useState<Out | null>(null);
+  const [pulled, setOut] = useState<Out | null>(null);
   const [turns, setTurns] = useState(0);
   const [searching, setSearching] = useState(false);
   /** Counts albums started, so the playback bar asks again straight away. */
@@ -108,8 +108,11 @@ function Library({ name, onSignedOut }: Props) {
     found >= 0 ? found : Math.min(focus.index, items.length - 1),
   );
   const front: CrateItem | undefined = items[index];
-  const outItem = out ? items[indexOf(items, out.key)] : undefined;
+  const outItem = pulled ? items[indexOf(items, pulled.key)] : undefined;
   const outAlbum = outItem?.kind === "album" ? outItem.album : null;
+  // A record that has left the crate while out (the Develop menu's Reset,
+  // say) isn't out any more.
+  const out = outAlbum ? pulled : null;
 
   const itemsRef = useRef(items);
   const indexRef = useRef(index);

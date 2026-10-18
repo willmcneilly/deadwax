@@ -224,6 +224,8 @@ pub fn open_spotify_dashboard(app: AppHandle) -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 pub struct AlbumCard {
     pub id: AlbumId,
+    /// Where Open in Spotify goes.
+    pub spotify_id: String,
     pub title: String,
     pub artist: String,
     pub year: Option<u16>,
@@ -293,6 +295,7 @@ impl From<Collected> for AlbumCard {
             covers,
             worn,
             id,
+            spotify_id: album.spotify_id,
             title: album.title,
             artist: album.artist,
             year: album.year,
@@ -1089,6 +1092,7 @@ mod tests {
     fn in_rainbows_card(id: &AlbumId) -> AlbumCard {
         AlbumCard {
             id: id.clone(),
+            spotify_id: IN_RAINBOWS.into(),
             title: "In Rainbows".into(),
             artist: "Radiohead".into(),
             year: Some(2007),
@@ -1690,6 +1694,7 @@ mod tests {
     fn crate_cards_serialise_as_the_ui_expects() {
         let card = AlbumCard {
             id: "deadwax-id".into(),
+            spotify_id: IN_RAINBOWS.into(),
             title: "In Rainbows".into(),
             artist: "Radiohead".into(),
             year: Some(2007),
@@ -1707,6 +1712,7 @@ mod tests {
             serde_json::to_value(&card).unwrap(),
             json!({
                 "id": "deadwax-id",
+                "spotifyId": IN_RAINBOWS,
                 "title": "In Rainbows",
                 "artist": "Radiohead",
                 "year": 2007,
