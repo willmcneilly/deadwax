@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import process from "node:process";
 import { defineConfig } from "vitest/config";
-import { crateSpike } from "./scripts/crateSpikeServer";
+import { crateSpike } from "./scripts/crateSpikeServer.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 // scripts/dev-app picks a free port and passes it here; 1440 otherwise, clear

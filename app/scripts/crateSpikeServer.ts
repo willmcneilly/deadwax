@@ -32,6 +32,16 @@ function body(req: IncomingMessage): Promise<string> {
   });
 }
 
+/** The request's body as JSON, or null if it isn't a POST of valid JSON. */
+async function json<T>(req: IncomingMessage): Promise<T | null> {
+  if (req.method !== "POST") return null;
+  try {
+    return JSON.parse(await body(req)) as T;
+  } catch {
+    return null;
+  }
+}
+
 function reply(res: ServerResponse, status: number, value: unknown) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
@@ -47,7 +57,8 @@ export function crateSpike(): Plugin {
     apply: "serve",
     configureServer(server) {
       server.middlewares.use("/__crate-spike/run", async (req, res) => {
-        const run = JSON.parse(await body(req)) as object;
+        const run = await json<object>(req);
+        if (!run) return reply(res, 400, { error: "POST a run as JSON." });
         const id = String(next++);
         const timer = setTimeout(() => {
           waiting.delete(id);
@@ -61,7 +72,8 @@ export function crateSpike(): Plugin {
       });
 
       server.middlewares.use("/__crate-spike/result", async (req, res) => {
-        const result = JSON.parse(await body(req)) as { id: string };
+        const result = await json<{ id: string }>(req);
+        if (!result) return reply(res, 400, { error: "POST a result as JSON." });
         mkdirSync(dirname(RESULTS), { recursive: true });
         appendFileSync(RESULTS, `${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
         waiting.get(result.id)?.(result);

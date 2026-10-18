@@ -28,7 +28,7 @@ import { effectClasses, FINAL, PROTOTYPE, type Effects } from "./effects";
 import { painted } from "./frameMeter";
 import { postResult, type Run } from "./remote";
 import { runScenario, type Controller } from "./scenarios";
-import { installTextures, poolImage, vignetteImage, WEAR_VARIANTS } from "./textures";
+import { installTextures, poolImage, removeTextures, vignetteImage, WEAR_VARIANTS } from "./textures";
 import "./crateSpike.css";
 
 const AHEAD = 3; // records drawn already flipped past
@@ -400,6 +400,7 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
   useEffect(() => {
     void installTextures(effects.textures);
   }, [effects.textures]);
+  useEffect(() => removeTextures, []);
 
   const items = useMemo(
     () => (collection ? crateItems(many ? stretch(collection) : collection) : []),

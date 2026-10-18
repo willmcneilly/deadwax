@@ -145,8 +145,8 @@ async function asBlob(dataUrl: string): Promise<string> {
 
 /**
  * Sets the grain and wear images as CSS variables on the root, as the
- * prototype does: as `data:` URLs (the prototype's, each up to a megabyte of
- * text) or as short `blob:` URLs to the same images.
+ * prototype does: as `data:` URLs (the prototype's, each a whole PNG written
+ * out as text) or as short `blob:` URLs to the same images.
  */
 export async function installTextures(kind: "data" | "blob"): Promise<void> {
   drawn.grain ??= grainTile();
@@ -157,4 +157,16 @@ export async function installTextures(kind: "data" | "blob"): Promise<void> {
   for (const [i, wear] of drawn.wear.entries()) {
     root.setProperty(`--spike-wear-${i}`, `url(${await url(wear)})`);
   }
+}
+
+/**
+ * Takes the textures off the root and lets their `blob:` URLs go, so the rest
+ * of the app doesn't pay for them once the spike has closed.
+ */
+export function removeTextures(): void {
+  const root = document.documentElement.style;
+  root.removeProperty("--spike-grain");
+  for (let i = 0; i < WEAR_VARIANTS; i++) root.removeProperty(`--spike-wear-${i}`);
+  for (const url of blobs.values()) URL.revokeObjectURL(url);
+  blobs.clear();
 }

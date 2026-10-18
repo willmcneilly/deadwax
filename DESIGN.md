@@ -36,7 +36,7 @@ The 400-record crate repeats the collection with a different URL for each repeat
 
 ## What we measured
 
-Measured on 2026-10-18 on Will's MacBook Pro (M4, 24 GB, macOS 15.0), in a development build with the window filling the built-in display (1512 × 916 points at 2x), three runs of each. The real collection is four albums, so "real" is a small crate; the 400-record crate is the stress test. Each table changes one thing at a time, so each row is a before and after. The raw rows are in `.dev-data/crate-spike/results.jsonl` (not in the repository), and `scripts/crate-spike` makes them again.
+Measured on 2026-10-18 on Will's MacBook Pro (M4, 24 GB, macOS 15.0), in a development build with the window filling the built-in display (1512 × 916 points at 2x), three runs of each unless a table says otherwise. The real collection is four albums, so "real" is a small crate; the 400-record crate is the stress test. Each table changes one thing at a time, so each row is a before and after. The raw rows are in `.dev-data/crate-spike/results.jsonl` (not in the repository), and `scripts/crate-spike` makes them again.
 
 ### Flipping
 
@@ -83,6 +83,8 @@ The time from pulling a record out to its 1600 cover on screen, seven pulls a ru
 | **The final cuts (below), real crate** | **57 ms (147)** | **19 of 21** | 7–20 |
 | **The final cuts, 400 records** | **54 ms (118)** | **23 of 24** | 10–15 |
 | The final cuts and no deep shadow, real crate | 57 ms (145) | 20 of 21 | 9–16 |
+
+The first four rows and the final cuts are three runs each. The rows from "Decoding ahead, no filter" to "no flight" are two runs each (hence "of 14"), measured in a later batch than the rows above them, once the step timings were added; compare them with each other, and with the first rows only roughly.
 
 **What it is.** Once decoded ahead, the 1600 is loaded and decoded within 5 ms of the pull. What it waits for is the pulled-out sleeve's own first frame: building the front and back, their wear and shadows, and starting the flight, 60 to 80 ms with the final cuts. The CSS filter (`contrast(1.04) saturate(0.9) sepia(0.07)`) was the biggest single cost: taking it off saved 40 to 80 ms and most of the flight's dropped frames. Cold, a 1600 also takes about 80 ms to come off disk through `cover://`, which decoding ahead hides.
 

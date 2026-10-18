@@ -48,9 +48,11 @@ body {
 }
 
 /*
- * The crate spike (DWX-20), in development builds only: the prototype's
- * colours (prototypes/crate/src/styles.css), so the spike can be measured as
- * it looked. Ticket 5 builds the crate for real and replaces these.
+ * The crate spike's colours (DWX-20): the prototype's
+ * (prototypes/crate/src/styles.css), so the spike can be measured as it
+ * looked. The spike is in development builds only, but these variables ship
+ * in every build, unused, until ticket 5 builds the crate for real and
+ * replaces them.
  */
 :root {
   --spike-room: #120f0c;
