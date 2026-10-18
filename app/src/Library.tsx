@@ -289,17 +289,11 @@ function Library({ name, onSignedOut }: Props) {
    * Turns the record out over. Turned to its front while it's what's
    * playing, it floats again; turned to its back, it's for browsing.
    */
-  const liveOutRef = useRef(liveOut);
-  useLayoutEffect(() => {
-    liveOutRef.current = liveOut;
-  });
-  const turn = useCallback(() => {
-    setTurns((t) => {
-      const front = (t + 1) % 2 === 0;
-      setPulled((o) => o && { ...o, nowPlaying: front && liveOutRef.current });
-      return t + 1;
-    });
-  }, []);
+  const turn = () => {
+    const front = (turns + 1) % 2 === 0;
+    setTurns(turns + 1);
+    setPulled((o) => o && { ...o, nowPlaying: front && liveOut });
+  };
 
   // The needle drops (Sleeve.tsx): the record turns to its front and floats
   // while Spotify gets going, then plays, or turns back if it didn't start.
