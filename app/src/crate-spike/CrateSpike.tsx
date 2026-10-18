@@ -6,8 +6,9 @@
 // measured (DESIGN.md). Development builds only, opened from the Develop menu
 // or by `scripts/crate-spike`.
 //
-// Keys: ← → flip, Enter pulls the record out, P plays (the glow), S opens
-// search over the crate, Esc puts the record back or closes search.
+// Scroll or ← → to flip, click the front record or press Enter to pull it
+// out, P plays (the glow), S opens search over the crate, Esc puts the record
+// back or closes search.
 
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -175,6 +176,7 @@ const Crate = memo(function Crate({
   behind,
   sizes,
   scene,
+  onPick,
 }: {
   items: Item[];
   focus: number;
@@ -183,6 +185,8 @@ const Crate = memo(function Crate({
   behind: number;
   sizes: Effects["sizes"];
   scene: Effects["scene"];
+  /** A click on a record: the one in front comes out, any other comes to the front. */
+  onPick: (index: number) => void;
 }) {
   const slots = [];
   for (let i = Math.max(0, focus - AHEAD); i <= Math.min(items.length - 1, focus + behind); i++) {
@@ -194,6 +198,7 @@ const Crate = memo(function Crate({
         key={item.key}
         className={`spike-slot ${item.kind} ${d < 0 ? "past" : ""}`}
         data-front={d === 0 || undefined}
+        onClick={() => onPick(i)}
         style={{
           ...(scene === "flat" ? placeFlat : place)(d, jitter, behind),
           zIndex: 100 - d,
@@ -431,6 +436,11 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
     [albumAt, focus, items],
   );
 
+  const pick = useCallback(
+    (index: number) => (index === focus ? pull(false) : setFocus(index)),
+    [focus, pull],
+  );
+
   const putBack = useCallback(() => {
     setPlaying(false);
     setHero(null);
@@ -500,6 +510,25 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, [hero, items.length, onClose, pull, putBack, searching]);
+
+  // The scroll wheel flips, as in the prototype: a mouse notch is one record,
+  // and a trackpad's small deltas add up to one.
+  useEffect(() => {
+    let acc = 0;
+    const wheel = (e: WheelEvent) => {
+      if (searching || (e.target as HTMLElement).closest?.(".spike-panel")) return;
+      e.preventDefault();
+      if (hero) return;
+      const notch = e.deltaMode === 1 || (Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+      acc += notch ? Math.sign(e.deltaY) * 36 : e.deltaY;
+      const steps = Math.trunc(acc / 36);
+      if (!steps) return;
+      acc -= steps * 36;
+      setFocus((f) => Math.max(0, Math.min(items.length - 1, f + steps)));
+    };
+    addEventListener("wheel", wheel, { passive: false });
+    return () => removeEventListener("wheel", wheel);
+  }, [hero, items.length, searching]);
 
   // The controller scenarios drive, kept current every render.
   const controller = useRef<Controller | null>(null);
@@ -603,6 +632,7 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
           behind={effects.behind}
           sizes={effects.sizes}
           scene={effects.scene}
+          onPick={pick}
         />
         {hero && heroAlbum && (
           <Hero
@@ -633,7 +663,15 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
           </div>
         )}
         <div className="spike-grain" />
-        <div className="spike-panel">
+        <div
+          className="spike-panel"
+          // Let go of the keyboard after each change, so the arrow keys and
+          // Enter go back to the crate rather than to a menu or a button.
+          onChange={(e) => (e.target as HTMLElement).blur()}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).tagName === "BUTTON") (e.target as HTMLElement).blur();
+          }}
+        >
           <strong>Crate spike (DWX-20)</strong>
           <label>
             <input type="checkbox" checked={many} onChange={(e) => setMany(e.target.checked)} />
@@ -698,7 +736,7 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
             Prototype
           </button>
           <output>
-            {items.filter((i) => i.kind === "album").length} records · ← → Enter P S Esc{status && `\n${status}`}
+            {items.filter((i) => i.kind === "album").length} records{"\n"}Scroll or ← → to flip{"\n"}Click or Enter to pull out{"\n"}P plays (the glow) · Esc puts back{status && `\n${status}`}
           </output>
         </div>
       </div>
