@@ -7,6 +7,11 @@ import type { Effects } from "./effects";
 /** A measurement `scripts/crate-spike` asks for. */
 export type Run = {
   id: string;
+  /**
+   * What to measure: the spike (Develop › Crate spike), or the app's own
+   * crate (DWX-21), which ignores `effects`.
+   */
+  target?: "spike" | "crate";
   scenario: "idle" | "flip" | "pull" | "glow" | "search";
   /** The 400-record crate instead of the real collection. */
   many: boolean;
@@ -25,7 +30,9 @@ const RUN_EVENT = "crate-spike:run";
 
 export function onRun(handler: (run: Run) => void): () => void {
   const hot = import.meta.hot;
-  if (!hot) return () => {};
+  // Vitest's stand-in for the hot-reload socket can't stop listening, and
+  // no run ever comes in tests.
+  if (!hot || typeof hot.off !== "function") return () => {};
   hot.on(RUN_EVENT, handler);
   return () => hot.off(RUN_EVENT, handler);
 }

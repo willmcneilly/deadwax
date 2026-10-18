@@ -1,15 +1,13 @@
-import type { AlbumCard } from "./api";
-
 type Props = {
-  album: Pick<AlbumCard, "title" | "coverUrl">;
+  album: { title: string; coverUrl: string | null };
   className: string;
 };
 
 /**
  * The album's cover, shown as it is: Spotify's developer policy allows no
- * cropping, blur or overlay (RFC-001, "Spotify's attribution rules"). Once
- * the album's cover is on disk, the grid shows its 320 and the album page its
- * 1600; until then, both show Spotify's.
+ * cropping, blur or overlay (RFC-001, "Spotify's attribution rules"). Search
+ * shows Spotify's, and now playing the album's 1600 from disk once it's
+ * there.
  */
 function Cover({ album, className }: Props) {
   if (!album.coverUrl) {

@@ -31,17 +31,66 @@ export function errorMessage(error: unknown): string {
  */
 export type AlbumId = string;
 
-/** An album in your collection, as the grid shows it. */
+/**
+ * An album's colours (`Palette` in crates/deadwax-core/src/palette/mod.rs),
+ * each `#rrggbb`. They're data, not design tokens: only `AlbumColours` puts
+ * them on the page.
+ */
+export type Palette = {
+  /** The glow's colours, most characterful first. */
+  key: string[];
+  /** The paper. */
+  ground: string;
+  /** The paper's reverse. */
+  rear: string;
+  /** Body text, 7:1 on the ground. */
+  ink: string;
+  /** Secondary text, 4.5:1. */
+  muted: string;
+  /** The album's colour, 4.5:1. */
+  accent: string;
+  dark: boolean;
+  /** The room behind the glow. */
+  deep: string;
+};
+
+/**
+ * One album's cover in three sizes (`CoverUrls` in commands.rs). From disk
+ * (`cover://`) once it's there, otherwise all three are Spotify's largest,
+ * about 640 pixels.
+ */
+export type CoverUrls = {
+  /** The 320, for the sleeves at the back of the crate. */
+  small: string;
+  /** The 640, for the front two. */
+  medium: string;
+  /** The 1600, for the sleeve you've pulled out. */
+  large: string;
+};
+
+/**
+ * An album in your collection, as the crate shows it: everything its sleeve
+ * needs except the tracklist, which `getAlbum` has.
+ */
 export type AlbumCard = {
   id: AlbumId;
   title: string;
   artist: string;
   year: number | null;
+  /** The crate's dividers sort by it. Null until found, or if none was. */
+  genre: string | null;
+  /** The record label, for the sleeve's back. */
+  label: string | null;
+  /** Null until the album job queue has worked it out. */
+  palette: Palette | null;
+  /** Null if nothing had a cover. */
+  covers: CoverUrls | null;
   /**
-   * The 320 from disk (`cover://`) once the album's cover is there, otherwise
-   * Spotify's largest, about 640 pixels.
+   * Whether the sleeve shows wear: only a cover from disk that didn't come
+   * from Spotify. Spotify's covers are shown as they are (RFC-002, resolved
+   * open question 1).
    */
-  coverUrl: string | null;
+  worn: boolean;
 };
 
 /**
@@ -81,7 +130,7 @@ export type AlbumTrack = {
   durationMs: number;
 };
 
-/** An album as the album page shows it (`AlbumPage` in commands.rs). */
+/** An album with its tracklist, for the back of its sleeve (`AlbumDetails` in commands.rs). */
 export type AlbumDetails = {
   id: AlbumId;
   /** Where Open in Spotify goes. */
@@ -104,7 +153,7 @@ export type AlbumDetails = {
  */
 export const ALBUM_UPDATED = "album-updated";
 
-/** The album page, from the cache. */
+/** The album and its tracklist, from the cache. */
 export const getAlbum = (id: AlbumId) =>
   invoke<AlbumDetails>("get_album", { id });
 /**

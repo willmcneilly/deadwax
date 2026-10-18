@@ -1,7 +1,8 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ARTWORK_REPORT, type Palette, type Report } from "./ArtworkReport";
+import type { Palette } from "./api";
+import { ARTWORK_REPORT, type Report } from "./ArtworkReport";
 import Library from "./Library";
 import { backEnd, EMPTY_COLLECTION } from "./mockBackEnd";
 
@@ -114,7 +115,7 @@ const report = () => screen.findByRole("region", { name: "Artwork report" });
 describe("The Artwork report", () => {
   it("isn't shown until the Develop menu asks for it", async () => {
     const { calls } = open();
-    await screen.findByText(/Your collection is empty/);
+    await screen.findByText("Your crate is empty.");
 
     expect(
       screen.queryByRole("region", { name: "Artwork report" }),
@@ -124,7 +125,7 @@ describe("The Artwork report", () => {
 
   it("lists every album with its cover source, size and steps, and totals by source", async () => {
     open();
-    await screen.findByText(/Your collection is empty/);
+    await screen.findByText("Your crate is empty.");
 
     await emit(ARTWORK_REPORT);
 
@@ -195,7 +196,7 @@ describe("The Artwork report", () => {
 
   it("shows each album's palette as swatches, sleeve colours then glow colours", async () => {
     open();
-    await screen.findByText(/Your collection is empty/);
+    await screen.findByText("Your crate is empty.");
 
     await emit(ARTWORK_REPORT);
 
@@ -224,7 +225,7 @@ describe("The Artwork report", () => {
 
   it("refreshes, and closes", async () => {
     const { change } = open();
-    await screen.findByText(/Your collection is empty/);
+    await screen.findByText("Your crate is empty.");
     await emit(ARTWORK_REPORT);
     await report();
 

@@ -26,16 +26,28 @@ export default defineConfig(
   },
   // No colour in an inline style: colours live only in src/theme.css
   // (stylelint covers the CSS files). Catches hex and colour functions in a
-  // `style` prop, including in template literals.
+  // `style` prop, including in template literals, and an album's colours
+  // (`--album-*`) set anywhere but AlbumColours.
+  //
+  // AlbumColours is the one exception (RFC-002, "6. `DESIGN.md` starts
+  // here"): an album's colours come from its cover, so they're data, and it
+  // sets them as CSS custom properties. scripts/colourLint.test.ts proves the rule
+  // holds everywhere else.
   {
     files: ["**/*.{ts,tsx}"],
+    ignores: ["src/AlbumColours.tsx"],
     rules: {
       "no-restricted-syntax": [
         "error",
         {
           selector: `JSXAttribute[name.name='style'] :matches(Literal[value=${colour}], TemplateElement[value.raw=${colour}])`,
           message:
-            "That's a colour written in the code. Use a CSS variable from src/theme.css (such as var(--ink)).",
+            "That's a colour written in the code. Use a CSS variable from src/theme.css (such as var(--ink)), or an album's colours through AlbumColours.",
+        },
+        {
+          selector: `JSXAttribute[name.name='style'] :matches(Literal[value=/^--album-/], TemplateElement[value.raw=/^--album-/])`,
+          message:
+            "An album's colours are set only by AlbumColours (src/AlbumColours.tsx).",
         },
       ],
     },

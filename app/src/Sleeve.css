@@ -1,0 +1,278 @@
+/*
+ * The sleeve you've pulled out (prototypes/crate/src/styles.css). Its flight
+ * and its turn are transforms only, so Core Animation runs them outside the
+ * page (DESIGN.md, rule 7). Its back is printed in the album's own colours
+ * (AlbumColours), or theme.css's sleeve colours until they're worked out.
+ */
+
+.sleeve-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+}
+
+.sleeve-out {
+  --h: min(70vh, 66vw); /* the sleeve you've pulled out */
+
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding-bottom: calc(var(--space) * 14);
+  pointer-events: none;
+}
+
+.sleeve-lift {
+  position: relative;
+  width: var(--h);
+  height: var(--h);
+  perspective: 1800px;
+  pointer-events: auto;
+}
+
+.sleeve-flipper {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.95s cubic-bezier(.45, .05, .2, 1);
+}
+
+.sleeve-side {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.sleeve-side.front {
+  cursor: pointer;
+}
+
+.sleeve-side.back {
+  transform: rotateY(180deg);
+}
+
+.sleeve-side .sleeve-face {
+  --s: var(--h);
+
+  box-shadow:
+    0 2px 4px var(--shadow),
+    0 30px 80px var(--shadow-deep);
+}
+
+/* The 1600 comes in over the 640 that's already on screen (rule 5). */
+.sleeve-face img.large {
+  opacity: 0;
+}
+
+.sleeve-face img.large.ready {
+  opacity: 1;
+}
+
+/* ---------- the back ---------- */
+
+.sleeve-face.back {
+  background: var(--album-ground, var(--sleeve-ground));
+  color: var(--album-ink, var(--sleeve-ink));
+  cursor: pointer;
+}
+
+.sleeve-face.back .wear {
+  opacity: 0.45;
+}
+
+.back-inner {
+  --line-ink: color-mix(in srgb, var(--album-ink, var(--sleeve-ink)) 28%, var(--clear));
+
+  position: absolute;
+  inset: 7.5%;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-record);
+  font-size: calc(var(--h) * var(--fs));
+}
+
+.back-artist {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 0.72em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--album-accent, var(--sleeve-accent));
+}
+
+.back-title {
+  margin: 0.25em 0 0.7em;
+  font-size: 2.1em;
+  font-weight: 300;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+.back-error {
+  flex: 1;
+  margin: 0;
+}
+
+.back-sides {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 2.4em;
+  row-gap: 1.1em;
+  align-content: start;
+  padding-top: 1em;
+  border-top: 1px solid var(--line-ink);
+  overflow: hidden;
+}
+
+.back-sides h3 {
+  margin: 0 0 0.5em;
+  font-family: var(--font-label);
+  font-size: 0.66em;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--album-accent, var(--sleeve-accent));
+}
+
+.back-sides ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* More specific than `.library button`: a track is printed text. */
+.library .back-sides .track {
+  display: grid;
+  grid-template-columns: 2em 1fr auto;
+  align-items: baseline;
+  gap: 0.4em;
+  width: 100%;
+  padding: 0.24em 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.library .back-sides .track:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.back-sides .num,
+.back-sides .dur {
+  font-family: var(--font-label);
+  font-size: 0.66em;
+  color: var(--album-muted, var(--sleeve-muted));
+}
+
+.back-sides .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.back-sides button.track:enabled:hover .name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+.back-inner footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 2em;
+  padding-top: 0.8em;
+  border-top: 1px solid var(--line-ink);
+  font-family: var(--font-label);
+  font-size: 0.56em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--album-muted, var(--sleeve-muted));
+}
+
+.back-inner footer span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.back-inner footer span:last-child {
+  flex-shrink: 0;
+}
+
+/* Open in Spotify, and under it, quietly, taking the album out. */
+.back-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3em;
+  padding-top: 0.7em;
+  font-family: var(--font-label);
+  font-size: 0.6em;
+  letter-spacing: 0.08em;
+}
+
+.back-foot a {
+  color: var(--album-accent, var(--sleeve-accent));
+}
+
+.library .back-foot button {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--album-muted, var(--sleeve-muted));
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.back-quiet {
+  opacity: 0.7;
+}
+
+.back-confirm {
+  display: flex;
+  gap: 1em;
+  color: var(--album-ink, var(--sleeve-ink));
+}
+
+/* ---------- where it plays ---------- */
+
+.sleeve-desk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--space) * 9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space);
+  pointer-events: auto;
+  font-size: 0.85rem;
+}
+
+.sleeve-desk .device-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+}
+
+.sleeve-desk .device-note {
+  margin: 0;
+  max-width: 34rem;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.library .sleeve-desk button.secondary {
+  color: var(--room-ink);
+  border-color: var(--line);
+}

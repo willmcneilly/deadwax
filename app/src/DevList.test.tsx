@@ -8,15 +8,9 @@ import {
   type RestoreReport,
 } from "./DevList";
 import Library from "./Library";
-import { backEnd } from "./mockBackEnd";
+import { backEnd, card } from "./mockBackEnd";
 
-const album = (n: number): AlbumCard => ({
-  id: `album${n}`,
-  title: `Album ${n}`,
-  artist: `Artist ${n}`,
-  year: 2000 + n,
-  coverUrl: `https://i.scdn.co/image/cover${n}`,
-});
+const album = (n: number): AlbumCard => card(n, { id: `album${n}` });
 
 /** A back end whose collection is `albums`, until a restore or reset changes it. */
 function devBackEnd(
@@ -44,7 +38,12 @@ function devBackEnd(
 
 const offer = () => screen.findByRole("region", { name: "Dev list" });
 const commands = (calls: { cmd: string }[]) => calls.map((c) => c.cmd);
-const grid = () => screen.findByRole("list", { name: "Your collection" });
+const crate = () => screen.findByRole("region", { name: "Your crate" });
+/** The records drawn in the crate, by their buttons: dividers aside. */
+const records = async () =>
+  within(await crate()).queryAllByRole("button", {
+    name: /^(Pull out|Flip to) Album /,
+  });
 
 describe("The dev list", () => {
   it("offers to restore an empty collection, and restores it", async () => {
@@ -63,7 +62,7 @@ describe("The dev list", () => {
     expect(
       await screen.findByText("Restored 2 albums from the dev list."),
     ).toBeInTheDocument();
-    expect(within(await grid()).getAllByRole("listitem")).toHaveLength(2);
+    expect(await records()).toHaveLength(2);
     expect(commands(calls)).toContain("restore_from_dev_list");
   });
 
@@ -103,7 +102,7 @@ describe("The dev list", () => {
     render(<Library name="Will" onSignedOut={() => {}} />);
 
     expect(
-      await screen.findByText(/Your collection is empty/),
+      await screen.findByText("Your crate is empty."),
     ).toBeInTheDocument();
     await vi.waitFor(() =>
       expect(commands(calls)).toContain("dev_list_missing"),
@@ -117,7 +116,7 @@ describe("The dev list", () => {
     const calls = devBackEnd([album(1)], { missing: 3 });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
-    await grid();
+    await vi.waitFor(async () => expect(await records()).not.toHaveLength(0));
     expect(commands(calls)).not.toContain("dev_list_missing");
     expect(
       screen.queryByRole("region", { name: "Dev list" }),
@@ -200,12 +199,12 @@ describe("The dev list", () => {
     it("resets the collection, then offers to restore it", async () => {
       const calls = devBackEnd([album(1), album(2)], { missing: 2 });
       render(<Library name="Will" onSignedOut={() => {}} />);
-      await grid();
+      await vi.waitFor(async () => expect(await records()).not.toHaveLength(0));
 
       await emit(RESET_COLLECTION);
 
       expect(await offer()).toHaveTextContent("Your dev list has 2 albums");
-      expect(screen.getByText(/Your collection is empty/)).toBeInTheDocument();
+      expect(screen.getByText("Your crate is empty.")).toBeInTheDocument();
       expect(commands(calls)).toContain("reset_collection");
     });
 
@@ -215,7 +214,7 @@ describe("The dev list", () => {
         restored: [album(2)],
       });
       render(<Library name="Will" onSignedOut={() => {}} />);
-      await grid();
+      await vi.waitFor(async () => expect(await records()).not.toHaveLength(0));
 
       await emit(RESTORE_FROM_DEV_LIST);
 
@@ -223,7 +222,7 @@ describe("The dev list", () => {
         await screen.findByText("Restored 1 album from the dev list."),
       ).toBeInTheDocument();
       await vi.waitFor(async () =>
-        expect(within(await grid()).getAllByRole("listitem")).toHaveLength(2),
+        expect(await records()).toHaveLength(2),
       );
       expect(commands(calls)).toContain("restore_from_dev_list");
     });

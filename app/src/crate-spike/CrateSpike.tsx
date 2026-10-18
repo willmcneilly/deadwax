@@ -23,8 +23,9 @@ import {
   type CSSProperties,
 } from "react";
 import { flushSync } from "react-dom";
-import { getAlbum, type AlbumTrack } from "../api";
-import type { Palette, Report } from "../ArtworkReport";
+import AlbumColours from "../AlbumColours";
+import { getAlbum, type AlbumTrack, type Palette } from "../api";
+import type { Report } from "../ArtworkReport";
 import { effectClasses, FINAL, PROTOTYPE, type Effects } from "./effects";
 import { painted } from "./frameMeter";
 import { postResult, type Run } from "./remote";
@@ -275,14 +276,6 @@ function Hero({
     );
   }, [from, flight]);
 
-  const p = album.palette;
-  const back = {
-    ...wear(album),
-    "--ground": p.ground,
-    "--ink": p.ink,
-    "--muted": p.muted,
-    "--accent": p.accent,
-  } as CSSProperties;
 
   return (
     <div className={`spike-hero ${floating ? "floating" : ""}`}>
@@ -322,7 +315,7 @@ function Hero({
               </div>
               <div className="spike-hero-face back">
                 {(!lazyBack || turns > 0) && (
-                <div className="spike-face back" style={back}>
+                <AlbumColours palette={album.palette} className="spike-face back" style={wear(album)}>
                   <div className="spike-back">
                     <p>{album.artist}</p>
                     <h2>{album.title}</h2>
@@ -336,7 +329,7 @@ function Hero({
                     </ol>
                   </div>
                   <div className="spike-wear" />
-                </div>
+                </AlbumColours>
                 )}
               </div>
             </div>
@@ -359,14 +352,14 @@ function Ambient({ palette, on, glow }: { palette: Palette; on: boolean; glow: E
   );
   if (glow === "off") return null;
   return (
-    <div className={`spike-ambient ${on ? "on" : ""}`} style={{ "--deep": palette.deep } as CSSProperties}>
-      {colours.map((c, i) => (
-        <div key={i} className={`spike-pool p${i}`} style={{ "--c": c } as CSSProperties}>
+    <AlbumColours palette={palette} className={`spike-ambient ${on ? "on" : ""}`}>
+      {colours.map((_, i) => (
+        <div key={i} className={`spike-pool p${i}`}>
           {images && <img src={images.pools[i]} alt="" />}
         </div>
       ))}
       {images ? <img className="spike-vignette" src={images.vignette} alt="" /> : <div className="spike-vignette" />}
-    </div>
+    </AlbumColours>
   );
 }
 

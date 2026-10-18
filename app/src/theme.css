@@ -48,26 +48,41 @@ body {
 }
 
 /*
- * The crate spike's colours (DWX-20): the prototype's
- * (prototypes/crate/src/styles.css), so the spike can be measured as it
- * looked. The spike is in development builds only, but these variables ship
- * in every build, unused, until ticket 5 builds the crate for real and
- * replaces them.
+ * The crate (DWX-21): the room the records are in, the backs of the sleeves
+ * and the dividers. The room is dark in light and dark mode alike, as the
+ * prototype's is (prototypes/crate/src/styles.css). The crate spike
+ * (src/crate-spike, development builds) uses them too.
  */
 :root {
-  --spike-room: #120f0c;
-  --spike-room-light: #2b231b;
-  --spike-room-dark: #070605;
-  --spike-paper: #f1e9db;
-  --spike-sleeve-rear: #26211c;
-  --spike-divider: #eee8dc;
-  --spike-divider-low: #ddd4c3;
-  --spike-divider-ink: #24201b;
-  --spike-divider-edge: rgb(255 255 255 / 0.5);
-  --spike-shadow: rgb(0 0 0 / 0.5);
-  --spike-shadow-deep: rgb(0 0 0 / 0.55);
-  --spike-chip: rgb(18 15 12 / 0.72);
-  --spike-overlay: rgb(7 6 5 / 0.9);
-  --spike-line: rgb(255 255 255 / 0.08);
-  --spike-clear: rgb(0 0 0 / 0);
+  --room: #120f0c;
+  --room-light: #2b231b;
+  --room-dark: #070605;
+  /* Text and controls in the room. */
+  --room-ink: #f1e9db;
+  --sleeve-rear: #26211c;
+  --divider: #eee8dc;
+  --divider-low: #ddd4c3;
+  --divider-ink: #24201b;
+  --divider-edge: rgb(255 255 255 / 0.5);
+  --shadow: rgb(0 0 0 / 0.5);
+  --shadow-deep: rgb(0 0 0 / 0.55);
+  --chip: rgb(18 15 12 / 0.72);
+  --overlay: rgb(7 6 5 / 0.9);
+  --line: rgb(255 255 255 / 0.08);
+  --clear: rgb(0 0 0 / 0);
+
+  /*
+   * A sleeve's printed colours until its palette has been worked out. Once
+   * it has, AlbumColours sets the album's own (--album-ground and so on),
+   * which the sleeve uses in preference to these.
+   */
+  --sleeve-ground: #efe7d8;
+  --sleeve-ink: #1e1a16;
+  --sleeve-muted: #5c544b;
+  --sleeve-accent: #7a4b2a;
+
+  /* The record's type: the sleeve's back and the caption, its small print, and the dividers' handwriting. */
+  --font-record: Georgia, "Times New Roman", serif;
+  --font-label: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-hand: "Bradley Hand", "Noteworthy", cursive;
 }
