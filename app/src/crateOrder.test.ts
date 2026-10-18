@@ -15,6 +15,8 @@ const ALBUMS: AlbumCard[] = [
     genre: "Rock",
   }),
   card(6, { title: "Untitled", artist: "!!!", year: null, genre: "Dance" }),
+  // Before Coltrane by artist, after him by year.
+  card(8, { title: "Abbey Road", artist: "The Beatles", year: 1969, genre: "Rock" }),
   card(7, { title: "Buena Vista Social Club", artist: "Buena Vista Social Club", year: 1997, genre: "World" }),
 ];
 
@@ -36,7 +38,8 @@ describe("The crate's order", () => {
       "Jazz (2)",
       "  A Love Supreme",
       "  Kind of Blue",
-      "Rock (1)",
+      "Rock (2)",
+      "  Abbey Road",
       "  The Velvet Underground & Nico",
       "World (1)",
       "  Buena Vista Social Club",
@@ -49,7 +52,8 @@ describe("The crate's order", () => {
     expect(lines(crateItems(ALBUMS, "artist"))).toEqual([
       "# (1)",
       "  Untitled",
-      "B (1)",
+      "B (2)",
+      "  Abbey Road",
       "  Buena Vista Social Club",
       "J (1)",
       "  A Love Supreme",
@@ -68,9 +72,10 @@ describe("The crate's order", () => {
     expect(lines(crateItems(ALBUMS, "decade"))).toEqual([
       "1950s (1)",
       "  Kind of Blue",
-      "1960s (2)",
+      "1960s (3)",
       "  A Love Supreme",
       "  The Velvet Underground & Nico",
+      "  Abbey Road",
       "1970s (1)",
       "  Pink Moon",
       "1990s (1)",
