@@ -17,6 +17,8 @@ export default function CrateSpikeHost() {
   useEffect(() => {
     const unlisten = listen(CRATE_SPIKE, () => setOpen(true));
     const stop = onRun((next) => {
+      // The app's own crate measures its runs itself (CrateMeter).
+      if (next.target === "crate") return;
       setOpen(true);
       setRun(next);
     });

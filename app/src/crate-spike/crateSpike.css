@@ -12,8 +12,8 @@
   inset: 0;
   z-index: 1000;
   overflow: hidden;
-  background: var(--spike-room);
-  color: var(--spike-paper);
+  background: var(--room);
+  color: var(--room-ink);
   font-family: Georgia, serif;
   user-select: none;
 }
@@ -22,8 +22,8 @@
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 65% at 50% 50%, var(--spike-room-light), var(--spike-clear) 70%),
-    radial-gradient(ellipse at 50% 40%, var(--spike-room), var(--spike-room-dark) 90%);
+    radial-gradient(ellipse 70% 65% at 50% 50%, var(--room-light), var(--clear) 70%),
+    radial-gradient(ellipse at 50% 40%, var(--room), var(--room-dark) 90%);
 }
 
 /* ---------- the grain ---------- */
@@ -104,7 +104,7 @@
 .spike-shade {
   position: absolute;
   inset: 0;
-  background: var(--spike-room-dark);
+  background: var(--room-dark);
   opacity: var(--shade);
   transition: opacity 230ms;
   pointer-events: none;
@@ -115,7 +115,7 @@
 .spike-rear {
   position: absolute;
   inset: 0;
-  background: var(--spike-sleeve-rear);
+  background: var(--sleeve-rear);
   transform: rotateY(180deg);
   backface-visibility: hidden;
 }
@@ -128,7 +128,7 @@
   overflow: hidden;
   border-radius: 2px;
   backface-visibility: hidden;
-  box-shadow: 0 2px 6px var(--spike-shadow);
+  box-shadow: 0 2px 6px var(--shadow);
 }
 .spike-face img {
   position: absolute;
@@ -158,11 +158,11 @@
 .spike-divider {
   position: absolute;
   inset: 0;
-  background: linear-gradient(var(--spike-divider), var(--spike-divider-low));
+  background: linear-gradient(var(--divider), var(--divider-low));
   border-radius: 2px 2px 0 0;
-  color: var(--spike-divider-ink);
+  color: var(--divider-ink);
   font-family: "Bradley Hand", cursive;
-  box-shadow: inset 0 1px 0 var(--spike-divider-edge);
+  box-shadow: inset 0 1px 0 var(--divider-edge);
 }
 .spike-divider-tab {
   position: absolute;
@@ -172,7 +172,7 @@
   height: calc(6.5% + 2px);
   display: grid;
   place-items: center;
-  background: var(--spike-divider);
+  background: var(--divider);
   border-radius: 4px 4px 0 0;
   font-size: calc(var(--s) * 0.04);
   font-weight: 700;
@@ -233,11 +233,11 @@
 .spike-hero-face.back { transform: rotateY(180deg); }
 .spike-hero .spike-face {
   box-shadow:
-    0 2px 4px var(--spike-shadow),
-    0 30px 80px var(--spike-shadow-deep);
+    0 2px 4px var(--shadow),
+    0 30px 80px var(--shadow-deep);
 }
 
-.no-hero-shadow .spike-hero .spike-face { box-shadow: 0 2px 4px var(--spike-shadow); }
+.no-hero-shadow .spike-hero .spike-face { box-shadow: 0 2px 4px var(--shadow); }
 
 @keyframes spike-float {
   0%, 100% { transform: translate3d(0, -1.1%, 0) rotateX(1.4deg) rotateZ(-0.35deg); }
@@ -245,7 +245,7 @@
 }
 
 /* The back: the tracklist in the album's own colours. */
-.spike-face.back { background: var(--ground); color: var(--ink); }
+.spike-face.back { background: var(--album-ground); color: var(--album-ink); }
 .spike-face.back .spike-wear { opacity: 0.45; }
 .spike-back {
   position: absolute;
@@ -254,11 +254,11 @@
   flex-direction: column;
   font-size: calc(var(--h) * 0.026);
 }
-.spike-back p { margin: 0; color: var(--accent); letter-spacing: 0.2em; text-transform: uppercase; font-size: 0.72em; }
+.spike-back p { margin: 0; color: var(--album-accent); letter-spacing: 0.2em; text-transform: uppercase; font-size: 0.72em; }
 .spike-back h2 { margin: 0.25em 0 0.7em; font-size: 2.1em; font-weight: 300; }
 .spike-back ol { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 2.4em; }
 .spike-back li { display: flex; justify-content: space-between; gap: 1em; padding: 0.24em 0; }
-.spike-back li span:last-child { color: var(--muted); }
+.spike-back li span:last-child { color: var(--album-muted); }
 
 /* ---------- the glow behind a playing record ---------- */
 
@@ -266,7 +266,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--deep);
+  background: var(--album-deep);
   opacity: 0;
   transition: opacity 1.8s ease;
 }
@@ -281,10 +281,17 @@
 }
 
 /* `glow: gradients`, the prototype's: five radial gradients painted live. */
-.glow-gradients .spike-pool { border-radius: 50%; background: radial-gradient(closest-side, var(--c), var(--spike-clear)); }
+.glow-gradients .spike-pool { border-radius: 50%; background: radial-gradient(closest-side, var(--c), var(--clear)); }
 
 /* `glow: images`: the same pools as small pre-drawn images, stretched. */
 .spike-pool img { display: block; width: 100%; height: 100%; }
+
+/* Each pool takes one of the glow's colours (AlbumColours). */
+.spike-pool.p0 { --c: var(--album-glow-1); }
+.spike-pool.p1 { --c: var(--album-glow-2); }
+.spike-pool.p2 { --c: var(--album-glow-3); }
+.spike-pool.p3 { --c: var(--album-glow-4); }
+.spike-pool.p4 { --c: var(--album-glow-5); }
 
 .spike-pool.p0 { top: -40vmax; left: -30vmax; animation: spike-drift0 41s ease-in-out infinite alternate; }
 .spike-pool.p1 { bottom: -45vmax; right: -30vmax; animation: spike-drift1 53s ease-in-out infinite alternate; }
@@ -305,7 +312,7 @@
   height: 100%;
 }
 .glow-gradients .spike-vignette {
-  background: radial-gradient(ellipse at 50% 45%, var(--spike-clear) 35%, var(--spike-shadow-deep));
+  background: radial-gradient(ellipse at 50% 45%, var(--clear) 35%, var(--shadow-deep));
 }
 
 /* ---------- the playing chip, with its blur ---------- */
@@ -319,14 +326,14 @@
   align-items: center;
   gap: 12px;
   padding: 7px 16px 7px 7px;
-  border: 1px solid var(--spike-line);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--spike-chip);
+  background: var(--chip);
   backdrop-filter: blur(12px);
   font-size: 0.7rem;
   letter-spacing: 0.06em;
 }
-.no-backdrop .spike-chip { backdrop-filter: none; background: var(--spike-room); }
+.no-backdrop .spike-chip { backdrop-filter: none; background: var(--room); }
 .spike-chip img { width: 42px; height: 42px; border-radius: 2px; }
 
 /* ---------- search, over the crate ---------- */
@@ -337,7 +344,7 @@
   z-index: 20;
   overflow-y: auto;
   padding: 10vh 6vw;
-  background: var(--spike-overlay);
+  background: var(--overlay);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 24px;
@@ -356,7 +363,7 @@
   gap: 4px;
   padding: 10px 12px;
   border-radius: 6px;
-  background: var(--spike-room-dark);
+  background: var(--room-dark);
   font: 11px/1.4 ui-monospace, monospace;
 }
 .spike-panel label { display: flex; gap: 6px; align-items: center; }

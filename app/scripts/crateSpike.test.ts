@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FINAL, PLANS, row, seconds, type Plan } from "./crateSpike.ts";
+import { CRATE_PLANS, FINAL, PLANS, row, seconds, type Plan } from "./crateSpike.ts";
 
 describe("seconds", () => {
   it("reads ps's CPU time with and without hours and days", () => {
@@ -28,6 +28,19 @@ describe("the runs", () => {
     const flips = PLANS.filter((p) => p.scenario === "flip");
     expect(flips.some((p) => p.many)).toBe(true);
     expect(flips.some((p) => !p.many)).toBe(true);
+  });
+});
+
+describe("the crate's runs", () => {
+  it("measure the app's own crate, flipping and pulling, on the real collection and 400 records", () => {
+    expect(CRATE_PLANS.every((p) => p.target === "crate")).toBe(true);
+    for (const scenario of ["flip", "pull"] as const) {
+      const runs = CRATE_PLANS.filter((p) => p.scenario === scenario);
+      expect(runs.some((p) => p.many)).toBe(true);
+      expect(runs.some((p) => !p.many)).toBe(true);
+    }
+    const labels = [...PLANS, ...CRATE_PLANS].map((p) => p.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 

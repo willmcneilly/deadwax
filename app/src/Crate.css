@@ -1,0 +1,263 @@
+/*
+ * The crate in its room (prototypes/crate/src/styles.css), kept to
+ * DESIGN.md's rules: in the 3D scene only transforms, opacity, transitions
+ * of them, pre-drawn images and box shadows, and no CSS filter.
+ */
+
+.room {
+  --s: min(64vh, 64vw); /* a sleeve in the crate */
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 65% at 50% 50%, var(--room-light), var(--clear) 70%),
+    radial-gradient(ellipse at 50% 40%, var(--room), var(--room-dark) 90%);
+  color: var(--room-ink);
+  user-select: none;
+}
+
+/* The paper grain over the room: one pre-drawn tile, moving (DWX-20 kept it). */
+.room-grain {
+  position: fixed;
+  inset: -8%;
+  z-index: 50;
+  background: var(--grain);
+  background-size: 256px;
+  opacity: 0.35;
+  pointer-events: none;
+  will-change: transform;
+  animation: grain 0.9s steps(6) infinite;
+}
+
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -3%); }
+  60% { transform: translate(-1%, 3%); }
+  80% { transform: translate(3%, 1%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ---------- the crate ---------- */
+
+.crate {
+  position: absolute;
+  inset: 0;
+  perspective: 1500px;
+  perspective-origin: 50% -25%;
+  transition: transform 0.9s cubic-bezier(.3, .7, .2, 1), opacity 0.7s;
+}
+
+.crate.dim {
+  transform: translateY(30vh) scale(0.94);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.crate-stack {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--space) * 12);
+  width: var(--s);
+  height: var(--s);
+  margin-left: calc(var(--s) / -2);
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.crate-slot {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+  transform-style: preserve-3d;
+  transition:
+    transform 230ms cubic-bezier(.2, .7, .25, 1),
+    opacity 230ms;
+  will-change: transform;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.crate-slot.past {
+  pointer-events: none;
+}
+
+/* The sleeves further back are in shadow. */
+.crate-shade {
+  position: absolute;
+  inset: 0;
+  background: var(--room-dark);
+  opacity: var(--shade);
+  transition: opacity 230ms;
+  pointer-events: none;
+}
+
+.crate-slot.divider .crate-shade {
+  inset: -6.5% 0 0;
+}
+
+.sleeve-rear {
+  position: absolute;
+  inset: 0;
+  background: var(--sleeve-rear);
+  transform: rotateY(180deg);
+  backface-visibility: hidden;
+}
+
+/* ---------- a sleeve's front ---------- */
+
+.sleeve-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px;
+  backface-visibility: hidden;
+  box-shadow: 0 2px 6px var(--shadow);
+}
+
+/* The cover as it is: no filter, no crop of a square cover (rule 3). */
+.sleeve-face img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sleeve-blank {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12%;
+  background: var(--sleeve-ground);
+  color: var(--sleeve-ink);
+  font-family: var(--font-record);
+  font-size: calc(var(--s) * 0.06);
+  text-align: center;
+}
+
+/* Wear is a pre-drawn image (textures.ts), so it only has to be scaled. */
+.wear {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--wear) center / 100% 100%;
+}
+
+/* ---------- dividers ---------- */
+
+/*
+ * A smooth paper card with a slim tab, written on by hand. The tab reaches
+ * 2px down into the card, so no seam shows once the 3D transform scales it.
+ */
+.divider-card {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(var(--divider), var(--divider-low));
+  border-radius: 2px 2px 0 0;
+  color: var(--divider-ink);
+  font-family: var(--font-hand);
+  box-shadow: inset 0 1px 0 var(--divider-edge);
+}
+
+.divider-tab {
+  position: absolute;
+  left: var(--tab);
+  bottom: calc(100% - 2px);
+  width: 18%;
+  height: calc(6.5% + 2px);
+  display: grid;
+  place-items: center;
+  background: var(--divider);
+  border-radius: 4px 4px 0 0;
+  font-size: calc(var(--s) * 0.04);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.divider-body {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+.divider-big {
+  font-size: calc(var(--s) * 0.16);
+  font-weight: 700;
+  line-height: 1;
+  transform: rotate(-3deg);
+}
+
+.divider-count {
+  margin-top: 0.7em;
+  font-size: calc(var(--s) * 0.045);
+  opacity: 0.6;
+}
+
+/* ---------- the caption ---------- */
+
+.caption {
+  position: fixed;
+  top: calc(var(--space) * 7);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  text-align: center;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+
+.caption.hidden {
+  opacity: 0;
+}
+
+.caption p {
+  margin: 0;
+}
+
+.caption-artist {
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.caption-title {
+  margin-top: 0.4rem;
+  font-family: var(--font-record);
+  font-size: clamp(1.4rem, 2.6vw, 2.2rem);
+  font-weight: 300;
+}
+
+.caption-title span {
+  opacity: 0.45;
+}
+
+.caption-section {
+  font-family: var(--font-hand);
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  font-weight: 700;
+}
+
+.crate-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: calc(var(--space) * 2);
+  font-family: var(--font-record);
+  font-size: 1.4rem;
+}
+
+.crate-empty p {
+  margin: 0;
+}

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AlbumDetails, DeviceChoice, Devices, PlayOutcome } from "./api";
 import Library from "./Library";
-import { backEnd } from "./mockBackEnd";
+import { backEnd, card } from "./mockBackEnd";
 
 // Played by its Deadwax ID, from a track's Spotify ID.
 const IN_RAINBOWS: AlbumDetails = {
@@ -32,6 +32,14 @@ const IN_RAINBOWS: AlbumDetails = {
   ],
 };
 
+/** In Rainbows in the crate. */
+const IN_RAINBOWS_CARD = card(0, {
+  id: IN_RAINBOWS.id,
+  title: "In Rainbows",
+  artist: "Radiohead",
+  year: 2007,
+});
+
 const device = (name: string, more: Partial<DeviceChoice> = {}) => ({
   name,
   kind: "Speaker",
@@ -47,13 +55,13 @@ const MACBOOK = device("Will's MacBook Pro", {
 });
 const KITCHEN = device("Kitchen", { canPlay: false });
 
-/** The back end for the album page, with `devices` listed. */
+/** The back end for In Rainbows' sleeve, with `devices` listed. */
 function albumPage(
   devices: Devices,
   replies: Record<string, (args?: unknown) => unknown> = {},
 ) {
   return backEnd({
-    get_collection: () => [IN_RAINBOWS],
+    get_collection: () => [IN_RAINBOWS_CARD],
     dev_list_missing: () => 0,
     get_album: () => IN_RAINBOWS,
     refresh_album: () => null,
@@ -69,14 +77,16 @@ function albumPage(
   });
 }
 
+/** Pulls In Rainbows out of the crate, and turns it over to its tracklist. */
 async function openInRainbows() {
   render(<Library name="Will" onSignedOut={() => {}} />);
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Open In Rainbows by Radiohead",
+      name: "Pull out In Rainbows by Radiohead",
     }),
   );
-  await screen.findByRole("heading", { level: 1 });
+  fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
+  await screen.findByRole("button", { name: "Play 15 Step" });
 }
 
 const picker = () => screen.findByRole("combobox", { name: "Device" });
@@ -176,7 +186,7 @@ describe("The device picker", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Spotify isn't showing any devices.",
     );
-    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Play 15 Step" })).toBeDisabled();
   });
 
   it("shows a failure to list the devices, and lets you try again", async () => {
@@ -202,12 +212,12 @@ describe("The device picker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh devices" }));
 
     expect(await picker()).toHaveValue("Living Room");
-    expect(screen.getByRole("button", { name: "Play" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Play 15 Step" })).toBeEnabled();
   });
 });
 
 describe("Playing", () => {
-  it("plays the album on the chosen device from the first track", async () => {
+  it("plays the album on the chosen device from its first track", async () => {
     const calls = albumPage({
       devices: [MACBOOK, LIVING_ROOM],
       remembered: "Living Room",
@@ -219,12 +229,12 @@ describe("Playing", () => {
     const polls = () => calls.filter((c) => c.cmd === "get_playback").length;
     const before = polls();
 
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play 15 Step" }));
 
     await waitFor(() =>
       expect(calls).toContainEqual({
         cmd: "play_album",
-        args: { id: IN_RAINBOWS.id, device: "Living Room", trackId: null },
+        args: { id: IN_RAINBOWS.id, device: "Living Room", trackId: "t1" },
       }),
     );
     // The playback bar asks what's playing straight away.
@@ -255,7 +265,7 @@ describe("Playing", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("says what to do when the device has gone by the time you press Play", async () => {
+  it("says what to do when the device has gone by the time you pick a track", async () => {
     albumPage(
       { devices: [MACBOOK, LIVING_ROOM], remembered: "Living Room" },
       {
@@ -271,7 +281,7 @@ describe("Playing", () => {
     );
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play 15 Step" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(MISSING);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -291,11 +301,11 @@ describe("Playing", () => {
       expect(await picker()).toHaveValue("Living Room"),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play 15 Step" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Premium required",
     );
-    expect(screen.getByRole("button", { name: "Play" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Play 15 Step" })).toBeEnabled();
   });
 });

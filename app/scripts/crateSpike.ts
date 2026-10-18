@@ -9,6 +9,8 @@ export type Effects = Record<string, string | boolean | number>;
 
 export type Plan = {
   label: string;
+  /** The spike, or the app's own crate (DWX-21), which ignores `effects`. */
+  target?: "spike" | "crate";
   scenario: "idle" | "flip" | "pull" | "glow" | "search";
   many: boolean;
   effects: Effects;
@@ -104,6 +106,27 @@ export const PLANS: Plan[] = [
     effects,
   })),
 ];
+
+/**
+ * The app's own crate (DWX-21), measured as the spike's final cuts were:
+ * flipping the real collection and the 400-record crate at both speeds, and
+ * pulling records out, warm and cold. `scripts/crate-spike --crate` runs these.
+ */
+export const CRATE_PLANS: Plan[] = [false, true].flatMap((many): Plan[] => {
+  const crate = many ? "400" : "real";
+  const base = { target: "crate" as const, many, effects: {} };
+  return [
+    ...[100, 40].map((stepMs): Plan => ({
+      ...base,
+      label: `crate: flip ${crate} ${stepMs}ms`,
+      scenario: "flip",
+      stepMs,
+      steps: many ? 80 : 40,
+    })),
+    { ...base, label: `crate: pull ${crate}`, scenario: "pull" },
+    { ...base, label: `crate: pull ${crate}, cold`, scenario: "pull", cold: true },
+  ];
+});
 
 type Frames = { fps: number; dropped: number; late: number; longestMs: number; p95Ms: number; p99Ms: number };
 export type Result = {

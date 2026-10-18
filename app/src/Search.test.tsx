@@ -5,40 +5,35 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it, vi } from "vitest";
 import {
-  ALBUM_UPDATED,
   type AlbumCard,
   type SearchAlbum,
   type SearchResults,
 } from "./api";
 import Library from "./Library";
-import { backEnd, EMPTY_COLLECTION, NOTHING_PLAYING } from "./mockBackEnd";
+import { backEnd, card, EMPTY_COLLECTION, NOTHING_PLAYING } from "./mockBackEnd";
 
-/** An album in the collection, named by its Deadwax ID. */
-const album = (n: number, extra: Partial<AlbumCard> = {}): AlbumCard => ({
-  id: `deadwax-${n}`,
-  title: `Album ${n}`,
-  artist: `Artist ${n}`,
-  year: 2000 + n,
-  coverUrl: `https://i.scdn.co/image/cover${n}`,
-  ...extra,
-});
+const album = card;
 
 /** The same album as search finds it, named by its Spotify ID. */
 const found = (n: number): SearchAlbum => {
-  const { title, artist, year, coverUrl } = album(n);
-  return { spotifyId: `spotify${n}`, title, artist, year, coverUrl };
+  const { title, artist, year } = album(n);
+  return {
+    spotifyId: `spotify${n}`,
+    title,
+    artist,
+    year,
+    coverUrl: `https://i.scdn.co/image/cover${n}`,
+  };
 };
 
-const IN_RAINBOWS: AlbumCard = {
+const IN_RAINBOWS: AlbumCard = card(0, {
   id: "0b1c7e1e-6a0e-4c43-9f1e-2b8f6f1d9a01",
   title: "In Rainbows",
   artist: "Radiohead",
   year: 2007,
-  coverUrl: "https://i.scdn.co/image/in-rainbows-640",
-};
+});
 
 const IN_RAINBOWS_FOUND: SearchAlbum = {
   spotifyId: "5vkqYmiPBYLaalcmjujWxK",
@@ -59,7 +54,11 @@ function page(offset: number, last = false): SearchResults {
   };
 }
 
-function searchFor(text: string) {
+/** Opens search from the crate, if it isn't open, and searches. */
+async function searchFor(text: string) {
+  if (!screen.queryByRole("searchbox")) {
+    fireEvent.click(await screen.findByRole("button", { name: "Find a record" }));
+  }
   fireEvent.change(screen.getByRole("searchbox"), {
     target: { value: text },
   });
@@ -71,83 +70,22 @@ const results = () =>
     "listitem",
   );
 
-const grid = () => screen.getByRole("list", { name: "Your collection" });
+const crate = () => screen.getByRole("region", { name: "Your crate" });
 
-describe("Library", () => {
-  it("swaps an album's Spotify cover for its 320 from disk in place, when Rust has it", async () => {
-    const SMALL = `cover://localhost/${IN_RAINBOWS.id}/320`;
-    let onDisk = false;
-    backEnd({
-      get_collection: () => [
-        onDisk ? { ...IN_RAINBOWS, coverUrl: SMALL } : IN_RAINBOWS,
-        album(2),
-      ],
-      ...NOTHING_PLAYING,
-    });
+// Search is the old search box until DWX-24 replaces it, opened from the
+// crate's Find a record.
+describe("Search", () => {
+  it("opens from the crate, and closes back to it", async () => {
+    backEnd({ get_collection: () => [IN_RAINBOWS], ...NOTHING_PLAYING });
     render(<Library name="Will" onSignedOut={() => {}} />);
-    const cover = await screen.findByRole("img", {
-      name: "Cover of In Rainbows",
-    });
-    expect(cover).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
-
-    onDisk = true;
-    await emit(ALBUM_UPDATED, IN_RAINBOWS.id);
-
-    // The same element, with the new cover.
-    await waitFor(() => expect(cover).toHaveAttribute("src", SMALL));
-    expect(
-      screen.getByRole("img", { name: "Cover of In Rainbows" }),
-    ).toBe(cover);
-    expect(
-      screen.getByRole("img", { name: "Cover of Album 2" }),
-    ).toHaveAttribute("src", album(2).coverUrl);
-  });
-
-  it("shows the collection as a grid of Spotify's covers", async () => {
-    backEnd({
-      get_collection: () => [IN_RAINBOWS, album(2, { coverUrl: null })],
-      ...NOTHING_PLAYING,
-    });
-    render(<Library name="Will" onSignedOut={() => {}} />);
-
     expect(await screen.findByText("Signed in as Will")).toBeInTheDocument();
-    const items = within(
-      await screen.findByRole("list", {
-        name: "Your collection",
-      }),
-    ).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("In Rainbows");
-    expect(items[0]).toHaveTextContent("Radiohead");
 
-    // The cover is Spotify's, as it is: nothing styled over or around it.
-    const cover = within(items[0]).getByRole("img", {
-      name: "Cover of In Rainbows",
-    });
-    expect(cover).toHaveAttribute("src", IN_RAINBOWS.coverUrl);
-    expect(cover).not.toHaveAttribute("style");
-    expect(cover.children).toHaveLength(0);
-    // Inside the button that opens the album, with nothing else around it.
-    expect(cover.parentElement).toBe(
-      within(items[0]).getByRole("button", {
-        name: "Open In Rainbows by Radiohead",
-      }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Find a record" }));
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
 
-    expect(
-      within(items[1]).getByRole("img", { name: "No cover" }),
-    ).toBeInTheDocument();
-  });
-
-  it("says so when the collection is empty", async () => {
-    backEnd({ ...EMPTY_COLLECTION });
-    render(<Library name="Will" onSignedOut={() => {}} />);
-
-    expect(
-      await screen.findByText(
-        "Your collection is empty. Search for an album to add it.",
-      ),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the crate" }));
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Find a record" })).toBeInTheDocument();
   });
 
   it("searches ten at a time, with cover, title, artist and year", async () => {
@@ -159,9 +97,9 @@ describe("Library", () => {
       },
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
-    await screen.findByText(/collection is empty/);
+    await screen.findByText("Your crate is empty.");
 
-    searchFor("  album  ");
+    await searchFor("  album  ");
 
     await waitFor(() => expect(results()).toHaveLength(10));
     expect(calls).toContainEqual({
@@ -203,7 +141,7 @@ describe("Library", () => {
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
-    searchFor("album");
+    await searchFor("album");
     await waitFor(() => expect(results()).toHaveLength(10));
     fireEvent.click(screen.getByRole("button", { name: "More" }));
 
@@ -226,7 +164,7 @@ describe("Library", () => {
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
-    searchFor("album");
+    await searchFor("album");
     await waitFor(() => expect(results()).toHaveLength(10));
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(
@@ -249,7 +187,7 @@ describe("Library", () => {
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
-    searchFor("album");
+    await searchFor("album");
 
     await waitFor(() => expect(results()).toHaveLength(10));
     const [owned, other] = results();
@@ -260,7 +198,7 @@ describe("Library", () => {
     ).toBeInTheDocument();
   });
 
-  it("adds an album by its Spotify ID, and the grid has it by its Deadwax ID", async () => {
+  it("adds an album by its Spotify ID, and the crate has it by its Deadwax ID", async () => {
     let finish: (album: AlbumCard) => void = () => {};
     const calls = backEnd({
       ...NOTHING_PLAYING,
@@ -272,9 +210,9 @@ describe("Library", () => {
       add_album: () => new Promise<AlbumCard>((resolve) => (finish = resolve)),
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
-    await screen.findByRole("list", { name: "Your collection" });
+    await screen.findByRole("button", { name: "Pull out Album 50 by Artist 50" });
 
-    searchFor("in rainbows");
+    await searchFor("in rainbows");
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Add In Rainbows by Radiohead",
@@ -294,11 +232,11 @@ describe("Library", () => {
     finish(IN_RAINBOWS);
 
     await waitFor(() =>
-      expect(within(grid()).getAllByRole("listitem")).toHaveLength(2),
-    );
-    // The newest is first.
-    expect(within(grid()).getAllByRole("listitem")[0]).toHaveTextContent(
-      "In Rainbows",
+      expect(
+        within(crate()).getByRole("button", {
+          name: /In Rainbows by Radiohead$/,
+        }),
+      ).toBeInTheDocument(),
     );
     expect(results()[0]).toHaveTextContent("In your collection");
   });
@@ -313,7 +251,7 @@ describe("Library", () => {
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
 
-    searchFor("album");
+    await searchFor("album");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "couldn't reach Spotify",
@@ -333,7 +271,7 @@ describe("Library", () => {
     });
     render(<Library name="Will" onSignedOut={onSignedOut} />);
 
-    searchFor("album");
+    await searchFor("album");
 
     await waitFor(() =>
       expect(onSignedOut).toHaveBeenCalledWith({ state: "signedOut", message }),

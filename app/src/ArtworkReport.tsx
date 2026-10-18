@@ -10,29 +10,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useEffectEvent, useState } from "react";
-import type { AlbumId } from "./api";
+import type { AlbumId, Palette } from "./api";
 
 /** The event the Develop menu's item sends (app/src-tauri/src/commands/dev.rs). */
 export const ARTWORK_REPORT = "artwork-report";
-
-/** `Palette` in crates/deadwax-core/src/palette/mod.rs: each colour `#rrggbb`. */
-export type Palette = {
-  /** The glow's colours, most characterful first. */
-  key: string[];
-  /** The paper. */
-  ground: string;
-  /** The paper's reverse. */
-  rear: string;
-  /** Body text, 7:1 on the ground. */
-  ink: string;
-  /** Secondary text, 4.5:1. */
-  muted: string;
-  /** The album's colour, 4.5:1. */
-  accent: string;
-  dark: boolean;
-  /** The room behind the glow. */
-  deep: string;
-};
 
 /** `ArtworkReport` in app/src-tauri/src/commands/dev.rs. */
 export type Report = {

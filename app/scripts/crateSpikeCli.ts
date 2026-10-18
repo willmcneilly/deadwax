@@ -6,15 +6,18 @@
 // window, which would spoil the numbers.
 
 import { parseArgs } from "node:util";
-import { measure, PLANS, row, type Result } from "./crateSpike.ts";
+import { CRATE_PLANS, measure, PLANS, row, type Result } from "./crateSpike.ts";
 
-const HELP = `Usage: scripts/crate-spike [--port <n>] [--only <text>] [--repeat <n>]
+const HELP = `Usage: scripts/crate-spike [--crate] [--port <n>] [--only <text>] [--repeat <n>]
 
 Measures the crate spike (Develop › Crate spike) in this checkout's running
-dev app, one run at a time, and prints a Markdown line for each. Each result
+dev app, one run at a time, and prints a Markdown line for each. With
+--crate, it measures the app's own crate instead (DWX-21), on the crate's
+screen: sign in first. Each result
 is also kept in .dev-data/crate-spike/results.jsonl. The app's window comes
 to the front and fills the screen while it measures.
 
+  --crate        the app's own crate, not the spike
   --port <n>     the dev app's port (scripts/dev-app status says; 1440)
   --only <text>  only the runs whose label contains this
   --repeat <n>   how many times to measure each run (3)
@@ -27,6 +30,7 @@ async function main() {
       only: { type: "string" },
       repeat: { type: "string", default: "3" },
       list: { type: "boolean", default: false },
+      crate: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
   });
@@ -34,7 +38,7 @@ async function main() {
     console.log(HELP);
     return;
   }
-  const plans = PLANS.filter((p) => !values.only || p.label.includes(values.only));
+  const plans = (values.crate ? CRATE_PLANS : PLANS).filter((p) => !values.only || p.label.includes(values.only));
   if (values.list) {
     for (const p of plans) console.log(p.label);
     return;

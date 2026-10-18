@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Report } from "../ArtworkReport";
 import { backEnd } from "../mockBackEnd";
@@ -34,6 +34,16 @@ const REPORT: Report = {
 const front = (container: HTMLElement) =>
   container.querySelector("[data-front] img")?.getAttribute("src");
 
+/**
+ * Waits for the crate to be drawn, then for React's effects, so the scroll
+ * wheel's listener knows how many records there are. On a busy machine (CI)
+ * the first wheel could otherwise arrive before it did, and be ignored.
+ */
+async function opened(container: HTMLElement) {
+  await waitFor(() => expect(container.querySelector("[data-front]")).not.toBeNull());
+  await act(async () => {});
+}
+
 beforeEach(() => {
   backEnd({
     artwork_report: () => REPORT,
@@ -49,7 +59,7 @@ describe("CrateSpike", () => {
   it("flips one record for each notch of a mouse's scroll wheel", async () => {
     const { container } = render(<CrateSpike run={null} onClose={() => {}} />);
     // The crate opens on the Alternative divider, which has no cover.
-    await waitFor(() => expect(container.querySelector("[data-front]")).not.toBeNull());
+    await opened(container);
     expect(front(container)).toBeUndefined();
 
     fireEvent.wheel(window, { deltaY: 100, deltaMode: 0 });
@@ -64,7 +74,7 @@ describe("CrateSpike", () => {
 
   it("adds up a trackpad's small scrolls to one record", async () => {
     const { container } = render(<CrateSpike run={null} onClose={() => {}} />);
-    await waitFor(() => expect(container.querySelector("[data-front]")).not.toBeNull());
+    await opened(container);
 
     fireEvent.wheel(window, { deltaY: 20, deltaMode: 0 });
     expect(front(container)).toBeUndefined();
@@ -74,7 +84,7 @@ describe("CrateSpike", () => {
 
   it("flips with the arrow keys", async () => {
     const { container } = render(<CrateSpike run={null} onClose={() => {}} />);
-    await waitFor(() => expect(container.querySelector("[data-front]")).not.toBeNull());
+    await opened(container);
 
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(front(container)).toContain("cover://localhost/a/640");
@@ -84,7 +94,7 @@ describe("CrateSpike", () => {
 
   it("pulls the record in front out when it's clicked, and brings another to the front", async () => {
     const { container } = render(<CrateSpike run={null} onClose={() => {}} />);
-    await waitFor(() => expect(container.querySelector("[data-front]")).not.toBeNull());
+    await opened(container);
 
     const slots = container.querySelectorAll(".spike-slot");
     fireEvent.click(slots[1]);

@@ -94,6 +94,7 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 - **Project 1 has no `DESIGN.md`** (RFC-001, open question 2). The whole UI is provisional: project 2 starts `DESIGN.md` from what we learn.
 - Styling is plain CSS. Colours live only in the CSS variables in `app/src/theme.css`, never in other CSS or an inline `style`. `npm run lint` fails on a colour written in any other CSS file, and on a hex or colour-function value in a `style` prop (it can't catch named colours there, so don't write them).
+- **One exception: an album's colours.** They come from its cover, so they're data, not tokens (RFC-002, "6. `DESIGN.md` starts here"). Only `AlbumColours` (`app/src/AlbumColours.tsx`) puts them on the page, as `--album-*` custom properties; other CSS reads those and `theme.css`. The lint allows colours in a `style` prop in that file only, and fails on `--album-*` set anywhere else (`app/scripts/colourLint.test.ts` proves it).
 - No design decisions are logged in project 1, so skip the `work-ticket` skill's steps on design tokens and provisional design decisions (`provisional: D-n`).
 
 ## Working on tickets

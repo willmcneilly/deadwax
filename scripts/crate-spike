@@ -1,5 +1,5 @@
 #!/bin/sh
-# Measures the crate spike in this checkout's running dev app against the frame
-# budget (DWX-20). `scripts/crate-spike --help` says how. The logic is in
+# Measures the crate spike (DWX-20), or with --crate the app's own crate
+# (DWX-21), in this checkout's running dev app against the frame budget. `scripts/crate-spike --help` says how. The logic is in
 # app/scripts/crateSpikeCli.ts.
 exec node --disable-warning=ExperimentalWarning "$(dirname "$0")/../app/scripts/crateSpikeCli.ts" "$@"

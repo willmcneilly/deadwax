@@ -1,21 +1,100 @@
 /* Provisional, like all of project 1's UI (RFC-001, open question 2). */
 
+/* The crate's room fills the window (Crate.css); the rest sits over it. */
 .library {
-  align-self: start;
-  width: 100%;
-  max-width: 72rem;
   line-height: 1.4;
 }
 
 .library-header {
+  position: fixed;
+  top: calc(var(--space) * 2);
+  right: calc(var(--space) * 3);
+  z-index: 60;
   display: flex;
-  justify-content: flex-end;
-  color: var(--ink-muted);
-  font-size: 0.9rem;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+  color: var(--room-ink);
+  font-size: 0.8rem;
 }
 
 .signed-in {
   margin: 0;
+  opacity: 0.5;
+}
+
+/* How the crate is sorted, quietly, at the top left. */
+.orders {
+  position: fixed;
+  top: calc(var(--space) * 2);
+  left: calc(var(--space) * 3);
+  z-index: 60;
+  display: flex;
+  gap: calc(var(--space) / 2);
+  transition: opacity 0.4s;
+}
+
+.orders.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.library .orders button {
+  padding: calc(var(--space) / 2) var(--space);
+  border: 0;
+  background: none;
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
+.library .orders button:hover {
+  opacity: 0.7;
+}
+
+.library .orders button[aria-pressed="true"] {
+  opacity: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.5em;
+}
+
+/*
+ * Errors, the Develop menu's reports and the search box, in a column over
+ * the room, clear of the playback bar.
+ */
+.library-panels {
+  position: fixed;
+  top: calc(var(--space) * 6);
+  left: 50%;
+  z-index: 60;
+  width: min(44rem, calc(100vw - var(--space) * 6));
+  max-height: calc(100vh - var(--space) * 18);
+  overflow-y: auto;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.library-panels > .error {
+  margin: 0;
+  padding: var(--space) calc(var(--space) * 2);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.search-panel {
+  padding: calc(var(--space) * 2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.search-panel .search {
+  margin: calc(var(--space) * 2) 0 0;
 }
 
 /* Now playing sits outside the library, on the body, so it's named too. */
@@ -100,41 +179,6 @@
   color: var(--ink-muted);
 }
 
-.grid {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-  gap: calc(var(--space) * 3);
-}
-
-/* Each album opens its page. More specific than `.library button`. */
-.library .grid-album {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  padding: 0;
-  background: none;
-  color: inherit;
-  text-align: left;
-}
-
-.grid-cover {
-  width: 100%;
-  height: auto;
-  border-radius: var(--radius);
-  margin-bottom: var(--space);
-}
-
-.grid-title {
-  font-weight: 600;
-}
-
-.grid-artist {
-  color: var(--ink-muted);
-}
-
 .no-cover {
   aspect-ratio: 1;
   display: grid;
@@ -150,10 +194,6 @@
   font-size: 0;
 }
 
-.empty {
-  color: var(--ink-muted);
-}
-
 /* The dev list's offer and reports (development builds only). */
 .notice {
   display: flex;
@@ -161,8 +201,8 @@
   align-items: center;
   gap: var(--space);
   padding: calc(var(--space) * 1.5) calc(var(--space) * 2);
-  margin-bottom: calc(var(--space) * 3);
   background: var(--surface);
+  color: var(--ink);
   border-radius: var(--radius);
 }
 
@@ -191,14 +231,11 @@
   border-bottom: 1px solid var(--ink-muted);
 }
 
-/* Room for the playback bar, which sits over the bottom of the window. */
-.library {
-  padding-bottom: calc(var(--space) * 12);
-}
-
 .playback-bar {
   position: fixed;
   inset: auto 0 0;
+  z-index: 70;
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: calc(var(--space) * 2);
