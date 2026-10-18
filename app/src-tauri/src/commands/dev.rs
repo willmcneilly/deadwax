@@ -1,5 +1,6 @@
 //! The Develop menu's commands: resetting the collection, restoring it from
-//! the dev list, and the Artwork report. See RFC-001, "A dev list that
+//! the dev list, the Artwork report, and keeping the window in front for the
+//! crate spike (DWX-20). See RFC-001, "A dev list that
 //! survives resets" and "High-res artwork, as an experiment", and RFC-002,
 //! "2. Local artwork, in sizes" and "3. Genre and label".
 //!
@@ -25,6 +26,8 @@ use crate::jobs::{AlbumJobs, StepStatus};
 pub const RESET_COLLECTION: &str = "reset-collection";
 pub const RESTORE_FROM_DEV_LIST: &str = "restore-from-dev-list";
 pub const ARTWORK_REPORT: &str = "artwork-report";
+/// The crate spike: DWX-20's measuring of the crate against the frame budget.
+pub const CRATE_SPIKE: &str = "crate-spike";
 
 /// What restoring did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -223,6 +226,20 @@ fn source_name(source: ArtworkSource) -> &'static str {
         ArtworkSource::MusicBrainz => "MusicBrainz",
         ArtworkSource::Spotify => "Spotify",
     }
+}
+
+/// Keeps the window in front, filling the screen, while the crate spike
+/// measures (DWX-20), or lets it go. WebKit stops drawing a window that's
+/// covered, which would spoil the frame counts, and a full screen is the most
+/// there is to draw.
+#[tauri::command]
+pub fn crate_spike_keep_in_front(window: tauri::WebviewWindow, on: bool) -> Result<(), String> {
+    window.set_always_on_top(on).map_err(|e| e.to_string())?;
+    if on {
+        window.maximize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// The Artwork report, for the Develop menu.

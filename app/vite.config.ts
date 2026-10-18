@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import process from "node:process";
 import { defineConfig } from "vitest/config";
+import { crateSpike } from "./scripts/crateSpikeServer.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 // scripts/dev-app picks a free port and passes it here; 1440 otherwise, clear
@@ -9,7 +10,8 @@ const port = Number(process.env.DEADWAX_DEV_PORT ?? 1440);
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  // crateSpike serves only in development: the crate spike's measuring (DWX-20).
+  plugins: [react(), crateSpike()],
 
   // Vite options tailored for Tauri, applied in `tauri dev` and `tauri build`:
   // 1. don't hide Rust errors

@@ -55,7 +55,7 @@ fn open_collection(app_data: &std::path::Path) -> Result<Collection, String> {
 /// which does the work so it can show progress and errors.
 #[cfg(debug_assertions)]
 fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<Submenu<R>> {
-    use commands::dev::{ARTWORK_REPORT, RESET_COLLECTION, RESTORE_FROM_DEV_LIST};
+    use commands::dev::{ARTWORK_REPORT, CRATE_SPIKE, RESET_COLLECTION, RESTORE_FROM_DEV_LIST};
     let reset = MenuItem::with_id(
         handle,
         RESET_COLLECTION,
@@ -71,7 +71,13 @@ fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Resul
         None::<&str>,
     )?;
     let report = MenuItem::with_id(handle, ARTWORK_REPORT, "Artwork report", true, None::<&str>)?;
-    Submenu::with_items(handle, "Develop", true, &[&reset, &restore, &report])
+    let spike = MenuItem::with_id(handle, CRATE_SPIKE, "Crate spike", true, None::<&str>)?;
+    Submenu::with_items(
+        handle,
+        "Develop",
+        true,
+        &[&reset, &restore, &report, &spike],
+    )
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -137,6 +143,7 @@ pub fn run() {
                 commands::dev::RESET_COLLECTION,
                 commands::dev::RESTORE_FROM_DEV_LIST,
                 commands::dev::ARTWORK_REPORT,
+                commands::dev::CRATE_SPIKE,
             ];
             #[cfg(not(debug_assertions))]
             let forwarded = [CHANGE_CLIENT_ID];
@@ -175,6 +182,8 @@ pub fn run() {
             commands::dev::restore_from_dev_list,
             #[cfg(debug_assertions)]
             commands::dev::artwork_report,
+            #[cfg(debug_assertions)]
+            commands::dev::crate_spike_keep_in_front,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
