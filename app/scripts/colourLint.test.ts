@@ -5,7 +5,7 @@
 
 import { ESLint } from "eslint";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const app = resolve(import.meta.dirname, "..");
 const eslint = new ESLint({ cwd: app });
@@ -36,6 +36,10 @@ const ALBUM_KEY = `export default function Sleeve({ ink }: { ink: string }) {
 `;
 
 describe("The colour rule", () => {
+  // ESLint's first run loads the TypeScript parser, which can take more than
+  // a test's 5 seconds while scripts/check runs everything else alongside.
+  beforeAll(() => complaints("Warm.tsx", HEX), 60_000);
+
   it("rejects a colour in a style prop in any file but AlbumColours", async () => {
     expect(await complaints("Sleeve.tsx", HEX)).toEqual([
       expect.stringContaining("That's a colour written in the code."),

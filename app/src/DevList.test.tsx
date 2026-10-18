@@ -8,7 +8,7 @@ import {
   type RestoreReport,
 } from "./DevList";
 import Library from "./Library";
-import { backEnd, card } from "./mockBackEnd";
+import { backEnd, card, NOTHING_PLAYING } from "./mockBackEnd";
 
 const album = (n: number): AlbumCard => card(n, { id: `album${n}` });
 
@@ -33,10 +33,14 @@ function devBackEnd(
       albums = [];
       return null;
     },
+    ...NOTHING_PLAYING,
   });
 }
 
-const offer = () => screen.findByRole("region", { name: "Dev list" });
+// The first render of the crate can take more than findBy's second while
+// scripts/check runs everything else alongside.
+const offer = () =>
+  screen.findByRole("region", { name: "Dev list" }, { timeout: 5000 });
 const commands = (calls: { cmd: string }[]) => calls.map((c) => c.cmd);
 const crate = () => screen.findByRole("region", { name: "Your crate" });
 /** The records drawn in the crate, by their buttons: dividers aside. */
