@@ -140,7 +140,7 @@ What `scripts/crate-spike` calls `final`: the prototype with only the changes th
 
 The few dropped frames left in flipping come mostly from the first of the three runs, while WebKit warms up.
 
-**What's left over budget:** about 1 pull in 15 still takes longer than 100 ms (118 to 147 ms at worst), always in the sleeve's own first frame, not the image. The cuts that would take the rest are bigger changes than a spike should make: building the pulled-out sleeve before it's pulled (it's the record in front, so it's known), or a simpler sleeve for the flight. That's a decision for Will before DWX-21: accept "within 100 ms nearly always" for now, or have DWX-21 build the sleeve ahead.
+**What's left over budget:** about 1 pull in 15 still takes longer than 100 ms (118 to 147 ms at worst), always in the sleeve's own first frame, not the image. The cuts that would take the rest are bigger changes than a spike should make: building the pulled-out sleeve before it's pulled (it's the record in front, so it's known), or a simpler sleeve for the flight. **Decided (Will, 2026-10-18):** "within 100 ms on 42 of 45 pulls" is good enough for now, so DWX-21 doesn't build the sleeve ahead. If the large cover ever feels slow, building it ahead is the next thing to try.
 
 ## Verdicts on PR #16's suspects
 
