@@ -21,6 +21,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { flushSync } from "react-dom";
 import { getAlbum, type AlbumTrack } from "../api";
 import type { Palette, Report } from "../ArtworkReport";
 import { effectClasses, PROTOTYPE, type Effects } from "./effects";
@@ -138,6 +139,16 @@ function crateItems(albums: Album[]): Item[] {
   return items;
 }
 
+// Where a record sits relative to the one in front (d = 0), in 2D: each one
+// further back a little higher and smaller, as the 3D crate looks from the front.
+function placeFlat(d: number, jitter: number, behind: number): CSSProperties {
+  if (d < 0) return { transform: `translate(${jitter * 6}px, 30%) scale(1.05)`, opacity: 0 };
+  return {
+    transform: `translate(${jitter * 5}px, ${-d * 2.2}%) scale(${1 - d * 0.035}) rotate(${d ? jitter * 0.9 : 0}deg)`,
+    opacity: d > behind - 1 ? 0 : 1,
+  };
+}
+
 // Where a record sits relative to the one in front (d = 0). The prototype's.
 function place(d: number, jitter: number, behind: number): CSSProperties {
   if (d < 0) {
@@ -163,6 +174,7 @@ const Crate = memo(function Crate({
   state,
   behind,
   sizes,
+  scene,
 }: {
   items: Item[];
   focus: number;
@@ -170,6 +182,7 @@ const Crate = memo(function Crate({
   state: "rest" | "dim";
   behind: number;
   sizes: Effects["sizes"];
+  scene: Effects["scene"];
 }) {
   const slots = [];
   for (let i = Math.max(0, focus - AHEAD); i <= Math.min(items.length - 1, focus + behind); i++) {
@@ -182,7 +195,7 @@ const Crate = memo(function Crate({
         className={`spike-slot ${item.kind} ${d < 0 ? "past" : ""}`}
         data-front={d === 0 || undefined}
         style={{
-          ...place(d, jitter, behind),
+          ...(scene === "flat" ? placeFlat : place)(d, jitter, behind),
           zIndex: 100 - d,
           visibility: item.key === hiddenKey ? "hidden" : undefined,
           ["--shade" as string]: d > 0 ? Math.min(0.08 + d * 0.055, 0.75) : d < 0 ? 0.55 : 0,
@@ -468,6 +481,14 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
   useLayoutEffect(() => {
     controller.current = {
       count: () => items.length,
+      flip: (index) => {
+        // React's update, then the style and layout it causes, done now and
+        // timed: the part of a flip's frame that's the page's own work.
+        const start = performance.now();
+        flushSync(() => setFocus(index));
+        document.querySelector(".spike-stack")?.getBoundingClientRect();
+        return performance.now() - start;
+      },
       records: () => items.filter((i) => i.kind === "album").length,
       setFocus,
       pull,
@@ -549,6 +570,7 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
           state={searching || hero ? "dim" : "rest"}
           behind={effects.behind}
           sizes={effects.sizes}
+          scene={effects.scene}
         />
         {hero && heroAlbum && (
           <Hero

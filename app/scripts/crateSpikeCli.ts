@@ -60,6 +60,8 @@ export const PLANS: Plan[] = [
         { ...base, label: `${name}: + no wear`, effects: { ...AHEAD, wear: false } },
         { ...base, label: `${name}: + no shade`, effects: { ...AHEAD, shade: false } },
         { ...base, label: `${name}: + 6 behind`, effects: { ...AHEAD, behind: 6 } },
+        { ...base, label: `${name}: + no transitions`, effects: { ...AHEAD, motion: "none" } },
+        { ...base, label: `${name}: + flat`, effects: { ...AHEAD, scene: "flat" } },
         { ...base, label: `${name}: final`, effects: FINAL },
       ];
     }),
@@ -121,6 +123,7 @@ type Result = {
   largeWorstMs?: number;
   flightDropped?: number;
   flightLongestMs?: number;
+  flipWorkMs?: { median: number; longest: number };
   opening?: Frames;
   scrolling?: Frames;
   window?: { width: number; height: number; dpr: number };
@@ -193,8 +196,9 @@ function row(plan: Plan, results: Result[]): string {
 
 function describe(plan: Plan, results: Result[], each: (f: (r: Result) => string) => string): string {
   switch (plan.scenario) {
-    case "idle":
     case "flip":
+      return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | flip work ${each((r) => `${r.flipWorkMs?.median}/${r.flipWorkMs?.longest}`)} ms |`;
+    case "idle":
     case "glow":
       return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | commit ${each((r) => `${r.longestCommitMs ?? "-"}`)} ms |`;
     case "pull":

@@ -8,6 +8,8 @@ import type { Run } from "./remote";
 /** What a scenario can do to the spike. */
 export type Controller = {
   count: () => number;
+  /** Flips to this record now, and says how long the page's own work took, in ms. */
+  flip: (index: number) => number;
   /** The albums in the crate, without its dividers. */
   records: () => number;
   setFocus: (index: number) => void;
@@ -40,6 +42,7 @@ async function flip(c: Controller, run: Run) {
   const last = c.count() - 1;
   let at = 0;
   let by = 1;
+  const work: number[] = [];
   c.setFocus(0);
   await wait(600);
   c.takeLongestCommit();
@@ -47,12 +50,22 @@ async function flip(c: Controller, run: Run) {
     for (let i = 0; i < steps; i++) {
       if (at + by > last || at + by < 0) by = -by;
       at += by;
-      c.setFocus(at);
+      work.push(c.flip(at));
       await wait(stepMs);
     }
     await wait(300);
   });
-  return { frames, stepMs, steps, longestCommitMs: c.takeLongestCommit() };
+  work.sort((a, b) => a - b);
+  return {
+    frames,
+    stepMs,
+    steps,
+    longestCommitMs: c.takeLongestCommit(),
+    flipWorkMs: {
+      median: Math.round(work[Math.floor(work.length / 2)] * 10) / 10,
+      longest: Math.round(work[work.length - 1] * 10) / 10,
+    },
+  };
 }
 
 /** Pulls records out one after another, timing the large cover and the flight. */

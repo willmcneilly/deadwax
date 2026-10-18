@@ -21,6 +21,10 @@ export type Effects = {
   sizes: "mixed" | "640";
   /** How many records are drawn behind the one in front. */
   behind: number;
+  /** The crate's sleeves move to their places with CSS transitions, or jump. */
+  motion: "transition" | "none";
+  /** The crate in 3D, as the prototype has it, or flat: the same places in 2D. */
+  scene: "3d" | "flat";
   /** Replace the playback state on every poll, even when nothing changed. */
   pollRedraw: boolean;
 };
@@ -37,6 +41,8 @@ export const PROTOTYPE: Effects = {
   decodeAhead: false,
   sizes: "mixed",
   behind: 11,
+  motion: "transition",
+  scene: "3d",
   pollRedraw: true,
 };
 
@@ -46,6 +52,8 @@ export function effectClasses(e: Effects): string {
     `grain-${e.grain}`,
     `glow-${e.glow}`,
     `under-${e.under}`,
+    `motion-${e.motion}`,
+    `scene-${e.scene}`,
     e.wear ? "" : "no-wear",
     e.shade ? "" : "no-shade",
     e.backdrop ? "" : "no-backdrop",

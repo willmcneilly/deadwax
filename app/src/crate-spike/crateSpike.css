@@ -95,6 +95,11 @@
   pointer-events: auto;
 }
 .spike-slot.past { pointer-events: none; }
+.motion-none .spike-slot,
+.motion-none .spike-shade { transition: none; }
+.scene-flat .spike-crate { perspective: none; }
+.scene-flat .spike-stack,
+.scene-flat .spike-slot { transform-style: flat; }
 
 .spike-shade {
   position: absolute;
