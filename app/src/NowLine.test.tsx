@@ -223,8 +223,15 @@ describe("Dropping the needle", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull(),
     );
-    for (const key of ["]", "]", "Enter", "Enter"]) fireEvent.keyDown(window, { key });
-    fireEvent.click(screen.getByRole("button", { name: "Turn Pink Moon over" }));
+    // Let the crate take its keys back before flipping.
+    await act(async () => {});
+    fireEvent.keyDown(window, { key: "]" });
+    fireEvent.keyDown(window, { key: "]" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull out Pink Moon by Nick Drake" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Turn Pink Moon over" }));
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("Living Room"),
     );
