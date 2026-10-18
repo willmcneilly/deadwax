@@ -63,7 +63,7 @@ async function turnOver() {
 }
 
 describe("The sleeve", () => {
-  it("pulls the record in front out of the crate, and goes back with Escape", async () => {
+  it("pulls the record in front out of the crate, and flies back into its place with Escape", async () => {
     sleeveBackEnd();
     await pullOutInRainbows();
 
@@ -73,6 +73,9 @@ describe("The sleeve", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
+    // Its place shows again as it flies back, under it, before it's gone.
+    expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
+    expect(crate().querySelector("[data-front]")).not.toHaveStyle({ visibility: "hidden" });
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Turn In Rainbows over" }),

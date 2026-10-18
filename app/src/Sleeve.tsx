@@ -111,15 +111,23 @@ function Sleeve({
     };
   }, [id]);
 
-  /** The transform that puts the sleeve back over its place in the crate. */
+  /**
+   * The transform that puts the sleeve over its place in the crate. It's
+   * worked out from where the sleeve sits without any flight on it (its
+   * layout box, not getBoundingClientRect), so a flight already running
+   * can't throw it off. React runs this effect twice in development, and the
+   * second run used to measure the first flight's start, fly nowhere, and
+   * replace it: the sleeve just appeared.
+   */
   const toCrate = () => {
     const el = lift.current;
-    if (!el) return "none";
-    const r = el.getBoundingClientRect();
-    if (!r.width) return "none";
-    const dx = from.left + from.width / 2 - (r.left + r.width / 2);
-    const dy = from.top + from.height / 2 - (r.top + r.height / 2);
-    return `translate(${dx}px, ${dy}px) scale(${from.width / r.width})`;
+    const parent = el?.offsetParent?.getBoundingClientRect();
+    if (!el || !parent || !el.offsetWidth) return "none";
+    const left = parent.left + el.offsetLeft;
+    const top = parent.top + el.offsetTop;
+    const dx = from.left + from.width / 2 - (left + el.offsetWidth / 2);
+    const dy = from.top + from.height / 2 - (top + el.offsetHeight / 2);
+    return `translate(${dx}px, ${dy}px) scale(${from.width / el.offsetWidth})`;
   };
 
   useLayoutEffect(() => {
@@ -130,8 +138,16 @@ function Sleeve({
 
   useEffect(() => {
     if (!returning) return;
+    // Its place in the crate shows again under it as it flies back, and it
+    // fades over the last stretch, rather than a flat sleeve being swapped
+    // for the crate's tilted one at the end, which snapped.
+    const to = toCrate();
     const flight = lift.current?.animate(
-      [{ transform: "none" }, { transform: toCrate() }],
+      [
+        { transform: "none", opacity: 1 },
+        { transform: to, opacity: 1, offset: 0.8 },
+        { transform: to, opacity: 0 },
+      ],
       FLY_BACK,
     );
     if (!flight) {

@@ -351,7 +351,7 @@ function Library({ name, onSignedOut }: Props) {
           <Crate
             items={items}
             focus={index}
-            hiddenKey={out?.key ?? null}
+            hiddenKey={out && !out.returning ? out.key : null}
             dim={pulledOut || searching}
             onPick={pick}
           />
