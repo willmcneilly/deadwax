@@ -59,6 +59,10 @@ pub struct PlayingTrack {
     /// The track's artists, joined with ", ".
     pub artist: String,
     pub album: Option<PlayingAlbum>,
+    /// Which disc of the album it's on, from 1.
+    pub disc: u32,
+    /// Its place on that disc, from 1.
+    pub number: u32,
     pub duration_ms: u64,
 }
 
@@ -165,6 +169,8 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
                         title: album.name,
                         covers: album.images.into_iter().map(cover).collect(),
                     }),
+                    disc: item.disc_number,
+                    number: item.track_number,
                     duration_ms: item.duration_ms,
                 })
             }),
@@ -271,6 +277,10 @@ struct PlayerItem {
     #[serde(default)]
     artists: Vec<PlayerArtist>,
     album: Option<PlayerAlbum>,
+    #[serde(default)]
+    disc_number: u32,
+    #[serde(default)]
+    track_number: u32,
     #[serde(default)]
     duration_ms: u64,
 }
@@ -523,6 +533,8 @@ mod tests {
                             },
                         ],
                     }),
+                    disc: 1,
+                    number: 3,
                     duration_ms: 255_386,
                 }),
             })

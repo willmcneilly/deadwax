@@ -200,6 +200,14 @@ export type NowPlaying = {
   progressMs: number | null;
   /** Null for an advert or anything else Spotify won't describe. */
   track: {
+    /**
+     * The track's Spotify ID, which the sleeve highlights it by. Null for a
+     * local file, which Spotify gives no ID.
+     */
+    spotifyId: string | null;
+    /** Which disc it's on, and its place on that disc, from 1. */
+    disc: number;
+    number: number;
     title: string;
     artist: string;
     album: string | null;
@@ -235,6 +243,3 @@ export const pausePlayback = () => invoke<void>("pause_playback");
 export const resumePlayback = () => invoke<void>("resume_playback");
 export const nextTrack = () => invoke<void>("next_track");
 export const previousTrack = () => invoke<void>("previous_track");
-/** Fills the screen without the animation into a new Space, or stops. */
-export const setNowPlayingFullscreen = (fullscreen: boolean) =>
-  invoke<void>("set_now_playing_fullscreen", { fullscreen });

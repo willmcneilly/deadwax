@@ -1,0 +1,189 @@
+/*
+ * Now playing's line under the floating record, and the chip over the crate
+ * (prototypes/crate/src/styles.css and connect.css). Only transforms and
+ * opacity move (DESIGN.md, rule 7).
+ */
+
+.now-line {
+  max-width: min(44rem, 90vw);
+  color: var(--room-ink);
+  text-align: center;
+  text-shadow: 0 1px 24px var(--shadow);
+  animation: now-in 1s 0.5s cubic-bezier(.2, .7, .2, 1) backwards;
+}
+
+@keyframes now-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.now-line p,
+.now-line h1 {
+  margin: 0;
+}
+
+.now-side {
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.now-line .now-title {
+  margin: 0.3rem 0 0.25rem;
+  font-family: var(--font-record);
+  font-size: clamp(1.6rem, 3vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+}
+
+.now-album {
+  font-family: var(--font-record);
+  font-style: italic;
+  font-weight: 300;
+  opacity: 0.75;
+}
+
+.now-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: min(420px, 60vw);
+  margin: 1.1rem auto 0;
+  font-family: var(--font-label);
+  font-size: 0.66rem;
+  opacity: 0.7;
+}
+
+.now-track {
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.now-track div {
+  height: 100%;
+  background: var(--room-ink);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s linear;
+}
+
+/* Listening for Spotify: the line breathes while the needle drops. */
+.now-line.starting .now-track {
+  animation: listen 1.6s ease-in-out infinite;
+}
+
+@keyframes listen {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.now-links {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-top: 0.9rem;
+  font-family: var(--font-label);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+}
+
+.now-links a {
+  color: inherit;
+  opacity: 0.6;
+}
+
+.library .now-links button {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+/* ---------- the chip ---------- */
+
+.chip {
+  position: fixed;
+  right: 22px;
+  bottom: 20px;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  max-width: 340px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--chip);
+  backdrop-filter: blur(12px);
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  animation: chip-in 0.4s 0.6s backwards;
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.library .chip-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 7px 14px 7px 7px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+
+.chip img {
+  width: 42px;
+  height: 42px;
+  border-radius: 2px;
+}
+
+.chip.stranger img {
+  outline: 3px solid var(--plain-sleeve);
+  outline-offset: -3px;
+}
+
+.chip span {
+  min-width: 0;
+  opacity: 0.8;
+}
+
+.chip strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.chip-device {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-left: 1px solid var(--line);
+  opacity: 0.55;
+  white-space: nowrap;
+}

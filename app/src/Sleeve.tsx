@@ -1,8 +1,9 @@
 // The sleeve you've pulled out of the crate (RFC-002, "4. The UI"). It flies
 // out from its place, shows its cover large, and turns over to its back: the
 // tracklist in sides, the year and the label, Open in Spotify and a quiet way
-// to take it out of the crate. Picking a track plays the album from there, on
-// the device chosen below it.
+// to take it out of the crate. Picking a track drops the needle: the album
+// plays from there, on the device chosen below it, and the record turns to
+// its front and floats while it plays, with now playing's line under it.
 //
 // Kept to DESIGN.md's rules: no CSS filter on the cover (rule 3), the back is
 // built the first time it's turned over (rule 4), and the 1600 the crate
@@ -24,7 +25,9 @@ import {
 } from "./api";
 import { SleeveFront } from "./Crate";
 import DevicePicker from "./DevicePicker";
+import { NowLine } from "./NowLine";
 import type { Place } from "./place";
+import { playingTrack, type Live } from "./playing";
 import { duration, sides } from "./sides";
 import { wearStyle } from "./textures";
 import useDevices from "./useDevices";
@@ -54,8 +57,19 @@ type Props = {
   onReturned: () => void;
   /** It has left the collection. */
   onRemoved: (id: AlbumId) => void;
-  /** Spotify has started playing it. */
-  onPlayed: () => void;
+  /**
+   * What's playing, when it's this record (or an advert while it floats).
+   * Its track is highlighted on the back.
+   */
+  live: Live | null;
+  /** Floating in its glow, front up, with now playing's line under it. */
+  floating: boolean;
+  /** You've pressed a track on this device: the needle is dropping. */
+  onStarting: (track: AlbumTrack, device: string) => void;
+  /** Spotify said yes. */
+  onStarted: () => void;
+  /** It didn't start: the device is missing, or the call failed. */
+  onNotStarted: () => void;
   onFailed: (error: unknown) => void;
   /** The 1600 is decoded and on top (the crate spike's measuring). */
   onLargeReady?: () => void;
@@ -69,7 +83,11 @@ function Sleeve({
   returning,
   onReturned,
   onRemoved,
-  onPlayed,
+  live,
+  floating,
+  onStarting,
+  onStarted,
+  onNotStarted,
   onFailed,
   onLargeReady,
 }: Props) {
@@ -77,7 +95,6 @@ function Sleeve({
   const [details, setDetails] = useState<AlbumDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [starting, setStarting] = useState(false);
   const devices = useDevices(onFailed);
   // The latest handlers, so new ones from the parent don't load it again.
   const failed = useRef(onFailed);
@@ -165,92 +182,106 @@ function Sleeve({
   }, [returning]);
 
   /**
-   * Plays the album from this track on the chosen device. If Spotify isn't
-   * listing the device, the picker below says so.
+   * Drops the needle: plays the album from this track on the chosen device.
+   * If Spotify isn't listing the device, the record turns back and the
+   * picker below says so.
    */
-  async function play(trackId: string) {
-    if (devices.selected === null) return;
-    setStarting(true);
+  async function play(track: AlbumTrack) {
+    const device = devices.selected;
+    if (device === null) return;
+    onStarting(track, device);
     try {
-      const outcome = await playAlbum(id, devices.selected, trackId);
+      const outcome = await playAlbum(id, device, track.spotifyId);
       devices.setDevices(outcome.devices);
-      if (outcome.state === "playing") onPlayed();
+      if (outcome.state === "playing") onStarted();
+      else onNotStarted();
     } catch (e) {
+      onNotStarted();
       onFailed(e);
-    } finally {
-      setStarting(false);
     }
   }
+  const starting = live?.starting ?? false;
   const canPlay = devices.selected !== null && !starting;
+  const current = playingTrack(details?.tracks ?? [], live);
 
   const large = album.covers?.large;
   const medium = album.covers?.medium;
 
   return (
-    <div className="sleeve-out">
+    <div
+      className={`sleeve-out ${floating ? "floating" : ""} ${starting ? "starting" : ""}`}
+    >
       <div className="sleeve-lift" ref={lift}>
-        <div
-          className="sleeve-flipper"
-          style={{ transform: `rotateY(${turns * 180}deg)` }}
-        >
-          <div
-            className="sleeve-side front"
-            aria-hidden={back}
-            role="button"
-            aria-label={`Turn ${album.title} over`}
-            onClick={() => !back && onTurn()}
-          >
-            <SleeveFront album={album} src={medium}>
-              {large && large !== medium && (
-                <img
-                  className={`large ${ready ? "ready" : ""}`}
-                  src={large}
-                  alt=""
-                  draggable={false}
-                  onLoad={(e) => {
-                    void e.currentTarget
-                      .decode()
-                      .catch(() => {})
-                      .then(() => {
-                        setReady(true);
-                        onLargeReady?.();
-                      });
-                  }}
-                />
-              )}
-            </SleeveFront>
-          </div>
-          <div
-            className="sleeve-side back"
-            aria-hidden={!back}
-            onClick={(e) => {
-              if (back && !(e.target as HTMLElement).closest("button, a")) {
-                onTurn();
-              }
-            }}
-          >
-            {turns > 0 && (
-              <SleeveBack
-                album={album}
-                details={details}
-                error={error}
-                onPlay={canPlay ? (track) => void play(track) : null}
-                onRemoved={onRemoved}
-                onFailed={onFailed}
-              />
-            )}
+        <div className="sleeve-offset">
+          <div className="sleeve-float">
+            <div
+              className="sleeve-flipper"
+              style={{ transform: `rotateY(${turns * 180}deg)` }}
+            >
+              <div
+                className="sleeve-side front"
+                aria-hidden={back}
+                role="button"
+                aria-label={`Turn ${album.title} over`}
+                onClick={() => !back && onTurn()}
+              >
+                <SleeveFront album={album} src={medium}>
+                  {large && large !== medium && (
+                    <img
+                      className={`large ${ready ? "ready" : ""}`}
+                      src={large}
+                      alt=""
+                      draggable={false}
+                      onLoad={(e) => {
+                        void e.currentTarget
+                          .decode()
+                          .catch(() => {})
+                          .then(() => {
+                            setReady(true);
+                            onLargeReady?.();
+                          });
+                      }}
+                    />
+                  )}
+                </SleeveFront>
+              </div>
+              <div
+                className="sleeve-side back"
+                aria-hidden={!back}
+                onClick={(e) => {
+                  if (back && !(e.target as HTMLElement).closest("button, a")) {
+                    onTurn();
+                  }
+                }}
+              >
+                {turns > 0 && (
+                  <SleeveBack
+                    album={album}
+                    details={details}
+                    error={error}
+                    current={current}
+                    onPlay={canPlay ? (track) => void play(track) : null}
+                    onRemoved={onRemoved}
+                    onFailed={onFailed}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
       <div className="sleeve-desk">
-        <DevicePicker
-          devices={devices.devices}
-          selected={devices.selected}
-          refreshing={devices.refreshing}
-          onChoose={devices.choose}
-          onRefresh={devices.refresh}
-        />
-        {starting && <p className="device-note">Starting…</p>}
+        {floating && live ? (
+          <NowLine live={live} tracks={details?.tracks ?? null} onFailed={onFailed} />
+        ) : (
+          <DevicePicker
+            devices={devices.devices}
+            selected={devices.selected}
+            refreshing={devices.refreshing}
+            onChoose={devices.choose}
+            onRefresh={devices.refresh}
+          />
+        )}
       </div>
     </div>
   );
@@ -260,8 +291,10 @@ type BackProps = {
   album: AlbumCard;
   details: AlbumDetails | null;
   error: string | null;
-  /** Plays the album from the track with this Spotify ID. Null when it can't. */
-  onPlay: ((trackId: string) => void) | null;
+  /** The Spotify ID of the track playing, if one on this back is. */
+  current: string | null;
+  /** Plays the album from this track. Null when it can't. */
+  onPlay: ((track: AlbumTrack) => void) | null;
   onRemoved: (id: AlbumId) => void;
   onFailed: (error: unknown) => void;
 };
@@ -276,6 +309,7 @@ function SleeveBack({
   album,
   details,
   error,
+  current,
   onPlay,
   onRemoved,
   onFailed,
@@ -330,10 +364,11 @@ function SleeveBack({
                       {track.spotifyId ? (
                         <button
                           type="button"
-                          className="track"
+                          className={`track ${track.spotifyId === current ? "playing" : ""}`}
                           aria-label={`Play ${track.title}`}
+                          aria-current={track.spotifyId === current || undefined}
                           disabled={!onPlay}
-                          onClick={() => onPlay?.(track.spotifyId)}
+                          onClick={() => onPlay?.(track)}
                         >
                           <TrackLine side={side.name} at={i} track={track} />
                         </button>

@@ -10,12 +10,19 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
+  addAlbum,
   ALBUM_UPDATED,
   errorMessage,
   getCollection,
   getSession,
+  nextTrack,
+  pausePlayback,
+  previousTrack,
+  resumePlayback,
   type AlbumCard,
   type AlbumId,
+  type AlbumTrack,
+  type NowPlaying,
   type Session,
 } from "./api";
 import ArtworkReport from "./ArtworkReport";
@@ -29,10 +36,20 @@ import {
   type Order,
 } from "./crateOrder";
 import DevList from "./DevList";
-import PlaybackBar from "./PlaybackBar";
+import Glow, { type GlowLevel } from "./Glow";
+import { Chip } from "./NowLine";
 import Search from "./Search";
 import Sleeve from "./Sleeve";
+import Stranger, { type StrangerRecord } from "./Stranger";
 import { frontPlace, type Place } from "./place";
+import {
+  confirms,
+  liveFrom,
+  usePlayback,
+  type Heard,
+  type Live,
+  type Pending,
+} from "./playing";
 import { installTextures } from "./textures";
 import "./Library.css";
 
@@ -45,11 +62,29 @@ type Props = {
 /** The record you've pulled out of the crate, and where it came from. */
 type Out = {
   key: string;
+  /** Null when it came from nowhere: a stranger's record, just added. */
   from: Place | null;
   returning: boolean;
+  /**
+   * It's out for what's playing: you dropped the needle on it, or brought
+   * it out to see. It floats, front up, while it plays.
+   */
+  nowPlaying: boolean;
   /** Development builds' measuring: load its 1600 as if never seen. */
   bust?: number;
 };
+
+/** A stranger's record that has risen from below, or is going back down. */
+type StrangerOut = { record: StrangerRecord; returning: boolean };
+
+/**
+ * How long to wait for Spotify to confirm a track you've pressed before
+ * showing whatever it says is playing.
+ */
+const CONFIRM_MS = 6000;
+
+/** How long the crate takes to turn to a record before it comes out. */
+const BRING_OUT_MS = 300;
 
 /** What's in front: kept by key, so it stays put when the crate re-sorts. */
 type Focus = { key: string | null; index: number };
@@ -60,8 +95,11 @@ const DECODED = 4;
 /**
  * The collection as a crate in a dark room. Scroll or use the arrow keys to
  * flip, click the record in front or press Enter to pull it out, and Escape
- * to put it back. The old search box opens from Find a record until DWX-24
- * replaces it, and the playback bar is at the bottom until DWX-22 does.
+ * to put it back. Pressing a track on its back drops the needle, and the
+ * record floats in its glow while it plays: Space pauses, ← → skip. It
+ * follows changes made elsewhere, and what's playing shows as a chip over
+ * the crate when it's put back. The old search box opens from Find a record
+ * until DWX-24 replaces it.
  */
 function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
@@ -72,8 +110,17 @@ function Library({ name, onSignedOut }: Props) {
   const [pulled, setPulled] = useState<Out | null>(null);
   const [turns, setTurns] = useState(0);
   const [searching, setSearching] = useState(false);
-  /** Counts albums started, so the playback bar asks again straight away. */
-  const [started, setStarted] = useState(0);
+  // Each answer with news: confirming the needle drop, or following a
+  // change made elsewhere (below). The latest, so it sees this render.
+  const news = useRef<(heard: Heard) => void>(() => {});
+  const playback = usePlayback((heard) => news.current(heard));
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [stranger, setStranger] = useState<StrangerOut | null>(null);
+  const [adding, setAdding] = useState(false);
+  /** What to bring out once the record out now has gone: what's playing instead. */
+  const queued = useRef<Live | null>(null);
+  /** Development builds' measuring: a pretend answer, to measure the glow. */
+  const [pretend, setPretend] = useState<Heard | null>(null);
   /** Development builds' 400-record crate, for measuring. */
   const [many, setMany] = useState(false);
   const room = useRef<HTMLDivElement>(null);
@@ -115,6 +162,38 @@ function Library({ name, onSignedOut }: Props) {
   // say) isn't out any more.
   const out = outAlbum ? pulled : null;
 
+  const heard = (import.meta.env.DEV && pretend) || playback.heard;
+  const live = useMemo(
+    () => liveFrom(pending, heard, albums),
+    [pending, heard, albums],
+  );
+  const strangerUp = !!stranger && !stranger.returning;
+  /** What's playing is the record out, or the stranger's up. */
+  const liveOut =
+    !!live &&
+    ((!!out &&
+      !out.returning &&
+      live.kind === "record" &&
+      live.albumId === outAlbum?.id) ||
+      (strangerUp &&
+        live.kind === "stranger" &&
+        live.spotifyAlbumId === stranger.record.spotifyAlbumId));
+  /** An advert under the record that's out for what's playing. */
+  const advertOut =
+    live?.kind === "advert" &&
+    ((!!out && out.nowPlaying && !out.returning) || strangerUp);
+  const glow: GlowLevel =
+    liveOut && live
+      ? live.starting
+        ? "warming"
+        : live.paused
+          ? "paused"
+          : "on"
+      : advertOut
+        ? "paused"
+        : "off";
+  const floating = !!out && out.nowPlaying && !out.returning && turns % 2 === 0;
+
   const itemsRef = useRef(items);
   const indexRef = useRef(index);
   useLayoutEffect(() => {
@@ -146,15 +225,18 @@ function Library({ name, onSignedOut }: Props) {
     [flipTo],
   );
 
-  /** Pulls out the record in front. A divider in front flips past instead. */
+  /**
+   * Pulls out the record in front, to browse or for what's playing. A
+   * divider in front flips past instead.
+   */
   const pull = useCallback(
-    (bust?: number) => {
+    ({ bust, nowPlaying = false }: { bust?: number; nowPlaying?: boolean } = {}) => {
       const item = itemsRef.current[indexRef.current];
       if (!item) return;
       if (item.kind === "divider") return step(1);
       const from = frontPlace(room.current);
       setTurns(0);
-      setPulled({ key: item.key, from, returning: false, bust });
+      setPulled({ key: item.key, from, returning: false, nowPlaying, bust });
     },
     [step],
   );
@@ -166,8 +248,173 @@ function Library({ name, onSignedOut }: Props) {
 
   const putBack = useCallback(() => {
     setTurns((t) => (t % 2 ? t + 1 : t));
-    setPulled((o) => (o && !o.returning ? { ...o, returning: true } : o));
+    // A record that came from nowhere goes back to its place in the crate,
+    // which is in front.
+    setPulled((o) =>
+      o && !o.returning
+        ? { ...o, returning: true, from: o.from ?? frontPlace(room.current) }
+        : o,
+    );
   }, []);
+
+  /**
+   * Brings out what's playing: a record from its place in the crate, once
+   * the crate has turned to it, or a stranger's from below.
+   */
+  const bringOut = useCallback(
+    (what: Live) => {
+      if (what.kind === "advert") return;
+      if (what.kind === "stranger") {
+        setStranger({ record: strangerRecord(what), returning: false });
+        return;
+      }
+      const at = itemsRef.current.findIndex(
+        (i) => i.kind === "album" && i.album.id === what.albumId,
+      );
+      if (at < 0) return;
+      flipTo(at);
+      setTimeout(() => pull({ nowPlaying: true }), BRING_OUT_MS);
+    },
+    [flipTo, pull],
+  );
+
+  /** The record or the stranger's sleeve has gone: bring out what's queued. */
+  const gone = useCallback(() => {
+    const next = queued.current;
+    queued.current = null;
+    if (next) bringOut(next);
+  }, [bringOut]);
+
+  /**
+   * Turns the record out over. Turned to its front while it's what's
+   * playing, it floats again; turned to its back, it's for browsing.
+   */
+  const turn = () => {
+    const front = (turns + 1) % 2 === 0;
+    setTurns(turns + 1);
+    setPulled((o) => o && { ...o, nowPlaying: front && liveOut });
+  };
+
+  // The needle drops (Sleeve.tsx): the record turns to its front and floats
+  // while Spotify gets going, then plays, or turns back if it didn't start.
+  // An earlier drop's wait for Spotify is cancelled by a new one, so it
+  // can't fire during it.
+  const confirmWait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(confirmWait.current), []);
+  const starting = (album: AlbumCard) => (track: AlbumTrack, device: string) => {
+    clearTimeout(confirmWait.current);
+    setPending({ album, track, device, resolvedAt: null });
+    setTurns((t) => (t % 2 ? t + 1 : t));
+    setPulled((o) => o && { ...o, nowPlaying: true });
+  };
+  const started = () => {
+    const at = Date.now();
+    setPending((p) => p && { ...p, resolvedAt: at });
+    playback.askNow();
+    // If Spotify doesn't confirm it in time, show whatever it says.
+    clearTimeout(confirmWait.current);
+    confirmWait.current = setTimeout(() => {
+      confirmWait.current = undefined;
+      setPending(null);
+      const latest = playback.latest();
+      if (latest) followRef.current(latest);
+    }, CONFIRM_MS);
+  };
+  const notStarted = () => {
+    clearTimeout(confirmWait.current);
+    setPending(null);
+    setTurns((t) => (t % 2 ? t : t + 1));
+    setPulled((o) => o && { ...o, nowPlaying: false });
+  };
+
+  /**
+   * Follows a change made elsewhere, such as your phone, while a record is
+   * out for what's playing: a different album swaps the record, and when
+   * the music stops, a record turns back to its tracklist and a stranger's
+   * goes. An advert changes nothing.
+   */
+  const follow = (next: Heard) => {
+    const floats = !!out && out.nowPlaying && !out.returning;
+    if (!floats && !strangerUp) return;
+    if (next.now === null) {
+      if (floats) {
+        setPulled((o) => o && { ...o, nowPlaying: false });
+        setTurns((t) => (t % 2 ? t : t + 1));
+      } else {
+        setStranger((s) => s && { ...s, returning: true });
+      }
+      return;
+    }
+    const now = liveFrom(null, next, albums);
+    if (!now || now.kind === "advert") return;
+    const same = floats
+      ? now.kind === "record" && now.albumId === outAlbum?.id
+      : now.kind === "stranger" &&
+        now.spotifyAlbumId === stranger?.record.spotifyAlbumId;
+    if (same) return;
+    queued.current = now;
+    if (floats) putBack();
+    else setStranger((s) => s && { ...s, returning: true });
+  };
+
+  useLayoutEffect(() => {
+    news.current = (next) => {
+      if (import.meta.env.DEV && pretend) return;
+      // While the needle drops, wait for Spotify to confirm the track you
+      // pressed: then the glow comes up fully and the clock runs.
+      if (pending) {
+        if (pending.resolvedAt && next.at >= pending.resolvedAt && confirms(pending, next.now)) {
+          clearTimeout(confirmWait.current);
+          setPending(null);
+        }
+        return;
+      }
+      follow(next);
+    };
+  });
+
+  const followRef = useRef(follow);
+  useLayoutEffect(() => {
+    followRef.current = follow;
+  });
+
+  /** Sends a control to Spotify, then asks what it did. */
+  async function control(send: () => Promise<void>) {
+    try {
+      await send();
+    } catch (e) {
+      void failed(e);
+    }
+    playback.askNow();
+  }
+
+  /** Space: pause or resume, shown straight away. False if nothing's playing. */
+  const togglePause = () => {
+    const now = heard?.now;
+    if (!now || pending) return false;
+    playback.toggled();
+    void control(now.isPlaying ? pausePlayback : resumePlayback);
+    return true;
+  };
+  /** ← →, while the record out is what's playing. */
+  const skips = (liveOut || advertOut) && !pending;
+
+  /** Adds the stranger's record, which becomes a real sleeve where it is. */
+  async function addStranger(spotifyId: string) {
+    setAdding(true);
+    try {
+      const card = await addAlbum(spotifyId);
+      added(card);
+      setStranger(null);
+      setTurns(0);
+      setFocus({ key: card.id, index: indexRef.current });
+      setPulled({ key: card.id, from: null, returning: false, nowPlaying: true });
+    } catch (e) {
+      void failed(e);
+    } finally {
+      setAdding(false);
+    }
+  }
 
   const reorder = (next: Order) => {
     if (next === order) return;
@@ -212,7 +459,7 @@ function Library({ name, onSignedOut }: Props) {
     let acc = 0;
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (out || searching) return;
+      if (out || stranger || searching) return;
       if (e.shiftKey) {
         acc += e.deltaY || e.deltaX;
         if (Math.abs(acc) > 80) {
@@ -232,7 +479,7 @@ function Library({ name, onSignedOut }: Props) {
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
-  }, [out, searching, step, jump]);
+  }, [out, stranger, searching, step, jump]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -248,10 +495,17 @@ function Library({ name, onSignedOut }: Props) {
       if (e.key === "Escape") {
         if (searching) setSearching(false);
         else if (out) putBack();
+        else if (stranger) setStranger((s) => s && { ...s, returning: true });
       } else if (searching) {
         return;
-      } else if (out) {
-        if (e.key === "Enter" && !onControl) setTurns((t) => t + 1);
+      } else if (e.key === " " && togglePause()) {
+        // So a focused track isn't pressed again as well.
+        e.preventDefault();
+      } else if (skips && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+        e.preventDefault();
+        void control(e.key === "ArrowRight" ? nextTrack : previousTrack);
+      } else if (out || stranger) {
+        if (e.key === "Enter" && !onControl && out) turn();
       } else if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
         step(1);
@@ -268,7 +522,7 @@ function Library({ name, onSignedOut }: Props) {
     };
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
-  }, [out, searching, step, jump, pull, putBack]);
+  });
 
   const added = (album: AlbumCard) =>
     setAlbums((current) => [
@@ -321,8 +575,18 @@ function Library({ name, onSignedOut }: Props) {
         room.current?.querySelector(".crate-stack")?.getBoundingClientRect();
         return { react: committed - start, style: performance.now() - committed };
       },
-      pull: (cold) => pull(cold ? performance.now() : undefined),
+      pull: (cold) => pull({ bust: cold ? performance.now() : undefined }),
       putBack: () => setPulled(null),
+      setPlaying: (on) => {
+        const item = itemsRef.current[indexRef.current];
+        if (!on || item?.kind !== "album") {
+          setPretend(null);
+          return;
+        }
+        setPretend({ at: Date.now(), now: pretendPlaying(item.album) });
+        setTurns(0);
+        setPulled((o) => o && { ...o, nowPlaying: true });
+      },
       onLargeReady: (f) => (largeReady.current = f),
       takeLongestCommit: () => {
         const ms = longestCommit.current;
@@ -333,7 +597,7 @@ function Library({ name, onSignedOut }: Props) {
   }, [flipTo, pull]);
 
   const empty = albums?.length === 0;
-  const pulledOut = !!out && !out.returning;
+  const pulledOut = (!!out && !out.returning) || strangerUp;
 
   return (
     <div className="library">
@@ -351,6 +615,13 @@ function Library({ name, onSignedOut }: Props) {
             dim={pulledOut || searching}
             onPick={pick}
           />
+          {(out || stranger) && (
+            <Glow
+              key={`${outAlbum?.spotifyId ?? stranger?.record.spotifyAlbumId}:${outAlbum?.palette ? "own" : "plain"}`}
+              palette={outAlbum?.palette ?? null}
+              level={glow}
+            />
+          )}
           {out && outAlbum && (
             <>
               <div className="sleeve-backdrop" onClick={putBack} />
@@ -359,13 +630,45 @@ function Library({ name, onSignedOut }: Props) {
                 album={bust(outAlbum, out.bust)}
                 from={out.from}
                 turns={turns}
-                onTurn={() => setTurns((t) => t + 1)}
+                onTurn={turn}
                 returning={out.returning}
-                onReturned={() => setPulled(null)}
+                onReturned={() => {
+                  setPulled(null);
+                  gone();
+                }}
                 onRemoved={removed}
-                onPlayed={() => setStarted((n) => n + 1)}
+                live={liveOut || advertOut ? live : null}
+                floating={floating}
+                onStarting={starting(outAlbum)}
+                onStarted={started}
+                onNotStarted={notStarted}
                 onFailed={failed}
                 onLargeReady={() => largeReady.current?.()}
+              />
+            </>
+          )}
+          {stranger && (
+            <>
+              <div
+                className="sleeve-backdrop"
+                onClick={() => setStranger((s) => s && { ...s, returning: true })}
+              />
+              <Stranger
+                key={stranger.record.spotifyAlbumId ?? stranger.record.title}
+                record={stranger.record}
+                live={liveOut || advertOut ? live : null}
+                returning={stranger.returning}
+                onReturned={() => {
+                  setStranger(null);
+                  gone();
+                }}
+                onAdd={
+                  stranger.record.spotifyAlbumId
+                    ? () => void addStranger(stranger.record.spotifyAlbumId as string)
+                    : null
+                }
+                adding={adding}
+                onFailed={failed}
               />
             </>
           )}
@@ -419,6 +722,11 @@ function Library({ name, onSignedOut }: Props) {
             {error}
           </p>
         )}
+        {playback.error && (
+          <p className="error" role="status">
+            Couldn't check what's playing: {playback.error}
+          </p>
+        )}
         {import.meta.env.DEV && <ArtworkReport onFailed={failed} />}
         {import.meta.env.DEV && (
           <DevList empty={empty} onChanged={load} onFailed={failed} />
@@ -441,7 +749,13 @@ function Library({ name, onSignedOut }: Props) {
         )}
       </div>
 
-      <PlaybackBar started={started} onFailed={failed} />
+      {live && !out && !stranger && !searching && (
+        <Chip
+          live={live}
+          cover={chipCover(live, albums)}
+          onOpen={() => bringOut(live)}
+        />
+      )}
       {import.meta.env.DEV && <CrateMeter crate={meter} />}
     </div>
   );
@@ -464,6 +778,42 @@ function Caption({ item, hidden }: { item: CrateItem; hidden: boolean }) {
       )}
     </div>
   );
+}
+
+/** A stranger's record, as Spotify describes what's playing. */
+function strangerRecord(live: Live): StrangerRecord {
+  const { spotifyAlbumId, album, artist, title, coverUrl } = live;
+  return { spotifyAlbumId, album, artist, title, coverUrl };
+}
+
+/** The chip's small cover: the record's 320, or Spotify's for a stranger's. */
+function chipCover(live: Live, albums: AlbumCard[] | null): string | null {
+  const ours = albums?.find((a) => a.id === live.albumId);
+  return ours?.covers?.small ?? live.coverUrl;
+}
+
+/**
+ * Development builds' measuring: Spotify playing the record in front, so
+ * the glow can be measured without it.
+ */
+function pretendPlaying(album: AlbumCard): NowPlaying {
+  return {
+    isPlaying: true,
+    device: "The crate spike",
+    progressMs: 0,
+    track: {
+      spotifyId: null,
+      disc: 1,
+      number: 1,
+      title: album.title,
+      artist: album.artist,
+      album: album.title,
+      albumId: album.id,
+      spotifyAlbumId: album.spotifyId,
+      durationMs: 300_000,
+      coverUrl: album.covers?.large ?? null,
+    },
+  };
 }
 
 /**

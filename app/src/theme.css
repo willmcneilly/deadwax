@@ -69,6 +69,7 @@ body {
   --chip: rgb(18 15 12 / 0.72);
   --overlay: rgb(7 6 5 / 0.9);
   --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.22);
   --clear: rgb(0 0 0 / 0);
 
   /*
@@ -80,6 +81,20 @@ body {
   --sleeve-ink: #1e1a16;
   --sleeve-muted: #5c544b;
   --sleeve-accent: #7a4b2a;
+
+  /*
+   * The glow behind a stranger's record, or one whose palette isn't worked
+   * out yet: a plain, warm grey. Once it is, AlbumColours sets the album's
+   * own (--album-glow-1 and so on, and --album-deep).
+   */
+  --glow-plain-deep: #15120f;
+  --glow-plain-1: #6b6257;
+  --glow-plain-2: #4a433b;
+  --glow-plain-3: #8a8073;
+
+  /* A stranger's plain paper sleeve. */
+  --plain-sleeve: #d8d2c6;
+  --plain-sleeve-edge: #bdb6a8;
 
   /* The record's type: the sleeve's back and the caption, its small print, and the dividers' handwriting. */
   --font-record: Georgia, "Times New Roman", serif;

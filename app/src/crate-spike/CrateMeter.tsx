@@ -25,6 +25,8 @@ export type CrateHandle = {
   pull: (cold: boolean) => void;
   /** Puts it straight back, without the flight. */
   putBack: () => void;
+  /** Pretends Spotify is playing the record out, or stops pretending. */
+  setPlaying: (on: boolean) => void;
   /** Calls `f` when the pulled-out sleeve's 1600 is decoded and on top. */
   onLargeReady: (f: () => void) => void;
   takeLongestCommit: () => number;
@@ -32,7 +34,7 @@ export type CrateHandle = {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The spike's controller, on the real crate. It has no glow or search yet. */
+/** The spike's controller, on the real crate. It has no search yet. */
 function controller(crate: CrateHandle): Controller {
   let pulledAt = 0;
   let first: Promise<number> = Promise.resolve(0);
@@ -53,7 +55,7 @@ function controller(crate: CrateHandle): Controller {
     });
   });
   const none = () => {
-    throw new Error("The crate has no glow or search yet.");
+    throw new Error("The crate has no search yet.");
   };
   return {
     count: crate.count,
@@ -69,7 +71,7 @@ function controller(crate: CrateHandle): Controller {
     putBack: crate.putBack,
     largePainted: () => new Promise((resolve) => (waiting = resolve)),
     takeLongestCommit: crate.takeLongestCommit,
-    setPlaying: none,
+    setPlaying: crate.setPlaying,
     setSearch: none,
     scrollSearch: none,
   };

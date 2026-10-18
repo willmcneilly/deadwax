@@ -34,10 +34,47 @@
   transform-origin: 0 0;
 }
 
+/*
+ * Floating while it plays: the record rises a little and drifts, slowly,
+ * in its glow. While the needle drops it settles short of that, and only
+ * starts to drift once Spotify says it's playing.
+ */
+.sleeve-offset,
+.sleeve-float,
 .sleeve-flipper {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
+}
+
+.sleeve-offset {
+  transition: transform 0.95s cubic-bezier(.3, .7, .2, 1);
+}
+
+.sleeve-out.floating .sleeve-offset {
+  transform: translateY(-7vh) scale(0.84);
+}
+
+.sleeve-out.floating.starting .sleeve-offset {
+  transform: translateY(-5vh) scale(0.86);
+}
+
+.sleeve-out.floating:not(.starting) .sleeve-float {
+  animation: float 9s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translate3d(0, -1.1%, 0) rotateX(1.4deg) rotateZ(-0.35deg);
+  }
+
+  50% {
+    transform: translate3d(0, 1.1%, 0) rotateX(-1deg) rotateZ(0.35deg);
+  }
+}
+
+.sleeve-flipper {
   transition: transform 0.95s cubic-bezier(.45, .05, .2, 1);
 }
 
@@ -188,6 +225,15 @@
   white-space: nowrap;
 }
 
+.back-sides .track.playing .name,
+.back-sides .track.playing .num {
+  color: var(--album-accent, var(--sleeve-accent));
+}
+
+.back-sides .track.playing .name::before {
+  content: "▸ ";
+}
+
 .back-sides button.track:enabled:hover .name {
   text-decoration: underline;
   text-decoration-thickness: 1px;
@@ -285,4 +331,31 @@
 .library .sleeve-desk button.secondary {
   color: var(--room-ink);
   border-color: var(--line);
+}
+
+/* Now playing's line takes the desk while the record floats. */
+.sleeve-out.floating .sleeve-desk {
+  bottom: calc(var(--space) * 5);
+}
+
+/* ---------- a stranger's record ---------- */
+
+/*
+ * A record from outside the collection, in a plain paper sleeve: Spotify's
+ * cover as it is, with no wear and no filter (rule 3; RFC-001, "Spotify's
+ * attribution rules").
+ */
+.sleeve-face.stranger {
+  background: var(--plain-sleeve);
+  box-shadow:
+    inset 0 0 0 1px var(--plain-sleeve-edge),
+    0 2px 4px var(--shadow),
+    0 30px 80px var(--shadow-deep);
+}
+
+.sleeve-face.stranger img {
+  inset: 5.5%;
+  width: 89%;
+  height: 89%;
+  border-radius: 1px;
 }

@@ -173,7 +173,6 @@ pub fn run() {
             commands::resume_playback,
             commands::next_track,
             commands::previous_track,
-            commands::set_now_playing_fullscreen,
             #[cfg(debug_assertions)]
             commands::dev::dev_list_missing,
             #[cfg(debug_assertions)]

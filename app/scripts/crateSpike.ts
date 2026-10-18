@@ -109,8 +109,9 @@ export const PLANS: Plan[] = [
 
 /**
  * The app's own crate (DWX-21), measured as the spike's final cuts were:
- * flipping the real collection and the 400-record crate at both speeds, and
- * pulling records out, warm and cold. `scripts/crate-spike --crate` runs these.
+ * flipping the real collection and the 400-record crate at both speeds,
+ * pulling records out, warm and cold, and a record floating in its glow
+ * while it plays (DWX-22). `scripts/crate-spike --crate` runs these.
  */
 export const CRATE_PLANS: Plan[] = [false, true].flatMap((many): Plan[] => {
   const crate = many ? "400" : "real";
@@ -125,6 +126,9 @@ export const CRATE_PLANS: Plan[] = [false, true].flatMap((many): Plan[] => {
     })),
     { ...base, label: `crate: pull ${crate}`, scenario: "pull" },
     { ...base, label: `crate: pull ${crate}, cold`, scenario: "pull", cold: true },
+    { ...base, label: `crate: glow ${crate}`, scenario: "glow", seconds: 10 },
+    // The same 10 seconds with nothing moving but the grain, to compare.
+    { ...base, label: `crate: idle ${crate}`, scenario: "idle", seconds: 10 },
   ];
 });
 

@@ -4,7 +4,7 @@
 
 Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter. **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still.
 
-This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21) are under "Patterns".
+This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), and the needle drop, now playing and a stranger's sleeve (DWX-22), are under "Patterns".
 
 ## The frame budget
 
@@ -191,7 +191,25 @@ Pulling out the record in front (a click, or Enter) brings out its sleeve (`app/
 - **The front** is the cover large: the 640 at once, and the 1600, decoded while the record was in front (rule 5), over it once it's ready. No filter (rule 3).
 - **Turning it over** (a click on it, or Enter) shows its back. The back is built the first time it's turned (rule 4). A click on the back's paper, or Enter, turns it to the front again. Each side is lifted 1px towards whoever it faces (`translateZ(1px)`): with both in the same plane, WebKit sometimes drew the front over the back, mirrored, and `backface-visibility` alone didn't stop it.
 - **The back** is printed in the album's colours: the artist in its accent, the title, the tracklist in sides (each disc split where its running time passes halfway, so A and B, then C and D), each track with its place on its side ("B3") and its length. Under them, the year and label. At the foot, **Open in Spotify**, and under it, quietly, **Take it out of the crate**, which asks "Take it out of the crate?" with **Take it out** and **Keep it**. A long tracklist is set smaller so it fits.
-- **Picking a track** plays the album from that track on the device chosen under the sleeve. Until DWX-22 and DWX-23, that's the device picker and the playback bar.
+- **Picking a track** drops the needle (below), on the device chosen under the sleeve. Until DWX-23, that's the device picker.
+
+### The needle drop and now playing
+
+Pressing a track drops the needle (`app/src/Library.tsx`, `playing.ts`). The record turns to its front and floats while it plays: it rises a little and drifts slowly (`float`, a transform). Under it, now playing's line (`NowLine.tsx`) says where the track is ("Side B · 2"), its title, the artist and album, the device, and a clock, with **Open in Spotify**.
+
+- **Starting.** Until Spotify confirms the track, the line says "· starting", the clock holds at 0:00 and its line breathes, the record stops short of floating, and the glow warms to a third. Spotify confirms when it says it's playing that track, by its ID or by its disc and number on the same album (Spotify can relink a track to another ID). If it hasn't in 6 seconds, the record shows whatever Spotify says. If the device is missing or the call fails, it turns back to its tracklist.
+- **Playing.** The glow comes up fully and the clock runs. Space pauses and resumes, shown straight away; ← → skip. On the back, the playing track is marked in the album's accent, matched by its Spotify ID, or its disc and number if no ID matches.
+- **Following changes made elsewhere.** The crate asks Spotify every 2 seconds while the window shows. While a record is out for what's playing: a skip moves the line and the mark on the back; a different album flies this record back and brings that one out of its place; a pause says "· paused" and the glow settles to half, still; when the music stops, the record turns back to its tracklist. An advert says "An advert" and changes nothing else. A record you've pulled out to browse, or turned over yourself, isn't moved.
+- **The chip.** Put back while it plays, what's playing waits at the bottom right of the crate: a small cover, the track, the artist and the device. Clicking it brings the record out again.
+- **Nothing redraws for nothing.** A poll that brings nothing new keeps the state it has (rule 8): the same track, state and device, with Spotify's position within 1.5 seconds of where the clock had counted to. The clock writes its own text and bar four times a second, outside React, so nothing else redraws while it runs.
+
+### The glow
+
+Behind a playing record, five soft pools of the album's glow colours (`--album-glow-1` to `5`) drift over its deep colour (`--album-deep`), with a vignette (`app/src/Glow.tsx`). It's drawn only while a record is out: it fades in from nothing, warms to a third while the needle drops, comes up fully when Spotify confirms, settles to half and stops drifting while paused, and fades out faster than the sleeve flies back. An album with no palette yet, or a stranger's record, has the plain warm grey glow (`--glow-plain-*` in `theme.css`). A palette arriving while it shows fades the glow in again rather than changing its colours in place: transitioning colours would repaint the whole glow on every frame (rule 7).
+
+### A stranger's sleeve
+
+When Spotify plays an album that isn't in the collection, it's a stranger's record (`app/src/Stranger.tsx`). It has no place in the crate, so it rises from below in a plain paper sleeve (`--plain-sleeve`): Spotify's cover as it is, with no wear and no filter, and the plain glow. It has no tracklist to turn over to. Its line says "Not in your crate", and offers **Add to the crate** beside **Open in Spotify**. Adding it turns it into a real sleeve where it floats, still playing; its colours follow once the album job queue has worked them out. Escape, or a click around it, sends it back down.
 
 ### Album colours
 
@@ -224,7 +242,20 @@ Other CSS reads them with a fallback to `theme.css`'s `--sleeve-*` colours, for 
 | The large cover, cold (never seen), real crate | 199 ms median (the prototype) | 48 ms median, 21 of 21 within 100 ms, worst 69 ms | Yes |
 | The large cover, cold, 400 records | 250 ms median (the prototype) | 49 ms median, 24 of 24 within 100 ms, worst 67 ms | Yes |
 
-Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. The glow and search aren't built yet (DWX-22 and DWX-24), so they're not measured here. The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
+Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. Search isn't built yet (DWX-24), so it's not measured here. The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
+
+### The glow, measured
+
+`scripts/crate-spike --crate` also runs `crate: glow real` and `crate: glow 400`: a record pulled out of the app's own crate and floating in its glow, as if Spotify were playing it (a pretend answer, in development builds only, so nothing plays), measured for 10 seconds once the glow has come up. `crate: idle` measures the crate at rest for the same 10 seconds, with only the grain moving, to compare. Measured on 2026-10-18 on the same MacBook Pro, but in a window filling an external display (2560 × 1387 points at 1x) and with other apps open. Three runs of the crate at rest; six of the glow on the real crate and nine on 400 records, in batches of three:
+
+| | Frames | Longest gap | React's longest commit | GPU process | Page |
+|---|---|---|---|---|---|
+| The glow, real crate | 59.9–60 fps, 0–1 dropped | 20–34 ms | 0 ms | 3–4% | 10–17% |
+| The glow, 400 records | 59.7–60 fps, 0–3 dropped | 19–49 ms | 0 ms | 2–4% | 9–18% |
+| The crate at rest, real crate | 59.8–59.9 fps, 1–2 dropped | 26–40 ms | – | 2% | 8–9% |
+| The crate at rest, 400 records | 59.9–60 fps, 0–1 dropped | 21–22 ms | – | 2–3% | 9–13% |
+
+The glow drops no more frames than the crate does at rest: the one or two a run come from the machine, not the drift. React committed nothing during the runs, while Spotify was asked every 2 seconds. As in DWX-20, the page can't see a frame Core Animation drops in the drift itself ("What this can't see", above), so the drift still needs an eye on it.
 
 ## Do's and Don'ts
 
