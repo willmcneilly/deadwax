@@ -61,6 +61,18 @@ export const PROTOTYPE: Effects = {
   pollRedraw: true,
 };
 
+/**
+ * What DWX-20 kept (DESIGN.md, "The final cuts"): only the changes that
+ * bought frames or time. scripts/crate-spike's `final` runs are these.
+ */
+export const FINAL: Partial<Effects> = {
+  textures: "blob",
+  behind: 6,
+  filter: false,
+  lazyBack: true,
+  decodeAhead: true,
+};
+
 /** The classes on .crate-spike that turn effects off (crateSpike.css). */
 export function effectClasses(e: Effects): string {
   return [

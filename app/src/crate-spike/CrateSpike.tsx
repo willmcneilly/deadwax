@@ -24,7 +24,7 @@ import {
 import { flushSync } from "react-dom";
 import { getAlbum, type AlbumTrack } from "../api";
 import type { Palette, Report } from "../ArtworkReport";
-import { effectClasses, PROTOTYPE, type Effects } from "./effects";
+import { effectClasses, FINAL, PROTOTYPE, type Effects } from "./effects";
 import { painted } from "./frameMeter";
 import { postResult, type Run } from "./remote";
 import { runScenario, type Controller } from "./scenarios";
@@ -638,7 +638,26 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
             <input type="checkbox" checked={many} onChange={(e) => setMany(e.target.checked)} />
             400 records
           </label>
-          {(["wear", "shade", "backdrop", "filter", "decodeAhead", "pollRedraw"] as const).map((name) => (
+          <label>
+            textures
+            <select
+              value={effects.textures}
+              onChange={(e) => setEffects({ ...effects, textures: e.target.value as Effects["textures"] })}
+            >
+              <option>data</option>
+              <option>blob</option>
+            </select>
+          </label>
+          <label>
+            behind
+            <select value={effects.behind} onChange={(e) => setEffects({ ...effects, behind: Number(e.target.value) })}>
+              <option>11</option>
+              <option>6</option>
+            </select>
+          </label>
+          {(
+            ["wear", "shade", "backdrop", "filter", "lazyBack", "heroShadow", "decodeAhead", "pollRedraw"] as const
+          ).map((name) => (
             <label key={name}>
               <input
                 type="checkbox"
@@ -671,6 +690,12 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
               <option>hidden</option>
             </select>
           </label>
+          <button type="button" onClick={() => setEffects({ ...PROTOTYPE, ...FINAL })}>
+            Final cuts
+          </button>
+          <button type="button" onClick={() => setEffects(PROTOTYPE)}>
+            Prototype
+          </button>
           <output>
             {items.filter((i) => i.kind === "album").length} records · ← → Enter P S Esc{status && `\n${status}`}
           </output>
