@@ -19,6 +19,7 @@ use std::time::SystemTime;
 
 use deadwax_core::collection::{self, AlbumId, Collected, Collection};
 use deadwax_core::covers::{Size, Store};
+use deadwax_core::palette::Palette;
 use deadwax_sources::clock::{Clock, SystemClock};
 use deadwax_sources::spotify::albums::{AlbumSummary, is_spotify_id};
 use deadwax_sources::spotify::playback::{Device, Playback, StartAt};
@@ -217,7 +218,8 @@ pub fn open_spotify_dashboard(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// An album in your collection, as the grid shows it.
+/// An album in your collection, as the crate shows it: everything its sleeve
+/// needs except the tracklist, which `get_album` has.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumCard {
@@ -225,9 +227,34 @@ pub struct AlbumCard {
     pub title: String,
     pub artist: String,
     pub year: Option<u16>,
-    /// The 320 from disk (`cover://`) once the album's cover is there,
-    /// otherwise Spotify's largest, about 640 pixels.
-    pub cover_url: Option<String>,
+    /// The crate's dividers sort by it. `None` until it's been looked for,
+    /// or if nothing had one.
+    pub genre: Option<String>,
+    /// The record label, such as "XL Recordings", for the sleeve's back.
+    pub label: Option<String>,
+    /// The sleeve's printed colours and the glow's. `None` until they've
+    /// been worked out.
+    pub palette: Option<Palette>,
+    /// The cover in the sizes the crate and the sleeve draw. `None` if
+    /// nothing had one.
+    pub covers: Option<CoverUrls>,
+    /// Whether the sleeve shows wear. Only a cover from disk that didn't
+    /// come from Spotify does: Spotify's covers are shown as they are
+    /// (RFC-002, resolved open question 1).
+    pub worn: bool,
+}
+
+/// One album's cover in three sizes. Until its cover is on disk, all three
+/// are Spotify's largest, about 640 pixels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverUrls {
+    /// The 320, for the sleeves at the back of the crate.
+    pub small: String,
+    /// The 640, for the front two.
+    pub medium: String,
+    /// The 1600, for the sleeve you've pulled out.
+    pub large: String,
 }
 
 /// The album's cover at `size` from disk once it's there, otherwise
@@ -244,14 +271,34 @@ fn cover_url(collected: &Collected, size: Size) -> Option<String> {
 
 impl From<Collected> for AlbumCard {
     fn from(collected: Collected) -> Self {
-        let cover_url = cover_url(&collected, Size::Small);
-        let Collected { id, album, .. } = collected;
+        let covers = cover_url(&collected, Size::Small).map(|small| CoverUrls {
+            medium: cover_url(&collected, Size::Medium).unwrap_or_else(|| small.clone()),
+            large: cover_url(&collected, Size::Large).unwrap_or_else(|| small.clone()),
+            small,
+        });
+        let worn = collected.has_local_cover()
+            && collected
+                .artwork
+                .as_ref()
+                .is_some_and(|artwork| artwork.source != collection::ArtworkSource::Spotify);
+        let Collected {
+            id,
+            album,
+            palette,
+            genre_and_label,
+            ..
+        } = collected;
+        let found = genre_and_label.unwrap_or_default();
         Self {
-            cover_url,
+            covers,
+            worn,
             id,
             title: album.title,
             artist: album.artist,
             year: album.year,
+            genre: found.genre,
+            label: found.label,
+            palette,
         }
     }
 }
@@ -376,7 +423,7 @@ async fn search<C: Clock, S: TokenStore>(
 }
 
 /// Fetches the album with this Spotify ID, adds it to your collection with
-/// a new Deadwax ID, and returns it for the grid. Adding one that's already
+/// a new Deadwax ID, and returns it for the crate. Adding one that's already
 /// there refreshes its cache and keeps its Deadwax ID. It's queued for the
 /// album job queue, which looks up and downloads its cover.
 #[tauri::command]
@@ -420,10 +467,10 @@ async fn add<C: Clock, S: TokenStore>(
     collected(&collection, added.id()).map(AlbumCard::from)
 }
 
-/// An album as the album page shows it.
+/// An album with its tracklist, for the back of its sleeve.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AlbumPage {
+pub struct AlbumDetails {
     pub id: AlbumId,
     /// Where Open in Spotify goes.
     pub spotify_id: String,
@@ -447,7 +494,7 @@ pub struct AlbumTrack {
     pub duration_ms: u64,
 }
 
-impl From<Collected> for AlbumPage {
+impl From<Collected> for AlbumDetails {
     fn from(collected: Collected) -> Self {
         let cover_url = cover_url(&collected, Size::Large);
         let Collected { id, album, .. } = collected;
@@ -475,12 +522,12 @@ impl From<Collected> for AlbumPage {
 
 const NOT_IN_COLLECTION: &str = "That album isn't in your collection.";
 
-/// The album page, from the cache. It never asks Spotify: `refresh_album`
+/// The album and its tracklist, from the cache. It never asks Spotify: `refresh_album`
 /// does that when the cache is old. An album with steps left is queued, in
 /// case one failed, and `ALBUM_UPDATED` says when its cover is on disk or
 /// its palette, genre and label are stored.
 #[tauri::command]
-pub fn get_album(state: State<'_, AppState>, id: AlbumId) -> Result<AlbumPage, String> {
+pub fn get_album(state: State<'_, AppState>, id: AlbumId) -> Result<AlbumDetails, String> {
     open_album(&state.collection, &state.jobs, &id)
 }
 
@@ -488,7 +535,7 @@ fn open_album(
     collection: &std::sync::Mutex<Collection>,
     jobs: &AlbumJobs,
     id: &AlbumId,
-) -> Result<AlbumPage, String> {
+) -> Result<AlbumDetails, String> {
     let collected = collected(&collection.lock().expect("collection lock"), id)?;
     if !collected.unfinished().is_empty() {
         jobs.queue(id);
@@ -503,11 +550,11 @@ fn collected(collection: &Collection, id: &AlbumId) -> Result<Collected, String>
         .ok_or_else(|| NOT_IN_COLLECTION.into())
 }
 
-fn album_page(
+fn album_details(
     collection: &std::sync::Mutex<Collection>,
     id: &AlbumId,
-) -> Result<AlbumPage, String> {
-    collected(&collection.lock().expect("collection lock"), id).map(AlbumPage::from)
+) -> Result<AlbumDetails, String> {
+    collected(&collection.lock().expect("collection lock"), id).map(AlbumDetails::from)
 }
 
 /// Fetches the album from Spotify again if its cache is over a week old,
@@ -517,7 +564,7 @@ fn album_page(
 pub async fn refresh_album(
     state: State<'_, AppState>,
     id: AlbumId,
-) -> Result<Option<AlbumPage>, String> {
+) -> Result<Option<AlbumDetails>, String> {
     let spotify = state.signed_in().await?;
     refresh(&spotify, &state.collection, &id, SystemTime::now()).await
 }
@@ -527,7 +574,7 @@ async fn refresh<C: Clock, S: TokenStore>(
     collection: &std::sync::Mutex<Collection>,
     id: &AlbumId,
     now: SystemTime,
-) -> Result<Option<AlbumPage>, String> {
+) -> Result<Option<AlbumDetails>, String> {
     let cached = collected(&collection.lock().expect("collection lock"), id)?;
     if !cached.is_stale(now) {
         return Ok(None);
@@ -546,7 +593,7 @@ async fn refresh<C: Clock, S: TokenStore>(
         return Err(NOT_IN_COLLECTION.into());
     }
     // From the collection, which has the artwork too.
-    album_page(collection, id).map(Some)
+    album_details(collection, id).map(Some)
 }
 
 /// Takes the album out of your collection. Removing one that isn't there is
@@ -1037,14 +1084,23 @@ mod tests {
     const IN_RAINBOWS_COVER: &str =
         "https://i.scdn.co/image/ab67616d0000b273de3c04b5fc750b68899b20a9";
 
-    /// In Rainbows in the grid, with the Deadwax ID it was given.
+    /// In Rainbows in the crate, with the Deadwax ID it was given, before
+    /// the album job queue has done anything.
     fn in_rainbows_card(id: &AlbumId) -> AlbumCard {
         AlbumCard {
             id: id.clone(),
             title: "In Rainbows".into(),
             artist: "Radiohead".into(),
             year: Some(2007),
-            cover_url: Some(IN_RAINBOWS_COVER.into()),
+            genre: None,
+            label: None,
+            palette: None,
+            covers: Some(CoverUrls {
+                small: IN_RAINBOWS_COVER.into(),
+                medium: IN_RAINBOWS_COVER.into(),
+                large: IN_RAINBOWS_COVER.into(),
+            }),
+            worn: false,
         }
     }
 
@@ -1129,7 +1185,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn adding_fetches_the_album_and_puts_it_in_the_grid_with_a_deadwax_id() {
+    async fn adding_fetches_the_album_and_puts_it_in_the_crate_with_a_deadwax_id() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = empty_collection();
@@ -1150,7 +1206,7 @@ mod tests {
             .count();
         let collection = collection.lock().unwrap();
         assert_eq!(cards(&collection).unwrap(), [in_rainbows_card(&id)]);
-        // The whole album is cached, for the album page (DWX-4).
+        // The whole album is cached, for the sleeve's back (DWX-4).
         let cached = collection.get(&id).unwrap().unwrap().album;
         assert_eq!(cached.tracks.len(), 10);
         assert_eq!(cached.upc.as_deref(), Some("634904032463"));
@@ -1215,14 +1271,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_album_page_comes_from_the_cache() {
+    async fn an_albums_tracklist_comes_from_the_cache() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
         let before = albums_fetched(&server).await;
 
         let id = in_rainbows_id(&collection);
-        let page = album_page(&collection, &id).unwrap();
+        let page = album_details(&collection, &id).unwrap();
 
         assert_eq!(page.id, id);
         assert_eq!(page.spotify_id, IN_RAINBOWS);
@@ -1245,9 +1301,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_album_not_in_the_collection_has_no_page() {
+    async fn an_album_not_in_the_collection_has_no_tracklist() {
         assert_eq!(
-            album_page(&empty_collection(), &AlbumId::new()),
+            album_details(&empty_collection(), &AlbumId::new()),
             Err(NOT_IN_COLLECTION.into())
         );
         // Not even by its Spotify ID.
@@ -1255,7 +1311,7 @@ mod tests {
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
         assert_eq!(
-            album_page(&collection, &IN_RAINBOWS.into()),
+            album_details(&collection, &IN_RAINBOWS.into()),
             Err(NOT_IN_COLLECTION.into())
         );
     }
@@ -1368,7 +1424,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn once_its_cover_is_on_disk_the_grid_has_the_320_and_the_album_page_the_1600() {
+    async fn once_its_cover_is_on_disk_the_crate_has_its_sizes_and_its_wear() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
@@ -1376,14 +1432,20 @@ mod tests {
         sizes_made(&collection);
         let id = in_rainbows_id(&collection);
 
-        let page = album_page(&collection, &id).unwrap();
+        let page = album_details(&collection, &id).unwrap();
         let grid = cards(&collection.lock().unwrap()).unwrap();
 
         assert_eq!(page.cover_url, Some(format!("cover://localhost/{id}/1600")));
         assert_eq!(
-            grid[0].cover_url,
-            Some(format!("cover://localhost/{id}/320"))
+            grid[0].covers,
+            Some(CoverUrls {
+                small: format!("cover://localhost/{id}/320"),
+                medium: format!("cover://localhost/{id}/640"),
+                large: format!("cover://localhost/{id}/1600"),
+            })
         );
+        // It came from iTunes, so the sleeve can show wear.
+        assert!(grid[0].worn);
     }
 
     #[tokio::test]
@@ -1393,20 +1455,90 @@ mod tests {
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
         let id = in_rainbows_id(&collection);
         let shown = || {
-            let page = album_page(&collection, &id).unwrap();
+            let page = album_details(&collection, &id).unwrap();
             let grid = cards(&collection.lock().unwrap()).unwrap();
-            (page.cover_url, grid[0].cover_url.clone())
+            let card = &grid[0];
+            let covers = card.covers.clone().unwrap();
+            (
+                page.cover_url,
+                [covers.small, covers.medium, covers.large],
+                card.worn,
+            )
         };
-        let spotifys = Some(IN_RAINBOWS_COVER.to_owned());
+        let spotifys = IN_RAINBOWS_COVER.to_owned();
+        let unworn = (
+            Some(spotifys.clone()),
+            [spotifys.clone(), spotifys.clone(), spotifys],
+            false,
+        );
 
-        assert_eq!(shown(), (spotifys.clone(), spotifys.clone()));
-        // Found, but not downloaded yet.
+        assert_eq!(shown(), unworn);
+        // Found, but not downloaded yet: still Spotify's, and never worn.
         found_on_itunes(&collection);
-        assert_eq!(shown(), (spotifys.clone(), spotifys));
+        assert_eq!(shown(), unworn);
     }
 
     #[tokio::test]
-    async fn spotifys_cover_is_the_fallback_on_the_album_page() {
+    async fn spotifys_own_cover_from_disk_shows_no_wear() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let spotifys = collection::Artwork {
+            source: collection::ArtworkSource::Spotify,
+            cover: Some(collection::Cover {
+                url: IN_RAINBOWS_COVER.into(),
+                width: Some(640),
+                height: Some(640),
+            }),
+        };
+        let id = in_rainbows_id(&collection);
+        collection
+            .lock()
+            .unwrap()
+            .set_artwork(&id, &spotifys, day(2))
+            .unwrap();
+        sizes_made(&collection);
+
+        let grid = cards(&collection.lock().unwrap()).unwrap();
+
+        assert_eq!(
+            grid[0].covers.as_ref().map(|c| c.small.clone()),
+            Some(format!("cover://localhost/{id}/320"))
+        );
+        assert!(!grid[0].worn);
+    }
+
+    #[tokio::test]
+    async fn the_crate_has_each_albums_genre_label_and_palette_once_theyre_found() {
+        let server = MockServer::start().await;
+        let spotify = fake_spotify(&server).await;
+        let collection = collection_with_in_rainbows(&spotify, day(1)).await;
+        let id = in_rainbows_id(&collection);
+        let before = cards(&collection.lock().unwrap()).unwrap();
+        assert_eq!(
+            (&before[0].genre, &before[0].label, &before[0].palette),
+            (&None, &None, &None)
+        );
+
+        let found = collection::GenreAndLabel {
+            genre: Some("Alternative".into()),
+            label: Some("XL Recordings".into()),
+        };
+        {
+            let mut collection = collection.lock().unwrap();
+            let palette = Palette::neutral();
+            assert!(collection.set_palette(&id, &palette, day(2)).unwrap());
+            assert!(collection.set_genre_and_label(&id, &found, day(2)).unwrap());
+        }
+        let after = cards(&collection.lock().unwrap()).unwrap();
+
+        assert_eq!(after[0].genre.as_deref(), Some("Alternative"));
+        assert_eq!(after[0].label.as_deref(), Some("XL Recordings"));
+        assert_eq!(after[0].palette, Some(Palette::neutral()));
+    }
+
+    #[tokio::test]
+    async fn spotifys_cover_is_the_fallback_on_the_sleeve() {
         let server = MockServer::start().await;
         let spotify = fake_spotify(&server).await;
         let collection = collection_with_in_rainbows(&spotify, day(1)).await;
@@ -1422,7 +1554,7 @@ mod tests {
             .unwrap();
         sizes_made(&collection);
 
-        let page = album_page(&collection, &id).unwrap();
+        let page = album_details(&collection, &id).unwrap();
 
         assert_eq!(page.cover_url.as_deref(), Some(IN_RAINBOWS_COVER));
     }
@@ -1555,8 +1687,41 @@ mod tests {
 
     /// The JSON `app/src/api.ts` expects. Change both together.
     #[test]
-    fn album_pages_serialise_as_the_ui_expects() {
-        let page = AlbumPage {
+    fn crate_cards_serialise_as_the_ui_expects() {
+        let card = AlbumCard {
+            id: "deadwax-id".into(),
+            title: "In Rainbows".into(),
+            artist: "Radiohead".into(),
+            year: Some(2007),
+            genre: Some("Alternative".into()),
+            label: None,
+            palette: None,
+            covers: Some(CoverUrls {
+                small: "s".into(),
+                medium: "m".into(),
+                large: "l".into(),
+            }),
+            worn: true,
+        };
+        assert_eq!(
+            serde_json::to_value(&card).unwrap(),
+            json!({
+                "id": "deadwax-id",
+                "title": "In Rainbows",
+                "artist": "Radiohead",
+                "year": 2007,
+                "genre": "Alternative",
+                "label": null,
+                "palette": null,
+                "covers": { "small": "s", "medium": "m", "large": "l" },
+                "worn": true,
+            })
+        );
+    }
+
+    #[test]
+    fn album_details_serialise_as_the_ui_expects() {
+        let page = AlbumDetails {
             id: "deadwax-id".into(),
             spotify_id: IN_RAINBOWS.into(),
             title: "In Rainbows".into(),
