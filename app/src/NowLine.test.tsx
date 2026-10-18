@@ -285,6 +285,21 @@ describe("Dropping the needle", () => {
     );
   });
 
+  it("shows Spotify's answer once the pause has held for a few seconds without it agreeing", async () => {
+    // The pause never reaches Spotify, which carries on playing.
+    await playNude(playingBackEnd({ pause_playback: () => null }));
+
+    fireEvent.keyDown(window, { key: " " });
+    expect(side()).toBe("Side A · 3 · paused");
+    await poll();
+    expect(side()).toBe("Side A · 3 · paused");
+
+    await poll();
+
+    await waitFor(() => expect(side()).toBe("Side A · 3"));
+    expect(glow()).toHaveClass("on");
+  });
+
   it("has Open in Spotify on now playing", async () => {
     const calls = await playNude();
 
