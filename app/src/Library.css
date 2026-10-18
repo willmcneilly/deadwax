@@ -63,7 +63,7 @@
 
 /*
  * Errors, the Develop menu's reports and the search box, in a column over
- * the room, clear of the playback bar.
+ * the room.
  */
 .library-panels {
   position: fixed;
@@ -97,9 +97,7 @@
   margin: calc(var(--space) * 2) 0 0;
 }
 
-/* Now playing sits outside the library, on the body, so it's named too. */
-.library button,
-.now-playing button {
+.library button {
   font: inherit;
   padding: calc(var(--space) * 0.75) calc(var(--space) * 1.5);
   border: none;
@@ -109,14 +107,12 @@
   cursor: pointer;
 }
 
-.library button:disabled,
-.now-playing button:disabled {
+.library button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.library button.secondary,
-.now-playing button.secondary {
+.library button.secondary {
   background: none;
   color: var(--ink);
   border: 1px solid var(--ink-muted);
@@ -229,41 +225,4 @@
   padding: calc(var(--space) / 2) var(--space);
   text-align: left;
   border-bottom: 1px solid var(--ink-muted);
-}
-
-.playback-bar {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 70;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: calc(var(--space) * 2);
-  padding: calc(var(--space) * 1.5) calc(var(--space) * 4);
-  background: var(--surface);
-  border-top: 1px solid var(--ink-muted);
-}
-
-.playback-controls {
-  display: flex;
-  gap: var(--space);
-}
-
-.playback-now {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.playback-track {
-  font-weight: 600;
-}
-
-.playback-meta,
-.playback-quiet {
-  color: var(--ink-muted);
-}
-
-.playback-open {
-  margin-left: auto;
 }
