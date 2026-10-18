@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use deadwax_core::collection::{Album, ArtworkSource, Cover};
+use deadwax_core::collection::{Album, ArtworkSource, Cover, GenreAndLabel};
 use serde_json::{Value, json};
 use wiremock::matchers::{method, path, path_regex, query_param, query_param_contains};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -14,6 +14,8 @@ use crate::clock::fake::FakeClock;
 
 const UPC: &str = "634904032463";
 const RELEASE: &str = "1a33443c-3fff-450f-8298-efbc65659d32";
+/// Three barcodes, for asking a source three different things.
+const BARCODES: [&str; 3] = [UPC, "634904032470", "634904032487"];
 const OTHER_RELEASE: &str = "0b4b2f2c-1d1e-4f6a-9a51-2e0c6f1b7c10";
 
 fn endpoints(server: &MockServer) -> Endpoints {
@@ -700,8 +702,9 @@ async fn itunes_is_asked_no_more_than_20_times_a_minute() {
     nothing_anywhere(&server).await;
     let (finder, log) = finder(&server);
 
-    for _ in 0..3 {
-        finder.itunes(By::Upc(UPC)).await.unwrap();
+    // Different barcodes: a repeated request would reuse the last reply.
+    for upc in BARCODES {
+        finder.itunes(By::Upc(upc)).await.unwrap();
     }
 
     assert_eq!(*log.lock().unwrap(), ["sleep 3s", "sleep 3s"]);
@@ -713,8 +716,9 @@ async fn musicbrainz_is_asked_no_more_than_once_a_second() {
     nothing_anywhere(&server).await;
     let (finder, log) = finder(&server);
 
-    for _ in 0..3 {
-        finder.musicbrainz(By::Upc(UPC)).await.unwrap();
+    // Different barcodes: a repeated request would reuse the last reply.
+    for upc in BARCODES {
+        finder.musicbrainz(By::Upc(upc)).await.unwrap();
     }
 
     assert_eq!(*log.lock().unwrap(), ["sleep 1s", "sleep 1s"]);
@@ -819,4 +823,277 @@ async fn a_download_too_big_to_be_a_cover_is_an_error() {
         .await;
 
     assert!(matches!(result, Err(ArtworkError::TooBig { .. })));
+}
+
+// Genre and label (DWX-19), from replies recorded from iTunes and
+// MusicBrainz for In Rainbows on 2026-10-17.
+
+/// iTunes's real reply to `/lookup?upc=634904032463&entity=album`, with its
+/// artwork pointed at the fake server.
+fn recorded_itunes(server: &MockServer) -> Value {
+    let reply = include_str!("fixtures/itunes-lookup-in-rainbows.json").replace(
+        "https://is1-ssl.mzstatic.com/image/thumb/",
+        &format!("{}/mzstatic/thumb/", server.uri()),
+    );
+    serde_json::from_str(&reply).unwrap()
+}
+
+/// MusicBrainz's real reply to a release search for `barcode:634904032463`.
+fn recorded_musicbrainz() -> Value {
+    serde_json::from_str(include_str!(
+        "fixtures/musicbrainz-barcode-in-rainbows.json"
+    ))
+    .unwrap()
+}
+
+async fn itunes_has(server: &MockServer, reply: Value) {
+    Mock::given(method("GET"))
+        .and(path("/itunes/lookup"))
+        .and(query_param("upc", UPC))
+        .respond_with(ok(reply))
+        .mount(server)
+        .await;
+}
+
+async fn musicbrainz_has(server: &MockServer, reply: Value) {
+    Mock::given(method("GET"))
+        .and(path("/mb/ws/2/release/"))
+        .and(query_param("query", format!("barcode:{UPC}")))
+        .respond_with(ok(reply))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn genre_comes_from_itunes_and_label_from_musicbrainz_by_barcode() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    itunes_has(&server, recorded_itunes(&server)).await;
+    musicbrainz_has(&server, recorded_musicbrainz()).await;
+    let (finder, _) = finder(&server);
+
+    let found = finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    assert_eq!(
+        found,
+        GenreAndLabel {
+            genre: Some("Alternative".into()),
+            label: Some("XL Recordings".into()),
+        }
+    );
+    assert_eq!(
+        asked(&server).await,
+        [
+            format!("iTunes upc {UPC}"),
+            format!("MusicBrainz query barcode:{UPC}")
+        ]
+    );
+}
+
+#[tokio::test]
+async fn with_no_musicbrainz_release_the_label_comes_from_itunes_copyright() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    itunes_has(&server, recorded_itunes(&server)).await;
+    let (finder, _) = finder(&server);
+
+    let found = finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    // "℗ 2007 LLLP LLP under exclusive license to XL Recordings Ltd"
+    assert_eq!(
+        found,
+        GenreAndLabel {
+            genre: Some("Alternative".into()),
+            label: Some("XL Recordings Ltd".into()),
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_musicbrainz_release_with_no_label_falls_back_to_itunes_copyright() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    itunes_has(&server, recorded_itunes(&server)).await;
+    let mut release = recorded_musicbrainz();
+    release["releases"][0]["label-info"] = json!([
+        {"catalog-number": null, "label": {"id": "157afde4-4bf5-4039-8ad2-5a15acc85176", "name": "[no label]"}},
+        {"catalog-number": "XLDA324"},
+    ]);
+    musicbrainz_has(&server, release).await;
+    let (finder, _) = finder(&server);
+
+    let found = finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    assert_eq!(found.label.as_deref(), Some("XL Recordings Ltd"));
+}
+
+#[tokio::test]
+async fn another_artists_release_on_the_barcode_isnt_used() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    let mut itunes = recorded_itunes(&server);
+    itunes["results"][0]["artistName"] = json!("Radiohead Tribute Band");
+    itunes_has(&server, itunes).await;
+    let mut release = recorded_musicbrainz();
+    release["releases"][0]["artist-credit"][0]["name"] = json!("Radiohead Tribute Band");
+    musicbrainz_has(&server, release).await;
+    let (finder, _) = finder(&server);
+
+    let found = finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    assert_eq!(found, GenreAndLabel::default());
+}
+
+#[tokio::test]
+async fn an_album_without_a_barcode_has_no_genre_or_label_and_asks_nobody() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    let (finder, _) = finder(&server);
+    let album = Album {
+        upc: None,
+        ..in_rainbows()
+    };
+
+    let found = finder.genre_and_label(&album).await.unwrap();
+
+    assert_eq!(found, GenreAndLabel::default());
+    assert!(asked(&server).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_failing_musicbrainz_is_an_error_not_a_missing_label() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    itunes_has(&server, recorded_itunes(&server)).await;
+    Mock::given(method("GET"))
+        .and(path("/mb/ws/2/release/"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let (finder, _) = finder(&server);
+
+    let error = finder.genre_and_label(&in_rainbows()).await.unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "MusicBrainz replied 503 Service Unavailable"
+    );
+}
+
+#[tokio::test]
+async fn genre_and_label_reuse_the_artwork_lookups_itunes_reply() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    itunes_has(&server, recorded_itunes(&server)).await;
+    musicbrainz_has(&server, recorded_musicbrainz()).await;
+    let original = format!(
+        "/mzstatic/thumb/Music126/v4/dd/50/c7/dd50c790-99ac-d3d0-5ab8-e3891fb8fd52/{UPC}.png/10000x10000bb.jpg"
+    );
+    image(&server, &original, 4000, 4000).await;
+    let (finder, _) = finder(&server);
+
+    let artwork = finder.find(&in_rainbows()).await.unwrap();
+    let found = finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    assert_eq!(artwork.source, ArtworkSource::Itunes);
+    assert_eq!(found.genre.as_deref(), Some("Alternative"));
+    // iTunes was asked once, for both.
+    assert_eq!(
+        asked(&server).await,
+        [
+            format!("iTunes upc {UPC}"),
+            format!("image {original}"),
+            format!("MusicBrainz query barcode:{UPC}"),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn after_a_musicbrainz_artwork_lookup_genre_and_label_ask_nothing_new() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    // iTunes has the album but no artwork; MusicBrainz has the cover.
+    let mut itunes = recorded_itunes(&server);
+    itunes["results"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("artworkUrl100");
+    itunes_has(&server, itunes).await;
+    musicbrainz_has(&server, recorded_musicbrainz()).await;
+    Mock::given(method("GET"))
+        .and(path(format!("/caa/release/{RELEASE}")))
+        .respond_with(ok(json!({"images": [{
+            "front": true,
+            "image": format!("{}/caa-images/front.jpg", server.uri()),
+            "thumbnails": {},
+        }]})))
+        .mount(&server)
+        .await;
+    image(&server, "/caa-images/front.jpg", 1400, 1400).await;
+    let (finder, _) = finder(&server);
+
+    finder.find(&in_rainbows()).await.unwrap();
+    let before = asked(&server).await.len();
+    let found = finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    assert_eq!(found.label.as_deref(), Some("XL Recordings"));
+    assert_eq!(asked(&server).await.len(), before);
+}
+
+#[tokio::test]
+async fn a_reply_isnt_reused_once_its_old() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    itunes_has(&server, recorded_itunes(&server)).await;
+    musicbrainz_has(&server, recorded_musicbrainz()).await;
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let clock = FakeClock::new(log);
+    let finder = Finder::new(clock.clone(), endpoints(&server));
+
+    finder.genre_and_label(&in_rainbows()).await.unwrap();
+    clock.advance(replies::FRESH_FOR);
+    finder.genre_and_label(&in_rainbows()).await.unwrap();
+
+    assert_eq!(asked(&server).await.len(), 4);
+}
+
+#[tokio::test]
+async fn genre_and_label_keep_to_itunes_and_musicbrainz_limits() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    let (finder, log) = finder(&server);
+
+    for upc in BARCODES {
+        let album = Album {
+            upc: Some(upc.into()),
+            ..in_rainbows()
+        };
+        finder.genre_and_label(&album).await.unwrap();
+    }
+
+    // Each album asks iTunes then MusicBrainz. iTunes's next request waits
+    // 3 seconds, which also covers MusicBrainz's one second.
+    assert_eq!(*log.lock().unwrap(), ["sleep 3s", "sleep 3s"]);
+}
+
+#[tokio::test]
+async fn musicbrainz_alone_waits_a_second_between_albums() {
+    let server = MockServer::start().await;
+    nothing_anywhere(&server).await;
+    let (finder, log) = finder(&server);
+    // iTunes's replies are already to hand, so only MusicBrainz is asked.
+    for upc in BARCODES {
+        finder.itunes(By::Upc(upc)).await.unwrap();
+    }
+    log.lock().unwrap().clear();
+
+    for upc in BARCODES {
+        let album = Album {
+            upc: Some(upc.into()),
+            ..in_rainbows()
+        };
+        finder.genre_and_label(&album).await.unwrap();
+    }
+
+    assert_eq!(*log.lock().unwrap(), ["sleep 1s", "sleep 1s"]);
 }

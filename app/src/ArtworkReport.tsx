@@ -1,7 +1,8 @@
 // The Develop menu's Artwork report: where every album's cover came from, how
-// big it is, and where its steps in the album job queue stand, with totals by
-// source (RFC-001, "High-res artwork, as an experiment", and RFC-002, "2.
-// Local artwork, in sizes").
+// big it is, its palette, genre and label, and where its steps in the album
+// job queue stand, with totals by source (RFC-001, "High-res artwork, as an
+// experiment", and RFC-002, "2. Local artwork, in sizes" and "3. Genre and
+// label").
 //
 // Development builds only. Library renders this behind import.meta.env.DEV,
 // so Vite leaves it out of a release build, as Rust leaves out its command.
@@ -13,6 +14,25 @@ import type { AlbumId } from "./api";
 
 /** The event the Develop menu's item sends (app/src-tauri/src/commands/dev.rs). */
 export const ARTWORK_REPORT = "artwork-report";
+
+/** `Palette` in crates/deadwax-core/src/palette/mod.rs: each colour `#rrggbb`. */
+export type Palette = {
+  /** The glow's colours, most characterful first. */
+  key: string[];
+  /** The paper. */
+  ground: string;
+  /** The paper's reverse. */
+  rear: string;
+  /** Body text, 7:1 on the ground. */
+  ink: string;
+  /** Secondary text, 4.5:1. */
+  muted: string;
+  /** The album's colour, 4.5:1. */
+  accent: string;
+  dark: boolean;
+  /** The room behind the glow. */
+  deep: string;
+};
 
 /** `ArtworkReport` in app/src-tauri/src/commands/dev.rs. */
 export type Report = {
@@ -28,9 +48,14 @@ export type Report = {
     /** In pixels. Null when it couldn't be read, or there's no cover. */
     width: number | null;
     height: number | null;
+    /** Null until its palette step has run. */
+    palette: Palette | null;
+    /** Null when no source had one, or before they've been looked for. */
+    genre: string | null;
+    label: string | null;
     /** The album job queue's steps, in the order they run. */
     steps: {
-      /** "Lookup" or "Sizes". */
+      /** "Lookup", "Sizes", "Palette" or "Genre and label". */
       step: string;
       /** "Done", "Queued", "Failed" or "Not started". */
       status: string;
@@ -60,6 +85,41 @@ function steps(album: Report["albums"][number]): string {
       error === null ? `${step}: ${status}` : `${step}: ${status} (${error})`,
     )
     .join(" · ");
+}
+
+const SWATCH = 16;
+
+/**
+ * The palette as a row of swatches: the sleeve's colours, then the glow's.
+ * Album colours are data, not design tokens (RFC-002, "6. DESIGN.md starts
+ * here"), so they're SVG fills here rather than CSS. This report is for
+ * development only; the app's own sleeves will take them through
+ * `AlbumColours` (DWX-21).
+ */
+function Swatches({ palette }: { palette: Palette | null }) {
+  if (palette === null) return <>Not yet</>;
+  const named: [string, string][] = [
+    ["ground", palette.ground],
+    ["rear", palette.rear],
+    ["ink", palette.ink],
+    ["muted", palette.muted],
+    ["accent", palette.accent],
+    ...palette.key.map((colour, i): [string, string] => [`key ${i + 1}`, colour]),
+    ["deep", palette.deep],
+  ];
+  return (
+    <svg
+      role="img"
+      aria-label={named.map(([name, colour]) => `${name} ${colour}`).join(", ")}
+      width={named.length * SWATCH}
+      height={SWATCH}
+      viewBox={`0 0 ${named.length * SWATCH} ${SWATCH}`}
+    >
+      {named.map(([name, colour], i) => (
+        <rect key={name} x={i * SWATCH} width={SWATCH} height={SWATCH} fill={colour} />
+      ))}
+    </svg>
+  );
 }
 
 function ArtworkReport({ onFailed }: Props) {
@@ -99,6 +159,9 @@ function ArtworkReport({ onFailed }: Props) {
             <th scope="col">Artist</th>
             <th scope="col">Source</th>
             <th scope="col">Size</th>
+            <th scope="col">Colours</th>
+            <th scope="col">Genre</th>
+            <th scope="col">Label</th>
             <th scope="col">Steps</th>
           </tr>
         </thead>
@@ -109,6 +172,11 @@ function ArtworkReport({ onFailed }: Props) {
               <td>{album.artist}</td>
               <td>{album.source}</td>
               <td>{size(album)}</td>
+              <td>
+                <Swatches palette={album.palette} />
+              </td>
+              <td>{album.genre ?? "–"}</td>
+              <td>{album.label ?? "–"}</td>
               <td>{steps(album)}</td>
             </tr>
           ))}

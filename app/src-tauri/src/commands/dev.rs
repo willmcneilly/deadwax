@@ -1,7 +1,7 @@
 //! The Develop menu's commands: resetting the collection, restoring it from
 //! the dev list, and the Artwork report. See RFC-001, "A dev list that
 //! survives resets" and "High-res artwork, as an experiment", and RFC-002,
-//! "2. Local artwork, in sizes".
+//! "2. Local artwork, in sizes" and "3. Genre and label".
 //!
 //! Development builds only: `commands.rs` compiles this module under
 //! `debug_assertions`, so release builds don't contain it.
@@ -11,6 +11,7 @@ use std::time::SystemTime;
 use deadwax_core::collection::{AlbumId, ArtworkSource, Collection, Step};
 use deadwax_core::covers::Store;
 use deadwax_core::dev_list::Entry;
+use deadwax_core::palette::Palette;
 use deadwax_sources::clock::Clock;
 use deadwax_sources::spotify::tokens::TokenStore;
 use deadwax_sources::spotify::{Spotify, SpotifyError};
@@ -139,8 +140,8 @@ async fn restore<C: Clock, S: TokenStore>(
     Ok(report)
 }
 
-/// Where every album's cover came from, how big it is, and where each of
-/// its steps in the album job queue stands.
+/// Where every album's cover came from, how big it is, its palette, genre
+/// and label, and where each of its steps in the album job queue stands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtworkReport {
@@ -163,6 +164,12 @@ pub struct ArtworkRow {
     /// In pixels. `None` when it couldn't be read, or there's no cover.
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Its colours as `#rrggbb`, once they've been worked out.
+    pub palette: Option<Palette>,
+    /// `None` when no source had one, or they haven't been looked for yet
+    /// (the steps say which).
+    pub genre: Option<String>,
+    pub label: Option<String>,
     /// The album job queue's steps, in the order they run.
     pub steps: Vec<StepRow>,
 }
@@ -170,7 +177,7 @@ pub struct ArtworkRow {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StepRow {
-    /// "Lookup" or "Sizes".
+    /// "Lookup", "Sizes", "Palette" or "Genre and label".
     pub step: String,
     /// "Done", "Queued", "Failed" or "Not started".
     pub status: String,
@@ -189,6 +196,8 @@ fn step_row(step: Step, status: StepStatus) -> StepRow {
         step: match step {
             Step::Lookup => "Lookup",
             Step::Sizes => "Sizes",
+            Step::Palette => "Palette",
+            Step::GenreAndLabel => "Genre and label",
         }
         .into(),
         status: status.into(),
@@ -241,6 +250,7 @@ fn report(collection: &Collection, jobs: &AlbumJobs) -> Result<ArtworkReport, St
                 .as_ref()
                 .map_or(NOT_LOOKED_UP, |artwork| source_name(artwork.source));
             let cover = collected.artwork.and_then(|artwork| artwork.cover);
+            let found = collected.genre_and_label.unwrap_or_default();
             ArtworkRow {
                 id: collected.id,
                 title: collected.album.title,
@@ -249,6 +259,9 @@ fn report(collection: &Collection, jobs: &AlbumJobs) -> Result<ArtworkReport, St
                 width: cover.as_ref().and_then(|c| c.width),
                 height: cover.as_ref().and_then(|c| c.height),
                 url: cover.map(|c| c.url),
+                palette: collected.palette,
+                genre: found.genre,
+                label: found.label,
                 steps,
             }
         })
@@ -278,7 +291,7 @@ fn report(collection: &Collection, jobs: &AlbumJobs) -> Result<ArtworkReport, St
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
-    use deadwax_core::collection::{Artwork, Cover};
+    use deadwax_core::collection::{Artwork, Cover, GenreAndLabel};
     use deadwax_core::dev_list::{self, DevList};
     use deadwax_sources::clock::SystemClock;
     use deadwax_sources::spotify::tokens::MemoryStore;
@@ -673,9 +686,57 @@ mod tests {
         assert_eq!(
             steps,
             [
-                [("Lookup", "Done"), ("Sizes", "Done")],
-                [("Lookup", "Queued"), ("Sizes", "Queued")],
+                [
+                    ("Lookup", "Done"),
+                    ("Sizes", "Done"),
+                    ("Palette", "Not started"),
+                    ("Genre and label", "Not started"),
+                ],
+                [
+                    ("Lookup", "Queued"),
+                    ("Sizes", "Queued"),
+                    ("Palette", "Queued"),
+                    ("Genre and label", "Queued"),
+                ],
             ]
+        );
+    }
+
+    #[test]
+    fn the_artwork_report_shows_each_albums_swatches_genre_and_label() {
+        let mut collection = Collection::open_in_memory().unwrap();
+        let found = collection
+            .add(&album("a", "A"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        collection.add(&album("b", "B"), day(2)).unwrap();
+        collection
+            .set_palette(&found, &Palette::neutral(), day(3))
+            .unwrap();
+        collection
+            .set_genre_and_label(
+                &found,
+                &GenreAndLabel {
+                    genre: Some("Alternative".into()),
+                    label: Some("XL Recordings".into()),
+                },
+                day(3),
+            )
+            .unwrap();
+        let (jobs, _queued) = AlbumJobs::unstarted();
+
+        let report = report(&collection, &jobs).unwrap();
+
+        let [waiting, a] = &report.albums[..] else {
+            panic!("{report:?}")
+        };
+        assert_eq!(a.palette, Some(Palette::neutral()));
+        assert_eq!(a.genre.as_deref(), Some("Alternative"));
+        assert_eq!(a.label.as_deref(), Some("XL Recordings"));
+        assert_eq!(
+            (&waiting.palette, &waiting.genre, &waiting.label),
+            (&None, &None, &None)
         );
     }
 
@@ -707,6 +768,9 @@ mod tests {
                 url: Some("https://itunes/a".into()),
                 width: Some(4000),
                 height: Some(3998),
+                palette: Some(Palette::neutral()),
+                genre: Some("Alternative".into()),
+                label: None,
                 steps: vec![
                     StepRow {
                         step: "Lookup".into(),
@@ -731,6 +795,13 @@ mod tests {
                 "albums": [{
                     "id": "a", "title": "A", "artist": "Radiohead", "source": "iTunes",
                     "url": "https://itunes/a", "width": 4000, "height": 3998,
+                    "palette": {
+                        "key": ["#463c32", "#28221e", "#5a4e40"],
+                        "ground": "#1e1a16", "rear": "#181512", "ink": "#eee6d6",
+                        "muted": "#b0a696", "accent": "#c8aa78", "dark": true,
+                        "deep": "#100d0b",
+                    },
+                    "genre": "Alternative", "label": null,
                     "steps": [
                         {"step": "Lookup", "status": "Done", "error": null},
                         {
