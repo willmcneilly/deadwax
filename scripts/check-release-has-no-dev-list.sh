@@ -41,6 +41,9 @@ rust_markers=(
   "artwork-report"
   "artwork_report"
   "Not looked up yet"
+  # the Develop menu's crate spike (DWX-20)
+  "Crate spike"
+  "crate_spike_keep_in_front"
 )
 
 # What the UI's dev list would leave in the bundle.
@@ -51,6 +54,9 @@ ui_markers=(
   "from the dev list"
   "artwork_report"
   "Artwork report"
+  "crate-spike:run"
+  "crate_spike_keep_in_front"
+  "spike-crate"
 )
 
 failed=0
