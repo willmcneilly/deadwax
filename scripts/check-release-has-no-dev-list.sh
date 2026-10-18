@@ -54,7 +54,6 @@ ui_markers=(
   "from the dev list"
   "artwork_report"
   "Artwork report"
-  "crate-spike:run"
   "crate_spike_keep_in_front"
   "spike-crate"
 )

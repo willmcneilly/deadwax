@@ -72,7 +72,12 @@ fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Resul
     )?;
     let report = MenuItem::with_id(handle, ARTWORK_REPORT, "Artwork report", true, None::<&str>)?;
     let spike = MenuItem::with_id(handle, CRATE_SPIKE, "Crate spike", true, None::<&str>)?;
-    Submenu::with_items(handle, "Develop", true, &[&reset, &restore, &report, &spike])
+    Submenu::with_items(
+        handle,
+        "Develop",
+        true,
+        &[&reset, &restore, &report, &spike],
+    )
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
