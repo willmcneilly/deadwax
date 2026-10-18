@@ -38,6 +38,12 @@
   transition: transform 0.95s cubic-bezier(.45, .05, .2, 1);
 }
 
+/*
+ * The two sides of the sleeve, each lifted 1px towards whoever it faces.
+ * In the same plane, WebKit could draw them in either order, and after a
+ * turn or two it drew the front over the back, mirrored: backface-visibility
+ * alone didn't hide it. Lifted, the side facing you is always the nearer.
+ */
 .sleeve-side {
   position: absolute;
   inset: 0;
@@ -45,11 +51,12 @@
 }
 
 .sleeve-side.front {
+  transform: translateZ(1px);
   cursor: pointer;
 }
 
 .sleeve-side.back {
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) translateZ(1px);
 }
 
 .sleeve-side .sleeve-face {

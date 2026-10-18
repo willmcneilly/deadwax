@@ -189,7 +189,7 @@ Pulling out the record in front (a click, or Enter) brings out its sleeve (`app/
 
 - **It flies out** from its place in the crate, which stays empty, and the crate drops and dims behind it. Escape, or a click in the room around it, flies it back.
 - **The front** is the cover large: the 640 at once, and the 1600, decoded while the record was in front (rule 5), over it once it's ready. No filter (rule 3).
-- **Turning it over** (a click on it, or Enter) shows its back. The back is built the first time it's turned (rule 4). A click on the back's paper, or Enter, turns it to the front again.
+- **Turning it over** (a click on it, or Enter) shows its back. The back is built the first time it's turned (rule 4). A click on the back's paper, or Enter, turns it to the front again. Each side is lifted 1px towards whoever it faces (`translateZ(1px)`): with both in the same plane, WebKit sometimes drew the front over the back, mirrored, and `backface-visibility` alone didn't stop it.
 - **The back** is printed in the album's colours: the artist in its accent, the title, the tracklist in sides (each disc split where its running time passes halfway, so A and B, then C and D), each track with its place on its side ("B3") and its length. Under them, the year and label. At the foot, **Open in Spotify**, and under it, quietly, **Take it out of the crate**, which asks "Take it out of the crate?" with **Take it out** and **Keep it**. A long tracklist is set smaller so it fits.
 - **Picking a track** plays the album from that track on the device chosen under the sleeve. Until DWX-22 and DWX-23, that's the device picker and the playback bar.
 
