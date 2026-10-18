@@ -8,8 +8,11 @@ import type { Run } from "./remote";
 /** What a scenario can do to the spike. */
 export type Controller = {
   count: () => number;
-  /** Flips to this record now, and says how long the page's own work took, in ms. */
-  flip: (index: number) => number;
+  /**
+   * Flips to this record now, and says how long the page's own work took, in
+   * ms: React's update, then the style and layout it caused.
+   */
+  flip: (index: number) => { react: number; style: number };
   /** The albums in the crate, without its dividers. */
   records: () => number;
   setFocus: (index: number) => void;
@@ -43,6 +46,7 @@ async function flip(c: Controller, run: Run) {
   let at = 0;
   let by = 1;
   const work: number[] = [];
+  const react: number[] = [];
   c.setFocus(0);
   await wait(600);
   c.takeLongestCommit();
@@ -50,12 +54,15 @@ async function flip(c: Controller, run: Run) {
     for (let i = 0; i < steps; i++) {
       if (at + by > last || at + by < 0) by = -by;
       at += by;
-      work.push(c.flip(at));
+      const ms = c.flip(at);
+      react.push(ms.react);
+      work.push(ms.react + ms.style);
       await wait(stepMs);
     }
     await wait(300);
   });
   work.sort((a, b) => a - b);
+  react.sort((a, b) => a - b);
   return {
     frames,
     stepMs,
@@ -64,6 +71,7 @@ async function flip(c: Controller, run: Run) {
     flipWorkMs: {
       median: Math.round(work[Math.floor(work.length / 2)] * 10) / 10,
       longest: Math.round(work[work.length - 1] * 10) / 10,
+      reactMedian: Math.round(react[Math.floor(react.length / 2)] * 10) / 10,
     },
   };
 }

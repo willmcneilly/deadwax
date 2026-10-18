@@ -32,6 +32,7 @@ type Plan = {
 
 // Simplifications, in the order the runs apply them on top of the prototype.
 const FINAL: Effects = {
+  textures: "blob",
   grain: "still",
   glow: "images",
   backdrop: false,
@@ -40,8 +41,8 @@ const FINAL: Effects = {
   pollRedraw: false,
 };
 
-/** Flipping's runs each change one thing on top of decoding ahead. */
-const AHEAD: Effects = { decodeAhead: true };
+/** Flipping's later runs each change one thing on top of these two. */
+const AHEAD: Effects = { textures: "blob", decodeAhead: true };
 
 /** Every run: each scenario as the prototype had it, then simplified. */
 export const PLANS: Plan[] = [
@@ -53,6 +54,7 @@ export const PLANS: Plan[] = [
       const name = `flip ${many ? "400" : "real"} ${stepMs}ms`;
       return [
         { ...base, label: `${name}: prototype`, effects: {} },
+        { ...base, label: `${name}: + blob textures`, effects: { textures: "blob" } },
         { ...base, label: `${name}: + decode ahead`, effects: AHEAD },
         { ...base, label: `${name}: + one size`, effects: { ...AHEAD, sizes: "640" } },
         { ...base, label: `${name}: + still grain`, effects: { ...AHEAD, grain: "still" } },
@@ -123,7 +125,7 @@ type Result = {
   largeWorstMs?: number;
   flightDropped?: number;
   flightLongestMs?: number;
-  flipWorkMs?: { median: number; longest: number };
+  flipWorkMs?: { median: number; longest: number; reactMedian: number };
   opening?: Frames;
   scrolling?: Frames;
   window?: { width: number; height: number; dpr: number };
@@ -197,7 +199,7 @@ function row(plan: Plan, results: Result[]): string {
 function describe(plan: Plan, results: Result[], each: (f: (r: Result) => string) => string): string {
   switch (plan.scenario) {
     case "flip":
-      return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | flip work ${each((r) => `${r.flipWorkMs?.median}/${r.flipWorkMs?.longest}`)} ms |`;
+      return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | flip work ${each((r) => `${r.flipWorkMs?.median}/${r.flipWorkMs?.longest} (React ${r.flipWorkMs?.reactMedian})`)} ms |`;
     case "idle":
     case "glow":
       return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | commit ${each((r) => `${r.longestCommitMs ?? "-"}`)} ms |`;

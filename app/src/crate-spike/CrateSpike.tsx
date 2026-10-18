@@ -373,9 +373,12 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
   const busts = useRef(0);
 
   useEffect(() => {
-    installTextures();
     loadCollection().then(setCollection, (e: unknown) => setError(String(e)));
   }, []);
+
+  useEffect(() => {
+    void installTextures(effects.textures);
+  }, [effects.textures]);
 
   const items = useMemo(
     () => (collection ? crateItems(many ? stretch(collection) : collection) : []),
@@ -486,8 +489,9 @@ export default function CrateSpike({ run, onClose }: { run: Run | null; onClose:
         // timed: the part of a flip's frame that's the page's own work.
         const start = performance.now();
         flushSync(() => setFocus(index));
+        const committed = performance.now();
         document.querySelector(".spike-stack")?.getBoundingClientRect();
-        return performance.now() - start;
+        return { react: committed - start, style: performance.now() - committed };
       },
       records: () => items.filter((i) => i.kind === "album").length,
       setFocus,

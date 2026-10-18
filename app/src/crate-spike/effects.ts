@@ -25,6 +25,8 @@ export type Effects = {
   motion: "transition" | "none";
   /** The crate in 3D, as the prototype has it, or flat: the same places in 2D. */
   scene: "3d" | "flat";
+  /** The grain and wear images, as the prototype's `data:` URLs or as `blob:` URLs. */
+  textures: "data" | "blob";
   /** Replace the playback state on every poll, even when nothing changed. */
   pollRedraw: boolean;
 };
@@ -43,6 +45,7 @@ export const PROTOTYPE: Effects = {
   behind: 11,
   motion: "transition",
   scene: "3d",
+  textures: "data",
   pollRedraw: true,
 };
 

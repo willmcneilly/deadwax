@@ -132,12 +132,29 @@ export function vignetteImage(width = 160, height = 100): string {
   return el.toDataURL("image/png");
 }
 
-/** Sets the grain and wear images as CSS variables, once. */
-export function installTextures(): void {
+const drawn: { grain?: string; wear?: string[] } = {};
+const blobs = new Map<string, string>();
+
+async function asBlob(dataUrl: string): Promise<string> {
+  const kept = blobs.get(dataUrl);
+  if (kept) return kept;
+  const url = URL.createObjectURL(await (await fetch(dataUrl)).blob());
+  blobs.set(dataUrl, url);
+  return url;
+}
+
+/**
+ * Sets the grain and wear images as CSS variables on the root, as the
+ * prototype does: as `data:` URLs (the prototype's, each up to a megabyte of
+ * text) or as short `blob:` URLs to the same images.
+ */
+export async function installTextures(kind: "data" | "blob"): Promise<void> {
+  drawn.grain ??= grainTile();
+  drawn.wear ??= Array.from({ length: WEAR_VARIANTS }, (_, i) => wearImage(i + 1));
+  const url = (dataUrl: string) => (kind === "data" ? Promise.resolve(dataUrl) : asBlob(dataUrl));
   const root = document.documentElement.style;
-  if (root.getPropertyValue("--spike-grain")) return;
-  root.setProperty("--spike-grain", `url(${grainTile()})`);
-  for (let i = 0; i < WEAR_VARIANTS; i++) {
-    root.setProperty(`--spike-wear-${i}`, `url(${wearImage(i + 1)})`);
+  root.setProperty("--spike-grain", `url(${await url(drawn.grain)})`);
+  for (const [i, wear] of drawn.wear.entries()) {
+    root.setProperty(`--spike-wear-${i}`, `url(${await url(wear)})`);
   }
 }
