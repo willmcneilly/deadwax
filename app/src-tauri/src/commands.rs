@@ -26,7 +26,7 @@ use deadwax_sources::spotify::playback::{Device, Playback, StartAt};
 use deadwax_sources::spotify::tokens::{KeychainStore, TokenStore};
 use deadwax_sources::spotify::{Endpoints, Spotify, SpotifyError};
 use serde::Serialize;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{Mutex, RwLock, oneshot};
 
@@ -690,7 +690,7 @@ pub enum PlayOutcome {
     },
 }
 
-/// What Spotify is playing, for the playback bar and now playing.
+/// What Spotify is playing, for now playing and the sleeve it floats in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NowPlaying {
@@ -704,6 +704,12 @@ pub struct NowPlaying {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NowPlayingTrack {
+    /// The track's Spotify ID, which the sleeve highlights it by. `None` for
+    /// a local file, which Spotify gives no ID.
+    pub spotify_id: Option<String>,
+    /// Which disc of the album it's on, and its place on that disc, from 1.
+    pub disc: u32,
+    pub number: u32,
     pub title: String,
     pub artist: String,
     pub album: Option<String>,
@@ -728,6 +734,9 @@ fn now_playing(playback: Playback, collection: &std::sync::Mutex<Collection>) ->
         track: playback.track.map(|track| {
             let Some(album) = track.album else {
                 return NowPlayingTrack {
+                    spotify_id: track.spotify_id,
+                    disc: track.disc,
+                    number: track.number,
                     title: track.title,
                     artist: track.artist,
                     album: None,
@@ -750,6 +759,9 @@ fn now_playing(playback: Playback, collection: &std::sync::Mutex<Collection>) ->
                 .filter(Collected::has_local_cover)
                 .map(|collected| cover::url(&collected.id, Size::Large));
             NowPlayingTrack {
+                spotify_id: track.spotify_id,
+                disc: track.disc,
+                number: track.number,
                 title: track.title,
                 artist: track.artist,
                 cover_url: local
@@ -876,8 +888,8 @@ async fn play<C: Clock, S: TokenStore>(
     Ok(PlayOutcome::Playing { devices: choices() })
 }
 
-/// What Spotify is playing, anywhere, or `None` if nothing is. The playback
-/// bar asks every couple of seconds while it's on screen.
+/// What Spotify is playing, anywhere, or `None` if nothing is. The crate
+/// asks every couple of seconds while the window is showing.
 #[tauri::command]
 pub async fn get_playback(state: State<'_, AppState>) -> Result<Option<NowPlaying>, String> {
     let spotify = state.signed_in().await?;
@@ -886,16 +898,6 @@ pub async fn get_playback(state: State<'_, AppState>) -> Result<Option<NowPlayin
         .await
         .map_err(spotify_error)?
         .map(|playback| now_playing(playback, &state.collection)))
-}
-
-/// Opens or leaves now playing's fullscreen. It's macOS's "simple"
-/// fullscreen, which fills the screen without the animation into a new
-/// Space (RFC-001, "Now playing").
-#[tauri::command]
-pub fn set_now_playing_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<(), String> {
-    window
-        .set_simple_fullscreen(fullscreen)
-        .map_err(|e| format!("Couldn't change fullscreen: {e}"))
 }
 
 #[tauri::command]
@@ -2180,6 +2182,8 @@ mod tests {
                         },
                     ],
                 }),
+                disc: 1,
+                number: 3,
                 duration_ms: 255_386,
             }),
         }
@@ -2234,6 +2238,17 @@ mod tests {
 
         assert_eq!(track.album_id, Some(in_rainbows_id(&collection)));
         assert_eq!(track.spotify_album_id.as_deref(), Some(IN_RAINBOWS));
+    }
+
+    #[test]
+    fn now_playing_carries_the_tracks_spotify_id_disc_and_number() {
+        // In the collection or not: the sleeve highlights the track by them.
+        let track = now_playing(playing_in_rainbows(), &empty_collection())
+            .track
+            .unwrap();
+
+        assert_eq!(track.spotify_id.as_deref(), Some("6O4dsyobpDXX1WxHRP3bzk"));
+        assert_eq!((track.disc, track.number), (1, 3));
     }
 
     #[test]
@@ -2300,6 +2315,9 @@ mod tests {
                 device: Some("Living Room".into()),
                 progress_ms: Some(61_480),
                 track: Some(NowPlayingTrack {
+                    spotify_id: Some("6O4dsyobpDXX1WxHRP3bzk".into()),
+                    disc: 1,
+                    number: 3,
                     title: "Nude".into(),
                     artist: "Radiohead".into(),
                     album: Some("In Rainbows".into()),
@@ -2315,6 +2333,9 @@ mod tests {
                 "device": "Living Room",
                 "progressMs": 61_480,
                 "track": {
+                    "spotifyId": "6O4dsyobpDXX1WxHRP3bzk",
+                    "disc": 1,
+                    "number": 3,
                     "title": "Nude",
                     "artist": "Radiohead",
                     "album": "In Rainbows",
