@@ -473,6 +473,25 @@ describe("Changing device", () => {
     );
     expect(within(sheet).getByText("Play somewhere else?")).toBeInTheDocument();
     expect(calls.filter((c) => c.cmd === "transfer_playback")).toHaveLength(1);
+
+    // It didn't move, so Play still goes to the Living Room.
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(noList);
+    fireEvent.click(
+      within(await chip()).getByRole("button", { name: "Bring out In Rainbows" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Turn In Rainbows over" }, { timeout: 3000 }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Play 15 Step" }));
+    await waitFor(() =>
+      expect(plays(calls)).toEqual([
+        {
+          cmd: "play_album",
+          args: { id: IN_RAINBOWS.id, device: "Living Room", trackId: "t1" },
+        },
+      ]),
+    );
   });
 
   it("only closes the list when you choose the device it's already on", async () => {

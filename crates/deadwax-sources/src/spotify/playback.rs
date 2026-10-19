@@ -336,7 +336,15 @@ mod tests {
     const LIVING_ROOM: &str = "b46689a4cdd1d64b2fdf7e4f1d3e8f8bd8e3f3d1";
 
     async fn signed_in(server: &MockServer) -> Spotify<FakeClock, MemoryStore> {
-        let clock = FakeClock::new(Arc::new(Mutex::new(Vec::new())));
+        signed_in_with_log(server, Arc::new(Mutex::new(Vec::new()))).await
+    }
+
+    /// Signed in, with each sleep on the (fake) clock written to `log`.
+    async fn signed_in_with_log(
+        server: &MockServer,
+        log: Arc<Mutex<Vec<String>>>,
+    ) -> Spotify<FakeClock, MemoryStore> {
+        let clock = FakeClock::new(log);
         let endpoints = Endpoints {
             accounts: server.uri(),
             api: server.uri(),
@@ -488,9 +496,14 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        let spotify = signed_in(&server).await;
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let spotify = signed_in_with_log(&server, log.clone()).await;
 
         spotify.transfer(LIVING_ROOM, true).await.unwrap();
+
+        // It waited the second Spotify asked for, then tried again.
+        assert_eq!(*log.lock().unwrap(), ["sleep 1s"]);
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
     }
 
     #[tokio::test]
