@@ -168,6 +168,7 @@ pub fn run() {
             commands::get_devices,
             commands::choose_device,
             commands::play_album,
+            commands::transfer_playback,
             commands::get_playback,
             commands::pause_playback,
             commands::resume_playback,
