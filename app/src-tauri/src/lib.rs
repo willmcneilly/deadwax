@@ -166,6 +166,7 @@ pub fn run() {
             commands::remove_album,
             commands::open_album_in_spotify,
             commands::get_devices,
+            commands::get_remembered_device,
             commands::choose_device,
             commands::play_album,
             commands::transfer_playback,

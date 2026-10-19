@@ -823,6 +823,14 @@ async fn devices<C: Clock, S: TokenStore>(
     })
 }
 
+/// The device Play goes to, by name, or `None` until you've chosen one. It
+/// reads only Deadwax's config, so it doesn't ask Spotify, and the needle
+/// drops without waiting for it.
+#[tauri::command]
+pub fn get_remembered_device(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    remembered_device(&state.config_path)
+}
+
 /// Remembers the device you chose in the device list, by name.
 #[tauri::command]
 pub fn choose_device(state: State<'_, AppState>, name: String) -> Result<(), String> {
@@ -1908,7 +1916,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_picker_lists_the_devices_and_the_one_you_chose_last() {
+    async fn the_device_list_lists_the_devices_and_the_one_you_chose_last() {
         let server = MockServer::start().await;
         let spotify = fake_player(&server).await;
         let dir = tempfile::tempdir().unwrap();

@@ -12,13 +12,17 @@ import { flushSync } from "react-dom";
 import {
   addAlbum,
   ALBUM_UPDATED,
+  chooseDevice,
   errorMessage,
   getCollection,
+  getRememberedDevice,
   getSession,
   nextTrack,
   pausePlayback,
+  playAlbum,
   previousTrack,
   resumePlayback,
+  transferPlayback,
   type AlbumCard,
   type AlbumId,
   type AlbumTrack,
@@ -35,6 +39,7 @@ import {
   type CrateItem,
   type Order,
 } from "./crateOrder";
+import DeviceList, { type DeviceAsk } from "./DeviceList";
 import DevList from "./DevList";
 import Glow, { type GlowLevel } from "./Glow";
 import { Chip } from "./NowLine";
@@ -78,6 +83,15 @@ type Out = {
 type StrangerOut = { record: StrangerRecord; returning: boolean };
 
 /**
+ * The device list is up: why, and the track to play once you choose, when
+ * it came up because you pressed Play.
+ */
+type Asking = {
+  ask: DeviceAsk;
+  play: { album: AlbumCard; track: AlbumTrack } | null;
+};
+
+/**
  * How long to wait for Spotify to confirm a track you've pressed before
  * showing whatever it says is playing.
  */
@@ -98,8 +112,11 @@ const DECODED = 4;
  * to put it back. Pressing a track on its back drops the needle, and the
  * record floats in its glow while it plays: Space pauses, ← → skip. It
  * follows changes made elsewhere, and what's playing shows as a chip over
- * the crate when it's put back. The old search box opens from Find a record
- * until DWX-24 replaces it.
+ * the crate when it's put back. Play goes to the remembered device, which
+ * stays out of sight: the device list comes up only when you ask for it
+ * (the device named under the record or on the chip, or D), on the first
+ * play, or when the device isn't showing up. The old search box opens from
+ * Find a record until DWX-24 replaces it.
  */
 function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
@@ -117,6 +134,22 @@ function Library({ name, onSignedOut }: Props) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [stranger, setStranger] = useState<StrangerOut | null>(null);
   const [adding, setAdding] = useState(false);
+  const [asking, setAsking] = useState<Asking | null>(null);
+  /**
+   * The device Play goes to, by name: undefined until Rust has said, and
+   * null when no device is remembered yet. Asked for once, up front, so the
+   * needle drops without waiting.
+   */
+  const remembered = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    getRememberedDevice().then(
+      (name) => {
+        if (remembered.current === undefined) remembered.current = name;
+      },
+      // Play asks again.
+      () => {},
+    );
+  }, []);
   /** What to bring out once the record out now has gone: what's playing instead. */
   const queued = useRef<Live | null>(null);
   /** Development builds' measuring: a pretend answer, to measure the glow. */
@@ -301,7 +334,7 @@ function Library({ name, onSignedOut }: Props) {
   // can't fire during it.
   const confirmWait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(confirmWait.current), []);
-  const starting = (album: AlbumCard) => (track: AlbumTrack, device: string) => {
+  const starting = (album: AlbumCard, track: AlbumTrack, device: string) => {
     clearTimeout(confirmWait.current);
     setPending({ album, track, device, resolvedAt: null });
     setTurns((t) => (t % 2 ? t + 1 : t));
@@ -326,6 +359,78 @@ function Library({ name, onSignedOut }: Props) {
     setTurns((t) => (t % 2 ? t : t + 1));
     setPulled((o) => o && { ...o, nowPlaying: false });
   };
+
+  /**
+   * Drops the needle on a track: plays the album from there on the
+   * remembered device, or on `device` when you've just chosen one. With no
+   * device remembered, it asks where it should play first. If Spotify isn't
+   * listing the device, the record turns back and the device list says so,
+   * where you pressed Play.
+   */
+  async function playTrack(album: AlbumCard, track: AlbumTrack, device?: string) {
+    let on = device ?? remembered.current;
+    if (on === undefined) {
+      try {
+        on = remembered.current = await getRememberedDevice();
+      } catch (e) {
+        void failed(e);
+        return;
+      }
+    }
+    if (on === null) {
+      setAsking({ ask: { kind: "first" }, play: { album, track } });
+      return;
+    }
+    starting(album, track, on);
+    try {
+      const outcome = await playAlbum(album.id, on, track.spotifyId);
+      if (outcome.state === "playing") {
+        remembered.current = on;
+        started();
+      } else {
+        notStarted();
+        setAsking({ ask: { kind: "missing", device: on }, play: { album, track } });
+      }
+    } catch (e) {
+      notStarted();
+      void failed(e);
+    }
+  }
+
+  /**
+   * You chose a device in the device list. Play goes there from now on. If
+   * it came up because you pressed Play, it plays there. If something's
+   * playing on another device, it moves there from the same place in the
+   * track, paused or playing as it was.
+   */
+  async function chose(name: string) {
+    const was = asking;
+    setAsking(null);
+    if (was?.play) {
+      void playTrack(was.play.album, was.play.track, name);
+      return;
+    }
+    const now = playback.heard?.now;
+    try {
+      if (now && now.device !== name) {
+        const outcome = await transferPlayback(name, now.isPlaying);
+        playback.askNow();
+        if (outcome.state === "deviceMissing") {
+          setAsking({ ask: { kind: "missing", device: name }, play: null });
+          return;
+        }
+      } else {
+        await chooseDevice(name);
+      }
+      remembered.current = name;
+    } catch (e) {
+      void failed(e);
+    }
+  }
+
+  /** Brings up the device list to play somewhere else, or puts it away. */
+  const changeDevice = () =>
+    setAsking((a) => (a ? null : { ask: { kind: "choose" }, play: null }));
 
   /**
    * Follows a change made elsewhere, such as your phone, while a record is
@@ -459,7 +564,7 @@ function Library({ name, onSignedOut }: Props) {
     let acc = 0;
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (out || stranger || searching) return;
+      if (out || stranger || searching || asking) return;
       if (e.shiftKey) {
         acc += e.deltaY || e.deltaX;
         if (Math.abs(acc) > 80) {
@@ -479,7 +584,7 @@ function Library({ name, onSignedOut }: Props) {
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
-  }, [out, stranger, searching, step, jump]);
+  }, [out, stranger, searching, asking, step, jump]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -498,6 +603,8 @@ function Library({ name, onSignedOut }: Props) {
         else if (stranger) setStranger((s) => s && { ...s, returning: true });
       } else if (searching) {
         return;
+      } else if (e.key === "d" || e.key === "D") {
+        changeDevice();
       } else if (e.key === " " && togglePause()) {
         // So a focused track isn't pressed again as well.
         e.preventDefault();
@@ -639,9 +746,8 @@ function Library({ name, onSignedOut }: Props) {
                 onRemoved={removed}
                 live={liveOut || advertOut ? live : null}
                 floating={floating}
-                onStarting={starting(outAlbum)}
-                onStarted={started}
-                onNotStarted={notStarted}
+                onPlay={(track) => void playTrack(outAlbum, track)}
+                onDevice={changeDevice}
                 onFailed={failed}
                 onLargeReady={() => largeReady.current?.()}
               />
@@ -668,6 +774,7 @@ function Library({ name, onSignedOut }: Props) {
                     : null
                 }
                 adding={adding}
+                onDevice={changeDevice}
                 onFailed={failed}
               />
             </>
@@ -754,6 +861,15 @@ function Library({ name, onSignedOut }: Props) {
           live={live}
           cover={chipCover(live, albums)}
           onOpen={() => bringOut(live)}
+          onDevice={changeDevice}
+        />
+      )}
+      {asking && (
+        <DeviceList
+          ask={asking.ask}
+          onChosen={(name) => void chose(name)}
+          onClose={() => setAsking(null)}
+          onFailed={failed}
         />
       )}
       {import.meta.env.DEV && <CrateMeter crate={meter} />}

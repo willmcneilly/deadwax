@@ -315,24 +315,6 @@
   font-size: 0.85rem;
 }
 
-.sleeve-desk .device-picker {
-  display: flex;
-  align-items: center;
-  gap: var(--space);
-}
-
-.sleeve-desk .device-note {
-  margin: 0;
-  max-width: 34rem;
-  text-align: center;
-  opacity: 0.8;
-}
-
-.library .sleeve-desk button.secondary {
-  color: var(--room-ink);
-  border-color: var(--line);
-}
-
 /* Now playing's line takes the desk while the record floats. */
 .sleeve-out.floating .sleeve-desk {
   bottom: calc(var(--space) * 5);

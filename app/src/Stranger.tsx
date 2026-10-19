@@ -34,10 +34,21 @@ type Props = {
   /** Adds it to the crate. Null when it can't be added (no album). */
   onAdd: (() => void) | null;
   adding: boolean;
+  /** You've asked to play somewhere else, from "on Kitchen". */
+  onDevice: () => void;
   onFailed: (error: unknown) => void;
 };
 
-function Stranger({ record, live, returning, onReturned, onAdd, adding, onFailed }: Props) {
+function Stranger({
+  record,
+  live,
+  returning,
+  onReturned,
+  onAdd,
+  adding,
+  onDevice,
+  onFailed,
+}: Props) {
   const lift = useRef<HTMLDivElement>(null);
   const returned = useRef(onReturned);
   useEffect(() => {
@@ -90,6 +101,7 @@ function Stranger({ record, live, returning, onReturned, onAdd, adding, onFailed
             tracks={null}
             onAdd={onAdd ?? undefined}
             adding={adding}
+            onDevice={onDevice}
             onFailed={onFailed}
           />
         )}

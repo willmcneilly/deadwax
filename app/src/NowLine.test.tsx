@@ -8,6 +8,7 @@ import { backEnd, card } from "./mockBackEnd";
 import { POLL_MS } from "./playing";
 
 const LIVING_ROOM = { name: "Living Room", kind: "Speaker", isActive: true, canPlay: true };
+const MACBOOK = { name: "Will's MacBook Pro", kind: "Computer", isActive: false, canPlay: true };
 const track = (n: number) => IN_RAINBOWS_DETAILS.tracks[n - 1];
 const NUDE = track(3);
 const RECKONER = track(7);
@@ -70,6 +71,7 @@ function playingBackEnd(replies: Record<string, (args?: unknown) => unknown> = {
     refresh_album: () => null,
     get_playback: answer,
     get_session: () => ({ state: "signedIn", name: "Will" }),
+    get_remembered_device: () => "Living Room",
     get_devices: () => ({ devices: [LIVING_ROOM], remembered: "Living Room" }),
     choose_device: () => null,
     play_album: (): PlayOutcome => ({ state: "playing", devices: [LIVING_ROOM] }),
@@ -106,9 +108,6 @@ async function turnOverInRainbows() {
   );
   fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
   await screen.findByRole("button", { name: "Play 15 Step" });
-  await waitFor(() =>
-    expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("Living Room"),
-  );
 }
 
 /** Drops the needle on Nude, and Spotify confirms it. */
@@ -232,9 +231,6 @@ describe("Dropping the needle", () => {
       await screen.findByRole("button", { name: "Pull out Pink Moon by Nick Drake" }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Turn Pink Moon over" }));
-    await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("Living Room"),
-    );
     fireEvent.click(await screen.findByRole("button", { name: "Play Pink Moon" }));
     await waitFor(() => expect(side()).toBe("Side A · 1 · starting"));
 
@@ -247,6 +243,7 @@ describe("Dropping the needle", () => {
   it("turns back to the tracklist, saying so, when the device is missing", async () => {
     playingBackEnd({
       play_album: (): PlayOutcome => ({ state: "deviceMissing", devices: [] }),
+      get_devices: () => ({ devices: [MACBOOK], remembered: "Living Room" }),
     });
     render(<Library name="Will" onSignedOut={() => {}} />);
     await turnOverInRainbows();
@@ -357,7 +354,7 @@ describe("Following changes made elsewhere", () => {
 
     await waitFor(() => expect(frontSide()).toHaveAttribute("aria-hidden", "true"));
     expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Device" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play Nude" })).toBeEnabled();
   });
 
   it("shows an advert as An advert", async () => {
