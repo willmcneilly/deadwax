@@ -103,3 +103,58 @@ body {
   --font-label: ui-monospace, "SF Mono", Menlo, monospace;
   --font-hand: "Bradley Hand", "Noteworthy", cursive;
 }
+
+/*
+ * The gatefold's liner notes (DWX-26, prototypes/crate/src/gatefold.css).
+ * Each style prints the essay on its own paper. Album colours and Album ×
+ * Archive use the album's own colours instead (AlbumColours), falling back
+ * to the sleeve colours above until they're worked out.
+ */
+:root {
+  /* Liner notes: a reissue booklet. */
+  --notes-liner-paper: #efe6d2;
+  --notes-liner-rear: #e2d6bd;
+  --notes-liner-ink: #2b2219;
+  --notes-liner-muted: #6a5a48;
+  --notes-liner-accent: #8a3b1f;
+
+  /*
+   * Magazine: a long-read feature. The prototype took its accent from the
+   * album, darkened to 4.5:1 on this paper; Rust's palette has no such
+   * colour yet, so it's one fixed accent (7:1 here).
+   */
+  --notes-magazine-paper: #f6f4ef;
+  --notes-magazine-rear: #e8e5dd;
+  --notes-magazine-ink: #151413;
+  --notes-magazine-muted: #5d5a55;
+  --notes-magazine-accent: #8a3b1f;
+
+  /* Archive: a catalogue, Swiss and numbered. */
+  --notes-archive-paper: #eceae4;
+  --notes-archive-rear: #dcd9d1;
+  --notes-archive-ink: #1a1a1a;
+  --notes-archive-muted: #595855;
+  --notes-archive-accent: #c73614;
+
+  /* The panels' folds: shade while folded, and the crease at each edge. */
+  --notes-shade: #000;
+  --notes-crease: rgb(0 0 0 / 0.14);
+  --notes-crease-light: rgb(0 0 0 / 0.1);
+
+  /* The Liner notes button over the room. */
+  --notes-button: rgb(18 15 12 / 0.4);
+  --notes-button-hover: rgb(18 15 12 / 0.65);
+
+  /*
+   * The gatefold's type, bundled with the app (app/src/fonts.css). Serif
+   * sets the record in Fraunces with JetBrains Mono; Grotesk in IBM Plex
+   * Sans with Plex Mono. Magazine has its own: Newsreader, with Instrument
+   * Serif for display.
+   */
+  --font-notes-serif: "Fraunces Variable", Georgia, serif;
+  --font-notes-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-notes-sans: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  --font-notes-sans-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-notes-text: "Newsreader Variable", Georgia, serif;
+  --font-notes-display: "Instrument Serif", Georgia, serif;
+}

@@ -23,6 +23,11 @@
   pointer-events: none;
 }
 
+/* Its liner notes are open in the gatefold, which came out of its front. */
+.sleeve-out.away {
+  visibility: hidden;
+}
+
 .sleeve-lift {
   position: relative;
   width: var(--h);

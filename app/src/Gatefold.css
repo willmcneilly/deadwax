@@ -1,0 +1,560 @@
+/*
+ * The gatefold: liner notes that open from the sleeve and unfold sideways
+ * (DWX-26), ported from prototypes/crate/src/gatefold.css. The panels move
+ * by transforms only (DESIGN.md, rule 7), and nothing here filters the cover
+ * (rule 3). Colours are theme.css's --notes-* tokens, or the album's own
+ * (--album-*, from AlbumColours) in Album colours and Album × Archive.
+ */
+
+/* ---------- the gatefold: mechanics ---------- */
+
+.gatefold {
+  --open: 0;
+  --type-body: var(--font-notes-serif);
+  --type-label: var(--font-notes-mono);
+
+  position: fixed;
+  inset: 0;
+  /* Over the room's grain and now playing; under the error panels and the device list. */
+  z-index: 58;
+}
+
+/* The header (who's signed in, Find a record) steps out of the way while you read. */
+.library:has(.gatefold) .library-header {
+  visibility: hidden;
+}
+.gatefold.open { --open: 1; }
+/* Grotesk: the record in IBM Plex Sans with Plex Mono. */
+.gatefold.type-grotesk {
+  --type-body: var(--font-notes-sans);
+  --type-label: var(--font-notes-sans-mono);
+}
+
+/* The paper, printed in its style's colours (AlbumColours sets the album's). */
+.gf-print {
+  --w: min(76vh, 44vw); /* one panel; a spread is two */
+  --pad: calc(var(--w) * 0.075);
+  --inner: calc(var(--w) - var(--pad) * 2);
+  --inner-h: calc(var(--w) - var(--pad) * 2.5);
+  --gap: calc(var(--w) * 0.045);
+  --k: 2;
+  --fs: calc(var(--w) * 0.0205);
+  --paper: var(--notes-liner-paper);
+  --paper-rear: var(--notes-liner-rear);
+  --text: var(--notes-liner-ink);
+  --muted: var(--notes-liner-muted);
+  --hl: var(--notes-liner-accent);
+
+  position: absolute;
+  inset: 0;
+  color: var(--text);
+}
+
+.gf-stage {
+  position: absolute;
+  inset: 0;
+  perspective: 2600px;
+  transform-style: preserve-3d;
+}
+
+/* Closed, the sleeve sits in the middle. Open, the spine moves to the middle. */
+.gf-opener {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: var(--w);
+  height: var(--w);
+  margin-top: calc(var(--w) / -2);
+  transform: translateX(calc(var(--w) / -2 * (1 - var(--open))));
+  transition: transform 1.1s cubic-bezier(.45, .05, .2, 1);
+  transform-style: preserve-3d;
+}
+
+.gf-strip {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--s, 0) * var(--w) * -1));
+  transform-style: preserve-3d;
+}
+
+.gf-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transform-origin: left center;
+  transform: translateZ(1px) rotateY(calc(var(--open) * -179.6deg));
+  transition: transform 1.1s cubic-bezier(.45, .05, .2, 1);
+  transform-style: preserve-3d;
+}
+.gf-cover-out,
+.gf-cover-in {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.gf-cover-out .sleeve-face { --s: var(--w); }
+.gf-cover-in {
+  transform: rotateY(180deg);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.gf-panel {
+  --u: clamp(0, calc(var(--s, 0) - var(--i) + 2), 1);
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.gf-strip > .gf-panel { --u: 1; }
+.gf-panel.tucked { visibility: hidden; }
+.gf-panel .gf-panel {
+  left: 100%;
+  right: auto;
+  width: 100%;
+  transform-origin: left center;
+  /* Each unopened panel folds back behind the one before it, so the folded
+     stack always waits behind the last open page. */
+  transform: rotateY(calc(179.4deg * (1 - var(--u))));
+}
+
+.gf-face,
+.gf-rear,
+.gf-shade {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.gf-face { background: var(--paper); overflow: hidden; }
+.gf-rear { background: var(--paper-rear); transform: rotateY(180deg); }
+/* Darker while folded, and once you've read past it. */
+.gf-shade {
+  --gone: clamp(0, calc(var(--s, 0) - var(--i)), 1);
+  background: var(--notes-shade);
+  opacity: max(calc((1 - var(--u)) * 0.6), calc(var(--gone) * 0.8));
+  pointer-events: none;
+}
+
+/* Fold lines and paper. */
+/* Paper grain is kept fine and faint here: these pages are for reading. */
+.gf-crease {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--notes-crease), transparent 3.5%, transparent 96.5%, var(--notes-crease-light));
+}
+.gf-crease::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--grain) 0 0 / 128px;
+  opacity: 0.35;
+}
+
+.gf-window {
+  position: absolute;
+  left: var(--pad);
+  top: var(--pad);
+  width: var(--inner);
+  height: var(--inner-h);
+  overflow: hidden;
+}
+.gf-flow {
+  width: 100%;
+  height: 100%;
+  column-count: var(--k);
+  column-gap: var(--gap);
+  column-fill: auto;
+  font-size: var(--fs);
+  transform: translateX(calc(var(--pi) * (var(--inner) + var(--gap)) * -1));
+}
+.gf-measure {
+  position: fixed;
+  left: -300vw;
+  top: 0;
+  width: var(--w);
+  height: var(--w);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.gf-folio {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--pad) * 0.5);
+  text-align: center;
+  font-family: var(--type-label);
+  font-size: calc(var(--w) * 0.014);
+  color: var(--muted);
+}
+
+/* ---------- the bar under the spread ---------- */
+
+.gf-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px 18px;
+  color: var(--room-ink);
+  font-family: var(--type-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.6s 0.6s;
+}
+.gatefold.open .gf-bar { opacity: 1; }
+.gatefold.closing .gf-bar { opacity: 0; transition-delay: 0s; }
+.library .gf-bar button {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.gf-styles { display: flex; gap: 2px; flex-wrap: wrap; }
+.library .gf-styles button { padding: 4px 8px; opacity: 0.45; }
+.library .gf-styles button:hover { opacity: 0.8; }
+.library .gf-styles button[aria-pressed="true"] {
+  opacity: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.5em;
+}
+.gf-dots { display: flex; gap: 8px; }
+.library .gf-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+}
+.library .gf-dots button[aria-pressed="true"] { opacity: 1; }
+.gf-now { justify-self: end; text-align: right; }
+.library .gf-now button { opacity: 0.85; }
+.library .gf-now button:disabled { cursor: default; }
+.gf-now span { opacity: 0.55; margin-right: 0.6em; }
+
+/* ---------- shared typography ---------- */
+
+.gf-flow p,
+.gf-flow h2,
+.gf-flow blockquote,
+.gf-flow figure,
+.gf-flow dl,
+.gf-flow ol { margin: 0; }
+.gf-p { line-height: 1.5; hyphens: auto; margin-bottom: 0.75em !important; }
+.gf-h { break-after: avoid; }
+.gf-pull,
+.gf-quote,
+.gf-credits > div { break-inside: avoid; }
+.gf-track {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--hl) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+.gf-track-playing {
+  background: linear-gradient(transparent 12%, color-mix(in srgb, var(--hl) 26%, transparent) 12% 92%, transparent 92%);
+}
+.gf-end { break-before: column; }
+.gf-credits div { margin-bottom: 0.5em; }
+.gf-credits dt { font-size: 0.78em; color: var(--muted); }
+.gf-credits dd { margin: 0; }
+.gf-sources { padding-left: 1.4em !important; font-size: 0.78em; line-height: 1.4; }
+.gf-sources li { margin-bottom: 0.35em; }
+.gf-colophon { margin-top: 1.2em !important; font-size: 0.75em; font-style: italic; color: var(--muted); }
+
+.gf-title {
+  position: absolute;
+  inset: var(--pad);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs);
+}
+.gf-title p,
+.gf-title h1,
+.gf-title dl { margin: 0; }
+.gf-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 1em 1.4em; }
+.gf-facts dd { margin: 0; }
+
+/* ---------- 1. liner notes: a reissue booklet ---------- */
+
+.style-liner .gf-flow,
+.style-liner .gf-title { font-family: var(--type-body); font-variation-settings: "opsz" 12; }
+.style-liner .gf-p { text-align: justify; }
+.style-liner .gf-h {
+  margin: 1.3em 0 0.7em;
+  font-size: 0.86em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+}
+.style-liner .gf-h::before,
+.style-liner .gf-h::after { content: " — "; color: var(--hl); }
+.style-liner section:first-child .gf-h { margin-top: 0; }
+.style-liner .gf-first::first-letter {
+  float: left;
+  margin: 0.06em 0.08em 0 0;
+  font-size: 3.7em;
+  line-height: 0.8;
+  font-weight: 400;
+  color: var(--hl);
+}
+.style-liner .gf-pull {
+  margin: 0.9em 0 1em;
+  padding: 0.6em 0;
+  border-top: 1px solid color-mix(in srgb, var(--text) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 35%, transparent);
+  font-size: 1.32em;
+  font-style: italic;
+  font-weight: 300;
+  line-height: 1.25;
+  text-align: center;
+}
+.style-liner .gf-quote { margin: 0.6em 0 1em; text-align: center; font-style: italic; }
+.style-liner .gf-quote figcaption {
+  margin-top: 0.3em;
+  font-style: normal;
+  font-size: 0.75em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hl);
+}
+.style-liner .gf-title { justify-content: center; text-align: center; gap: 1.4em; }
+.style-liner .gf-kicker { font-size: 0.82em; letter-spacing: 0.2em; text-transform: uppercase; color: var(--hl); }
+.style-liner .gf-headline { font-size: 3.1em; font-weight: 300; line-height: 1.05; font-variation-settings: "opsz" 144; }
+.style-liner .gf-standfirst { font-size: 1.2em; font-style: italic; line-height: 1.4; padding: 0 6%; }
+.style-liner .gf-facts { margin: 0.6em 6% 0; padding-top: 1.2em; border-top: 1px solid color-mix(in srgb, var(--text) 30%, transparent); text-align: left; }
+.style-liner .gf-facts dt { font-size: 1.3em; color: var(--hl); }
+.style-liner .gf-facts dd { font-size: 0.82em; line-height: 1.3; color: var(--muted); }
+.style-liner .gf-byline { font-size: 0.72em; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- 2. magazine: a long-read feature ---------- */
+
+.style-magazine {
+  --k: 1;
+  --fs: calc(var(--w) * 0.0255);
+  --paper: var(--notes-magazine-paper);
+  --paper-rear: var(--notes-magazine-rear);
+  --text: var(--notes-magazine-ink);
+  --muted: var(--notes-magazine-muted);
+  --hl: var(--notes-magazine-accent);
+}
+.style-magazine .gf-flow { font-family: var(--font-notes-text); font-variation-settings: "opsz" 16; }
+.style-magazine .gf-p { line-height: 1.55; }
+.style-magazine .gf-h {
+  margin: 1em 0 0.35em;
+  font-family: var(--font-notes-display);
+  font-size: 2.3em;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1;
+  color: var(--hl);
+}
+.style-magazine section:first-child .gf-h { margin-top: 0; }
+.style-magazine .gf-first::first-letter {
+  float: left;
+  margin: 0.04em 0.1em 0 0;
+  font-family: var(--font-notes-display);
+  font-size: 5.2em;
+  line-height: 0.78;
+  color: var(--hl);
+}
+.style-magazine .gf-pull {
+  margin: 0.5em 0 0.8em;
+  font-family: var(--font-notes-display);
+  font-size: 2.5em;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  color: var(--hl);
+}
+.style-magazine .gf-pull .gf-track { text-decoration: none; }
+.style-magazine .gf-quote {
+  margin: 0.8em 0 1em;
+  padding-left: 0.9em;
+  border-left: 3px solid var(--hl);
+  font-family: var(--font-notes-display);
+  font-size: 1.6em;
+  line-height: 1.12;
+}
+.style-magazine .gf-quote figcaption { margin-top: 0.4em; font-family: var(--type-label); font-size: 0.38em; letter-spacing: 0.16em; text-transform: uppercase; }
+.style-magazine .gf-end { font-family: var(--font-notes-text); }
+.style-magazine .gf-end .gf-h { font-size: 1.6em; }
+.style-magazine .gf-title { justify-content: flex-end; gap: 1.1em; }
+.style-magazine .gf-kicker { font-family: var(--type-label); font-size: 0.62em; letter-spacing: 0.22em; text-transform: uppercase; color: var(--hl); }
+.style-magazine .gf-headline { font-family: var(--font-notes-display); font-size: 4.6em; font-weight: 400; line-height: 0.92; letter-spacing: -0.02em; }
+.style-magazine .gf-standfirst { font-family: var(--font-notes-text); font-size: 1.15em; font-style: italic; line-height: 1.4; max-width: 30em; }
+.style-magazine .gf-facts { grid-template-columns: repeat(3, 1fr); padding-top: 1em; border-top: 2px solid var(--text); }
+.style-magazine .gf-facts dt { font-family: var(--font-notes-display); font-size: 1.7em; line-height: 1; color: var(--hl); }
+.style-magazine .gf-facts dd { font-family: var(--font-notes-text); font-size: 0.72em; line-height: 1.3; margin-top: 0.3em; }
+.style-magazine .gf-byline { font-family: var(--type-label); font-size: 0.55em; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- 3. archive: a catalogue, Swiss and numbered ---------- */
+
+.style-archive {
+  --arch-sans: var(--font-notes-sans);
+  --arch-mono: var(--font-notes-sans-mono);
+  --k: 3;
+  --fs: calc(var(--w) * 0.0172);
+  --gap: calc(var(--w) * 0.032);
+  --paper: var(--notes-archive-paper);
+  --paper-rear: var(--notes-archive-rear);
+  --text: var(--notes-archive-ink);
+  --muted: var(--notes-archive-muted);
+  --hl: var(--notes-archive-accent);
+}
+.style-archive .gf-flow,
+.style-archive .gf-title { font-family: var(--arch-sans); counter-reset: sec; }
+.style-archive .gf-p { line-height: 1.45; hyphens: auto; }
+.style-archive .gf-h {
+  counter-increment: sec;
+  margin: 1.4em 0 0.7em;
+  padding-top: 0.45em;
+  border-top: 2px solid var(--text);
+  font-family: var(--arch-mono);
+  font-size: 0.8em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.style-archive .gf-h::before { content: counter(sec, decimal-leading-zero) "  "; color: var(--hl); }
+.style-archive .gf-end .gf-h::before { content: "—  "; }
+.style-archive section:first-child .gf-h { margin-top: 0; }
+.style-archive .gf-first::first-line { font-weight: 500; }
+.style-archive .gf-track { text-decoration: none; font-weight: 500; }
+.style-archive .gf-track::before { content: "♪ "; font-weight: 400; color: var(--hl); font-size: 0.85em; }
+.style-archive .gf-pull {
+  margin: 0.5em 0 1em;
+  font-size: 1.55em;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--hl);
+}
+.style-archive .gf-pull .gf-track::before { content: none; }
+.style-archive .gf-quote { margin: 0.6em 0 1em; padding: 0.7em; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.style-archive .gf-quote p { font-weight: 500; line-height: 1.3; }
+.style-archive .gf-quote figcaption { margin-top: 0.4em; font-family: var(--arch-mono); font-size: 0.75em; }
+.style-archive .gf-sources { font-family: var(--arch-mono); font-size: 0.72em; }
+.style-archive .gf-title { gap: 1.2em; }
+.style-archive .gf-kicker { font-family: var(--arch-mono); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 0.5em; border-bottom: 2px solid var(--text); }
+.style-archive .gf-kicker em { font-style: normal; color: var(--hl); }
+.style-archive .gf-headline { font-size: 3.4em; font-weight: 700; line-height: 0.98; letter-spacing: -0.035em; }
+.style-archive .gf-standfirst { font-size: 1.15em; line-height: 1.35; max-width: 26em; }
+.style-archive .gf-facts { margin-top: auto; grid-template-columns: 1fr 1fr 1fr; gap: 0; border-top: 1px solid var(--text); }
+.style-archive .gf-facts div { padding: 0.6em 0.8em 0.8em 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 25%, transparent); }
+.style-archive .gf-facts dt { font-family: var(--arch-mono); font-size: 1.15em; font-weight: 500; color: var(--hl); }
+.style-archive .gf-facts dd { font-size: 0.78em; line-height: 1.3; }
+.style-archive .gf-byline { font-family: var(--arch-mono); font-size: 0.7em; color: var(--muted); }
+
+/* ---------- 4. album colours: printed in the sleeve's own colours ---------- */
+
+/* The album's colours, worked out for reading (Rust's palette step): body
+   text 7:1, accent and secondary text 4.5:1. The sleeve's colours until they
+   are. */
+.style-album,
+.in-album-colours {
+  --paper: var(--album-ground, var(--sleeve-ground));
+  --paper-rear: var(--album-rear, var(--sleeve-ground));
+  --text: var(--album-ink, var(--sleeve-ink));
+  --muted: var(--album-muted, var(--sleeve-muted));
+  --hl: var(--album-accent, var(--sleeve-accent));
+}
+.style-album .gf-flow,
+.style-album .gf-title { font-family: var(--type-body); font-variation-settings: "opsz" 14; }
+.style-album .gf-h {
+  margin: 1.4em 0 0.6em;
+  font-family: var(--type-label);
+  font-size: 0.68em;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hl);
+}
+.style-album section:first-child .gf-h { margin-top: 0; }
+.style-album .gf-first::first-letter {
+  float: left;
+  margin: 0.05em 0.08em 0 0;
+  font-size: 3.9em;
+  font-weight: 300;
+  line-height: 0.8;
+  color: var(--hl);
+}
+.style-album .gf-pull { margin: 0.6em 0 1em; font-size: 1.6em; font-weight: 300; line-height: 1.15; color: var(--hl); }
+.style-album .gf-quote { margin: 0.6em 0 1em; font-style: italic; }
+.style-album .gf-quote figcaption { font-family: var(--type-label); font-style: normal; font-size: 0.65em; letter-spacing: 0.16em; text-transform: uppercase; color: var(--hl); margin-top: 0.3em; }
+.style-album .gf-title { justify-content: space-between; }
+.style-album .gf-kicker { font-family: var(--type-label); font-size: 0.66em; letter-spacing: 0.22em; text-transform: uppercase; color: var(--hl); }
+.style-album .gf-headline { font-size: 3.6em; font-weight: 300; line-height: 1; letter-spacing: -0.015em; font-variation-settings: "opsz" 144; margin-top: auto !important; }
+.style-album .gf-standfirst { margin-top: 0.8em !important; font-size: 1.15em; font-style: italic; line-height: 1.4; }
+.style-album .gf-facts { margin-top: 1.4em !important; padding-top: 1em; border-top: 1px solid color-mix(in srgb, var(--text) 30%, transparent); grid-template-columns: repeat(3, 1fr); }
+.style-album .gf-facts dt { font-size: 1.3em; color: var(--hl); }
+.style-album .gf-facts dd { font-size: 0.75em; line-height: 1.3; color: var(--muted); }
+.style-album .gf-byline { margin-top: 1.2em !important; font-family: var(--type-label); font-size: 0.56em; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- Album × Archive follows the record's type system ---------- */
+
+.style-archive.in-album-colours {
+  --arch-sans: var(--type-body);
+  --arch-mono: var(--type-label);
+}
+/* Set in Fraunces, archive's three narrow columns get too tight: use two,
+   and swap the bold grotesk display for Fraunces' large optical size. */
+.gatefold:not(.type-grotesk) .in-album-colours {
+  --k: 2;
+  --fs: calc(var(--w) * 0.0195);
+}
+.gatefold:not(.type-grotesk) .in-album-colours :is(.gf-flow, .gf-title) { font-variation-settings: "opsz" 12; }
+.gatefold:not(.type-grotesk) .in-album-colours .gf-headline {
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 144;
+}
+.gatefold:not(.type-grotesk) .in-album-colours .gf-pull { font-weight: 400; font-variation-settings: "opsz" 72; }
+
+.gf-type { display: flex; align-items: center; gap: 2px; margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--line-strong); }
+.gf-type span { margin-right: 4px; opacity: 0.55; }
+.library .gf-type button { padding: 4px 8px; opacity: 0.45; }
+.library .gf-type button[aria-pressed="true"] { opacity: 1; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.5em; }
+.gf-controls { display: flex; flex-wrap: wrap; align-items: center; }
+.in-album-colours .gf-track::before { content: none; }
+
+/* ---------- the button that opens it ---------- */
+
+/* Top left, where the crate's sort buttons are until a record comes out. */
+.library .notes-open {
+  position: absolute;
+  top: calc(var(--space) * 2);
+  left: calc(var(--space) * 3);
+  z-index: 12;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--notes-button);
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  animation: notes-open-in 0.5s 0.6s backwards;
+}
+.library .notes-open:hover { background: var(--notes-button-hover); }
+
+@keyframes notes-open-in {
+  from { opacity: 0; }
+}
+
+.library .gf-close { margin-left: 1.2em; }

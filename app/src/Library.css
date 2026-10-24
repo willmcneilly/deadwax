@@ -208,20 +208,24 @@
   margin: 0;
 }
 
-/* The Develop menu's Artwork report: development builds only. */
-.artwork-report h2 {
+/* The Develop menu's Artwork and Liner notes reports: development builds only. */
+.artwork-report h2,
+.notes-report h2 {
   flex-basis: 100%;
   margin: 0;
   font-size: 1.25rem;
 }
 
-.artwork-report table {
+.artwork-report table,
+.notes-report table {
   flex-basis: 100%;
   border-collapse: collapse;
 }
 
 .artwork-report th,
-.artwork-report td {
+.artwork-report td,
+.notes-report th,
+.notes-report td {
   padding: calc(var(--space) / 2) var(--space);
   text-align: left;
   border-bottom: 1px solid var(--ink-muted);
