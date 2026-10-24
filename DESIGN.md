@@ -4,7 +4,7 @@
 
 Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter. **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still.
 
-This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), and the needle drop, now playing and a stranger's sleeve (DWX-22), are under "Patterns".
+This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), the needle drop, now playing and a stranger's sleeve (DWX-22), and the gatefold (DWX-26), are under "Patterns".
 
 ## The frame budget
 
@@ -221,6 +221,20 @@ Behind a playing record, five soft pools of the album's glow colours (`--album-g
 ### A stranger's sleeve
 
 When Spotify plays an album that isn't in the collection, it's a stranger's record (`app/src/Stranger.tsx`). It has no place in the crate, so it rises from below in a plain paper sleeve (`--plain-sleeve`): Spotify's cover as it is, with no wear and no filter, and the plain glow. It has no tracklist to turn over to. Its line says "Not in your crate", and offers **Add to the crate** beside **Open in Spotify**. Adding it turns it into a real sleeve where it floats, still playing; its colours follow once the album job queue has worked them out. Escape, or a click around it, sends it back down.
+
+### The gatefold
+
+A record with liner notes opens them like a gatefold (`app/src/Gatefold.tsx`, RFC-002 "5. Liner notes in the app"). The notes are a researched essay in the prototype's schema, one file per album that Rust reads (`get_notes`). A record without them shows nothing extra, and a file that isn't valid notes counts as none: the Develop menu's Liner notes report says what's wrong with it.
+
+- **Liner notes** is a quiet pill at the top left of the room while the record is out, where the sort buttons are until then. A record showing its back turns to its front first, because the gatefold opens from the front.
+- **It comes out of the sleeve, and goes back into it.** The gatefold starts exactly over the sleeve's front, wherever it is (floating while it plays, or still), so the sleeve can go at once without a jump. It flies to the middle while now playing's line, the Liner notes button and the header fade. The cover swings open to a title page (the headline, the standfirst and up to six facts), and the essay flows in columns across panels to the right. Escape or **Close** folds it back to the start, closes the cover, and flies back into the sleeve's front before the sleeve shows again, as the line, the button and the header fade back. Nothing in or out of the gatefold appears or goes with a snap.
+- **The cover's two sides** are each lifted 1px towards whoever they face, as the sleeve's are, and each is hidden outright once the cover has swung past edge-on, 0.4s into its 1.1s turn either way, so neither blinks out as it passes upright. Without that, WebKit drew the cover, mirrored, over the title page. The pages wait out of sight under the closed cover.
+- **Reading.** The scroll wheel or the arrow keys unfold the next panel, a mouse notch or a key one spread at a time, and a trackpad drags the fold with you and settles on a spread when you stop. The dots under it show where you are, and go to a spread. Panels folded flat behind the next aren't drawn, so they can't flicker through the open page. The reading position is written straight to a custom property (`--s`), so React doesn't render while the panels move, and they move by transforms only (rule 7).
+- **The playing track.** While the record out is what's playing, every mention of its track (`[[Track]]` in the essay, matched to the tracklist by title, without a store's "(Remastered)" or "- 2009 Remaster") is marked in the accent. At the bottom right, "Now playing Celeste · find it in the notes →" turns to its first mention.
+- **Five type styles**, picked at the bottom left and remembered in this browser: Liner notes (a reissue booklet), Magazine (a long-read feature), Archive (a numbered catalogue), Album colours, and Album × Archive, Archive's layout in the album's colours. It opens on Album × Archive, Will's choice in PR #9. Each is set in **Serif** (Fraunces with JetBrains Mono) or **Grotesk** (IBM Plex Sans with Plex Mono), also remembered; Magazine sets its text in Newsreader with Instrument Serif. The fonts are bundled with the app (`app/src/fonts.css`, from Fontsource), so nothing is fetched.
+- **Colours.** Liner notes, Magazine and Archive print on their own paper (`--notes-*` in `theme.css`). Album colours and Album × Archive print in the album's (`--album-*`, through `AlbumColours`), with the sleeve's colours until its palette is worked out. Magazine's accent is one fixed colour: the prototype took it from the album, darkened to 4.5:1 on Magazine's paper, and Rust's palette has no such colour yet.
+
+The gatefold hasn't been measured against the frame budget in WebKit yet: `scripts/crate-spike` has no run for it.
 
 ### Album colours
 

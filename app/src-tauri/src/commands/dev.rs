@@ -1,17 +1,20 @@
 //! The Develop menu's commands: resetting the collection, restoring it from
-//! the dev list, the Artwork report, and keeping the window in front for the
-//! crate spike (DWX-20). See RFC-001, "A dev list that
-//! survives resets" and "High-res artwork, as an experiment", and RFC-002,
-//! "2. Local artwork, in sizes" and "3. Genre and label".
+//! the dev list, the Artwork report, importing the prototype's liner notes
+//! and the Liner notes report, and keeping the window in front for the crate
+//! spike (DWX-20). See RFC-001, "A dev list that survives resets" and
+//! "High-res artwork, as an experiment", and RFC-002, "2. Local artwork, in
+//! sizes", "3. Genre and label" and "5. Liner notes in the app".
 //!
 //! Development builds only: `commands.rs` compiles this module under
 //! `debug_assertions`, so release builds don't contain it.
 
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use deadwax_core::collection::{AlbumId, ArtworkSource, Collection, Step};
 use deadwax_core::covers::Store;
 use deadwax_core::dev_list::Entry;
+use deadwax_core::notes::{self, NotesDir, NotesError};
 use deadwax_core::palette::Palette;
 use deadwax_sources::clock::Clock;
 use deadwax_sources::spotify::tokens::TokenStore;
@@ -28,6 +31,8 @@ pub const RESTORE_FROM_DEV_LIST: &str = "restore-from-dev-list";
 pub const ARTWORK_REPORT: &str = "artwork-report";
 /// The crate spike: DWX-20's measuring of the crate against the frame budget.
 pub const CRATE_SPIKE: &str = "crate-spike";
+pub const IMPORT_PROTOTYPE_NOTES: &str = "import-prototype-notes";
+pub const NOTES_REPORT: &str = "notes-report";
 
 /// What restoring did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -302,6 +307,190 @@ fn report(collection: &Collection, jobs: &AlbumJobs) -> Result<ArtworkReport, St
         });
     }
     Ok(ArtworkReport { albums, totals })
+}
+
+/// What importing the prototype's liner notes did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesImport {
+    /// The essays now in the notes folder, each with the album it's for.
+    pub imported: Vec<ImportedNotes>,
+    /// Essays about albums that aren't in the collection.
+    pub unmatched: Vec<UnmatchedNotes>,
+    /// Files in the prototype's folder that aren't valid notes.
+    pub invalid: Vec<NotesProblem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedNotes {
+    pub id: AlbumId,
+    pub title: String,
+    pub artist: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmatchedNotes {
+    /// The file's name in the prototype's folder.
+    pub file: String,
+    /// The album and artist the essay names.
+    pub album_title: String,
+    pub artist: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesProblem {
+    pub file: String,
+    pub message: String,
+}
+
+/// The prototype's five essays (PR #9), in this checkout.
+fn prototype_notes() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../prototypes/crate/public/notes")
+}
+
+/// Copies the prototype's essays into the notes folder, each named by the
+/// Deadwax ID of the album in the collection with the same title and artist.
+/// An album's notes are replaced if it had some.
+#[tauri::command]
+pub fn import_prototype_notes(state: State<'_, AppState>) -> Result<NotesImport, String> {
+    import_notes(&prototype_notes(), &state.collection, &state.notes)
+}
+
+fn notes_error(error: NotesError) -> String {
+    match error {
+        NotesError::Invalid(reason) => format!("It isn't valid liner notes: {reason}"),
+        NotesError::Io(error) => error.to_string(),
+    }
+}
+
+fn import_notes(
+    from: &Path,
+    collection: &std::sync::Mutex<Collection>,
+    to: &NotesDir,
+) -> Result<NotesImport, String> {
+    let files = NotesDir::new(from)
+        .files()
+        .map_err(|e| format!("Couldn't read the prototype's notes: {}", notes_error(e)))?;
+    if files.is_empty() {
+        return Err(format!(
+            "There are no notes to import in {}.",
+            from.display()
+        ));
+    }
+    let albums = collection
+        .lock()
+        .expect("collection lock")
+        .albums()
+        .map_err(collection_error)?;
+    let mut import = NotesImport {
+        imported: Vec::new(),
+        unmatched: Vec::new(),
+        invalid: Vec::new(),
+    };
+    for file in files {
+        let found = match file.notes {
+            Ok(found) => found,
+            Err(error) => {
+                import.invalid.push(NotesProblem {
+                    file: file.name,
+                    message: notes_error(error),
+                });
+                continue;
+            }
+        };
+        let album = albums
+            .iter()
+            .find(|a| notes::is_about(&found, &a.album.title, &a.album.artist));
+        let Some(album) = album else {
+            import.unmatched.push(UnmatchedNotes {
+                file: file.name,
+                album_title: found.album_title,
+                artist: found.artist,
+            });
+            continue;
+        };
+        to.write(&album.id, &found).map_err(|e| {
+            format!(
+                "Couldn't write the notes for {}: {}",
+                album.album.title,
+                notes_error(e)
+            )
+        })?;
+        import.imported.push(ImportedNotes {
+            id: album.id.clone(),
+            title: album.album.title.clone(),
+            artist: album.album.artist.clone(),
+        });
+    }
+    Ok(import)
+}
+
+/// Every file in the notes folder, the album it's for, and what's wrong with
+/// it, if anything.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesReport {
+    /// Where the notes folder is.
+    pub folder: String,
+    pub files: Vec<NotesRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesRow {
+    pub file: String,
+    /// The album it's for, when its name is the Deadwax ID of one in the
+    /// collection.
+    pub id: Option<AlbumId>,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    /// Why the gatefold won't show it. `None` when it will.
+    pub problem: Option<String>,
+}
+
+/// No album in the collection has the ID a notes file is named by.
+pub const NO_SUCH_ALBUM: &str = "No album in the collection has this ID.";
+
+/// The Liner notes report, for the Develop menu: where an invalid notes
+/// file is reported, since the gatefold treats it as no notes.
+#[tauri::command]
+pub fn notes_report(state: State<'_, AppState>) -> Result<NotesReport, String> {
+    report_notes(
+        &state.notes,
+        &state.collection.lock().expect("collection lock"),
+    )
+}
+
+fn report_notes(dir: &NotesDir, collection: &Collection) -> Result<NotesReport, String> {
+    let files = dir
+        .files()
+        .map_err(|e| format!("Couldn't read the notes folder: {}", notes_error(e)))?;
+    let mut rows = Vec::new();
+    for file in files {
+        let album = match &file.id {
+            Some(id) => collection.get(id).map_err(collection_error)?,
+            None => None,
+        };
+        let problem = match (file.notes, &album) {
+            (Err(error), _) => Some(notes_error(error)),
+            (Ok(_), None) => Some(NO_SUCH_ALBUM.into()),
+            (Ok(_), Some(_)) => None,
+        };
+        rows.push(NotesRow {
+            file: file.name,
+            id: album.as_ref().map(|a| a.id.clone()),
+            title: album.as_ref().map(|a| a.album.title.clone()),
+            artist: album.as_ref().map(|a| a.album.artist.clone()),
+            problem,
+        });
+    }
+    Ok(NotesReport {
+        folder: dir.path().display().to_string(),
+        files: rows,
+    })
 }
 
 #[cfg(test)]
@@ -851,6 +1040,243 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&report).unwrap(),
             json!({"restored": 1, "failed": [{"spotifyId": GONE, "message": "m"}]})
+        );
+    }
+
+    fn by(id: &str, title: &str, artist: &str) -> deadwax_core::collection::Album {
+        deadwax_core::collection::Album {
+            artist: artist.into(),
+            ..album(id, title)
+        }
+    }
+
+    #[test]
+    fn importing_matches_the_prototypes_essays_to_albums_by_title_and_artist() {
+        let root = tempfile::tempdir().unwrap();
+        let notes = NotesDir::new(root.path().join("notes"));
+        let mut collection = Collection::open_in_memory().unwrap();
+        let mut add = |id: &str, title: &str, artist: &str| {
+            collection
+                .add(&by(id, title, artist), day(1))
+                .unwrap()
+                .id()
+                .clone()
+        };
+        let pink_moon = add("pink", "Pink Moon", "Nick Drake");
+        // Spotify's titles and artists, not quite the essays'.
+        let in_rainbows = add("rainbows", "In Rainbows (Remastered)", "Radiohead");
+        let mixing = add("mixing", "Mixing Colours", "Roger Eno, Brian Eno");
+        add("ok", "OK Computer", "Radiohead");
+        let collection = std::sync::Mutex::new(collection);
+
+        let import = import_notes(&prototype_notes(), &collection, &notes).unwrap();
+
+        let mut imported: Vec<_> = import.imported.iter().map(|i| i.id.clone()).collect();
+        imported.sort();
+        let mut expected = vec![pink_moon.clone(), in_rainbows.clone(), mixing.clone()];
+        expected.sort();
+        assert_eq!(imported, expected);
+        let mut unmatched: Vec<_> = import
+            .unmatched
+            .iter()
+            .map(|u| (u.file.as_str(), u.album_title.as_str(), u.artist.as_str()))
+            .collect();
+        unmatched.sort();
+        assert_eq!(
+            unmatched,
+            [
+                ("blue.json", "Blue", "Joni Mitchell"),
+                (
+                    "music-has-the-right-to-children.json",
+                    "Music Has the Right to Children",
+                    "Boards of Canada"
+                ),
+            ]
+        );
+        assert!(import.invalid.is_empty());
+        // Each is now that album's notes, as the gatefold reads them.
+        assert_eq!(
+            notes.read(&pink_moon).unwrap().unwrap().headline,
+            "Eleven Songs After Midnight"
+        );
+        assert_eq!(
+            notes.read(&in_rainbows).unwrap().unwrap().album_title,
+            "In Rainbows"
+        );
+        assert_eq!(notes.files().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn importing_every_prototype_essay_checks_each_against_the_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let mut collection = Collection::open_in_memory().unwrap();
+        for (n, (title, artist)) in [
+            ("In Rainbows", "Radiohead"),
+            ("Blue", "Joni Mitchell"),
+            ("Pink Moon", "Nick Drake"),
+            ("Mixing Colours", "Roger Eno, Brian Eno"),
+            ("Music Has the Right to Children", "Boards of Canada"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            collection
+                .add(&by(&n.to_string(), title, artist), day(1))
+                .unwrap();
+        }
+        let collection = std::sync::Mutex::new(collection);
+
+        let import = import_notes(
+            &prototype_notes(),
+            &collection,
+            &NotesDir::new(root.path().join("notes")),
+        )
+        .unwrap();
+
+        assert_eq!(import.imported.len(), 5);
+        assert!(import.unmatched.is_empty() && import.invalid.is_empty());
+    }
+
+    #[test]
+    fn importing_reports_a_file_that_isnt_notes_and_imports_the_rest() {
+        let root = tempfile::tempdir().unwrap();
+        let from = root.path().join("prototype");
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::copy(
+            prototype_notes().join("pink-moon.json"),
+            from.join("pink-moon.json"),
+        )
+        .unwrap();
+        std::fs::write(from.join("broken.json"), r#"{ "albumTitle": "Blue" }"#).unwrap();
+        let mut collection = Collection::open_in_memory().unwrap();
+        collection
+            .add(&by("pink", "Pink Moon", "Nick Drake"), day(1))
+            .unwrap();
+        let collection = std::sync::Mutex::new(collection);
+
+        let import = import_notes(
+            &from,
+            &collection,
+            &NotesDir::new(root.path().join("notes")),
+        )
+        .unwrap();
+
+        assert_eq!(import.imported.len(), 1);
+        assert_eq!(import.invalid.len(), 1);
+        assert_eq!(import.invalid[0].file, "broken.json");
+        assert!(
+            import.invalid[0]
+                .message
+                .starts_with("It isn't valid liner notes: missing field"),
+            "{}",
+            import.invalid[0].message
+        );
+    }
+
+    #[test]
+    fn importing_from_a_folder_with_no_notes_says_so() {
+        let root = tempfile::tempdir().unwrap();
+        let collection = std::sync::Mutex::new(Collection::open_in_memory().unwrap());
+        let notes = NotesDir::new(root.path().join("notes"));
+
+        let error = import_notes(&root.path().join("nowhere"), &collection, &notes).unwrap_err();
+
+        assert!(
+            error.starts_with("There are no notes to import in "),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_notes_report_says_what_is_wrong_with_each_file() {
+        let root = tempfile::tempdir().unwrap();
+        let notes = NotesDir::new(root.path().join("notes"));
+        let mut collection = Collection::open_in_memory().unwrap();
+        let pink_moon = collection
+            .add(&by("pink", "Pink Moon", "Nick Drake"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        let blue = collection
+            .add(&by("blue", "Blue", "Joni Mitchell"), day(1))
+            .unwrap()
+            .id()
+            .clone();
+        let essay = std::fs::read_to_string(prototype_notes().join("pink-moon.json")).unwrap();
+        notes
+            .write(&pink_moon, &notes::parse(&essay).unwrap())
+            .unwrap();
+        std::fs::write(notes.path().join(format!("{blue}.json")), "{").unwrap();
+        notes
+            .write(&AlbumId::from("gone"), &notes::parse(&essay).unwrap())
+            .unwrap();
+
+        let report = report_notes(&notes, &collection).unwrap();
+
+        assert_eq!(report.folder, notes.path().display().to_string());
+        let row = |id: &AlbumId| {
+            report
+                .files
+                .iter()
+                .find(|r| r.file == format!("{id}.json"))
+                .unwrap()
+        };
+        assert_eq!(row(&pink_moon).problem, None);
+        assert_eq!(row(&pink_moon).title.as_deref(), Some("Pink Moon"));
+        assert!(
+            row(&blue)
+                .problem
+                .as_deref()
+                .unwrap()
+                .starts_with("It isn't valid liner notes:")
+        );
+        assert_eq!(row(&blue).title.as_deref(), Some("Blue"));
+        assert_eq!(row(&"gone".into()).problem.as_deref(), Some(NO_SUCH_ALBUM));
+        assert_eq!(row(&"gone".into()).id, None);
+    }
+
+    /// The JSON `app/src/NotesReport.tsx` expects. Change both together.
+    #[test]
+    fn the_notes_import_and_report_serialise_as_the_ui_expects() {
+        let import = NotesImport {
+            imported: vec![ImportedNotes {
+                id: "a".into(),
+                title: "Pink Moon".into(),
+                artist: "Nick Drake".into(),
+            }],
+            unmatched: vec![UnmatchedNotes {
+                file: "blue.json".into(),
+                album_title: "Blue".into(),
+                artist: "Joni Mitchell".into(),
+            }],
+            invalid: vec![NotesProblem {
+                file: "x.json".into(),
+                message: "m".into(),
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&import).unwrap(),
+            json!({
+                "imported": [{"id": "a", "title": "Pink Moon", "artist": "Nick Drake"}],
+                "unmatched": [{"file": "blue.json", "albumTitle": "Blue", "artist": "Joni Mitchell"}],
+                "invalid": [{"file": "x.json", "message": "m"}],
+            })
+        );
+        let report = NotesReport {
+            folder: "/notes".into(),
+            files: vec![NotesRow {
+                file: "a.json".into(),
+                id: Some("a".into()),
+                title: Some("Pink Moon".into()),
+                artist: Some("Nick Drake".into()),
+                problem: None,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&report).unwrap(),
+            json!({"folder": "/notes", "files": [{
+                "file": "a.json", "id": "a", "title": "Pink Moon", "artist": "Nick Drake", "problem": null,
+            }]})
         );
     }
 }
