@@ -128,6 +128,27 @@ describe("The gatefold", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("has no Liner notes on the next record out when only the last one had notes", async () => {
+    const calls = gatefoldBackEnd();
+    await pullOutInRainbows();
+    expect(await linerNotes()).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Flip to Kind of Blue by Miles Davis" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull out Kind of Blue by Miles Davis" }),
+    );
+
+    await screen.findByRole("button", { name: "Turn Kind of Blue over" });
+    await waitFor(() =>
+      expect(calls).toContainEqual({ cmd: "get_notes", args: { id: "deadwax-2" } }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(document.querySelector(".notes-open")).toBeNull();
+  });
+
   it("has no Liner notes when Rust can't give the album's notes", async () => {
     backEnd({
       get_collection: () => COLLECTION,
