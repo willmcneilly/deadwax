@@ -4,7 +4,7 @@
 
 Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter. **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still.
 
-This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), the needle drop, now playing and a stranger's sleeve (DWX-22), and the gatefold (DWX-26), are under "Patterns".
+This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), the needle drop, now playing and a stranger's sleeve (DWX-22), the gatefold (DWX-26), and the search wall (DWX-24), are under "Patterns".
 
 ## The frame budget
 
@@ -236,6 +236,18 @@ A record with liner notes opens them like a gatefold (`app/src/Gatefold.tsx`, RF
 
 The gatefold hasn't been measured against the frame budget in WebKit yet: `scripts/crate-spike` has no run for it.
 
+### The search wall
+
+Finding records to add is a full-screen wall of covers (`app/src/SearchWall.tsx`, RFC-002 "4. The UI"). It doesn't play at being a crate: it's minimal, so the covers do the talking.
+
+- **A faint search icon** at the top right of the room opens it, out of the way while a record is out. The wall fades in over everything but the errors and the Develop menu's panels, and the crate dims and drops behind it as it does for a sleeve. Once it has dimmed, the crate isn't drawn at all, and it shows again at once when search closes ("Search over the crate", above). Escape or **esc** closes it.
+- **Searching.** One large line to type in ("Find a record"), searching a moment after you stop typing, or straight away on Enter. A small line under it says what's going on: "An artist or an album", "Looking…", "Albums on Spotify · best match first", or "Nothing on Spotify matches “…”."
+- **The wall.** Spotify's results, best match first, ten at a time, as covers in rows with the artist and the title and year under each. **More** at the end asks for the next ten, and an album Spotify repeats on the next page shows once.
+- **Records already in the crate** are dimmed, the whole cover at once (opacity, no filter: rule 3), with "In your crate" under them and no Add.
+- **Add** is under each cover, never over it: these are Spotify's covers, shown as they are (RFC-002, resolved open question 1). One click adds it. A copy of the cover lifts a little and drops off the bottom of the screen toward the crate behind, by transform and opacity only (rule 7), and the tile says "In your crate".
+- **Closing** turns the crate to the last record you added, in its place.
+- **First run.** When the collection is empty, Deadwax opens straight onto search, with "Your crate is empty. Find the first record for it." over it. Closing it leaves the same line in the room, with **Find a record** under it.
+
 ### Album colours
 
 A sleeve's printed colours come from its cover, so they're data, not tokens. Rust works them out (the album job queue's palette step, with ink at least 7:1 on the paper and the accent and secondary text at least 4.5:1). `AlbumColours` is the one component that puts them on the page, as custom properties on the element it draws:
@@ -267,7 +279,7 @@ Other CSS reads them with a fallback to `theme.css`'s `--sleeve-*` colours, for 
 | The large cover, cold (never seen), real crate | 199 ms median (the prototype) | 48 ms median, 21 of 21 within 100 ms, worst 69 ms | Yes |
 | The large cover, cold, 400 records | 250 ms median (the prototype) | 49 ms median, 24 of 24 within 100 ms, worst 67 ms | Yes |
 
-Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. Search isn't built yet (DWX-24), so it's not measured here. The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
+Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. Search is measured below ("The search wall, measured"). The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
 
 ### The glow, measured
 
@@ -281,6 +293,20 @@ Each flip's own work in the page (React, then the style and layout it causes) wa
 | The crate at rest, 400 records | 59.9–60 fps, 0–1 dropped | 21–22 ms | – | 2–3% | 9–13% |
 
 The glow drops no more frames than the crate does at rest: the one or two a run come from the machine, not the drift. React committed nothing during the runs, while Spotify was asked every 2 seconds. As in DWX-20, the page can't see a frame Core Animation drops in the drift itself ("What this can't see", above), so the drift still needs an eye on it.
+
+### The search wall, measured
+
+`scripts/crate-spike --crate` runs `crate: search real` and `crate: search 400`: the search wall opened over the app's own crate with a tile for each record in it (a pretend wall from the crate's own covers, in development builds only, so nothing asks Spotify), measured over the 1.2 seconds it takes to open, then scrolling it down and up for 3 seconds. Measured on 2026-10-24 on the same MacBook Pro, the window filling the screen (1512 × 916 points at 2x), three runs each, on a 10-record crate:
+
+| | Opening | Scrolling | GPU process | Page |
+|---|---|---|---|---|
+| The spike's search over 400 records (DWX-20) | 52–58 fps, 3–9 dropped | 60 fps, 0 dropped | – | – |
+| The wall, 10 tiles | 57–58 fps, 2–3 dropped, longest gap 50–72 ms | 60 fps, 0 dropped | 5% | 12–13% |
+| The wall, 400 tiles | 53–55 fps, 6–8 dropped, longest gap 71–90 ms | 60 fps, 0 dropped | 5–6% | 21% |
+| 400 tiles, each rising in on its own | 49–53 fps, 8–13 dropped | 60 fps, 0 dropped | 5–7% | 25–27% |
+| 400 tiles, each rising in, with `content-visibility: auto` | 51–55 fps, 6–10 dropped | 60 fps, 1 dropped | 6% | 23% |
+
+So each search's wall rises in as one, not tile by tile as in the prototype, and tiles have no `content-visibility`, which cost scrolling a frame. Opening a search isn't in the frame budget: as in DWX-20, its few dropped frames are mounting the covers. A real search shows 10 at a time, and each **More** adds 10.
 
 ## Do's and Don'ts
 

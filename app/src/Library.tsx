@@ -785,7 +785,7 @@ function Library({ name, onSignedOut }: Props) {
         setPulled((o) => o && { ...o, nowPlaying: true });
       },
       setSearch: (on) => {
-        if (on) setPretendSearch(pretendWall(itemsRef.current));
+        setPretendSearch(on ? pretendWall(itemsRef.current) : null);
         setSearching(on);
       },
       scrollSearch: (by) =>

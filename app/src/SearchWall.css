@@ -114,20 +114,27 @@
   transition: opacity 0.3s;
 }
 
+/*
+ * Each search's wall rises in as one: a rise for each of 400 tiles cost the
+ * opening 5 more dropped frames (DESIGN.md, "The search wall, measured").
+ */
+.wall-in {
+  animation: wall-in 0.5s cubic-bezier(.2, .7, .2, 1) both;
+}
+
+@keyframes wall-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 .wall.stale {
   opacity: 0.4;
 }
 
 .tile {
   width: var(--tile);
-  animation: tile-in 0.5s cubic-bezier(.2, .7, .2, 1) both;
-}
-
-@keyframes tile-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
 }
 
 /* Covers keep their own shape, never cropped. */

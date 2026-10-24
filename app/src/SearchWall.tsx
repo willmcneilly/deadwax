@@ -201,47 +201,50 @@ function SearchWall({
       </div>
 
       {results && results.results.length > 0 && (
-        <ul
-          className={`wall ${loading === "search" ? "stale" : ""}`}
-          aria-label="Search results"
-        >
-          {results.results.map(({ album, inCollection }) => {
-            const ours = inCollection || owned.has(album.spotifyId);
-            const busy = adding.has(album.spotifyId);
-            return (
-              <li key={album.spotifyId} className={`tile ${ours ? "ours" : ""}`}>
-                <Cover album={album} className="tile-cover" />
-                <div className="tile-text">
-                  <span className="tile-artist">{album.artist}</span>
-                  <span className="tile-title">
-                    {album.title}
-                    {album.year !== null && <span> · {album.year}</span>}
-                  </span>
-                  {ours ? (
-                    <span className="tile-ours">In your crate</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="tile-add"
-                      disabled={busy}
-                      aria-label={`Add ${album.title} by ${album.artist}`}
-                      onClick={(e) =>
-                        void add(
-                          album.spotifyId,
-                          e.currentTarget
-                            .closest(".tile")
-                            ?.querySelector("img") ?? null,
-                        )
-                      }
-                    >
-                      {busy ? "Adding…" : "+ Add"}
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        // Keyed by the query, so each search's wall rises in afresh.
+        <div key={results.query} className="wall-in">
+          <ul
+            className={`wall ${loading === "search" ? "stale" : ""}`}
+            aria-label="Search results"
+          >
+            {results.results.map(({ album, inCollection }) => {
+              const ours = inCollection || owned.has(album.spotifyId);
+              const busy = adding.has(album.spotifyId);
+              return (
+                <li key={album.spotifyId} className={`tile ${ours ? "ours" : ""}`}>
+                  <Cover album={album} className="tile-cover" />
+                  <div className="tile-text">
+                    <span className="tile-artist">{album.artist}</span>
+                    <span className="tile-title">
+                      {album.title}
+                      {album.year !== null && <span> · {album.year}</span>}
+                    </span>
+                    {ours ? (
+                      <span className="tile-ours">In your crate</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="tile-add"
+                        disabled={busy}
+                        aria-label={`Add ${album.title} by ${album.artist}`}
+                        onClick={(e) =>
+                          void add(
+                            album.spotifyId,
+                            e.currentTarget
+                              .closest(".tile")
+                              ?.querySelector("img") ?? null,
+                          )
+                        }
+                      >
+                        {busy ? "Adding…" : "+ Add"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {results && results.nextOffset !== null && (
