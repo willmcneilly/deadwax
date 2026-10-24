@@ -23,8 +23,12 @@
   pointer-events: none;
 }
 
-/* Its liner notes are open in the gatefold, which came out of its front. */
-.sleeve-out.away {
+/*
+ * Its liner notes are open in the gatefold. The gatefold came out of exactly
+ * where its front is, so the sleeve goes at once, and now playing's line
+ * under it fades.
+ */
+.sleeve-out.away .sleeve-lift {
   visibility: hidden;
 }
 
@@ -318,6 +322,12 @@
   gap: var(--space);
   pointer-events: auto;
   font-size: 0.85rem;
+  transition: opacity 0.4s;
+}
+
+.sleeve-out.away .sleeve-desk {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Now playing's line takes the desk while the record floats. */

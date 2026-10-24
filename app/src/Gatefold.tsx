@@ -10,9 +10,10 @@
 // the album's colours, which Will chose in PR #9, so it opens on that). Each
 // is set in Serif or Grotesk, also remembered.
 //
-// The panels move by transforms only (DESIGN.md, rule 7). The reading
-// position is written straight to a CSS custom property, so React doesn't
-// render while they move.
+// It comes out of the sleeve's front and goes back into it, so the sleeve
+// never swaps for it with a jump. The panels move by transforms only
+// (DESIGN.md, rule 7). The reading position is written straight to a CSS
+// custom property, so React doesn't render while they move.
 
 import {
   memo,
@@ -64,8 +65,12 @@ function remember(key: string, value: string) {
   }
 }
 
-/** How long the cover takes to swing open, and closed. */
-const COVER_MS = 1000;
+/** How long the cover takes to swing open, and closed (Gatefold.css). */
+const COVER_MS = 1100;
+
+/** Coming out of the sleeve's front, and going back into it. */
+const ARRIVE = { duration: 500, easing: "cubic-bezier(.2,.75,.15,1)" };
+const LEAVE = { duration: 450, easing: "cubic-bezier(.5,0,.3,1)", fill: "forwards" as const };
 
 type Props = {
   album: AlbumCard;
@@ -74,8 +79,11 @@ type Props = {
   tracks: AlbumTrack[];
   /** The Spotify ID of the track playing, when it's on this album. */
   current: string | null;
-  /** Where the sleeve's front was, to come out of. Null to simply appear. */
-  from: DOMRect | null;
+  /**
+   * Where the sleeve's front is now, which the gatefold comes out of and goes
+   * back into. Null where the browser can't say, and then it simply appears.
+   */
+  sleeve: () => DOMRect | null;
   /** Folding back up: the cover closes, then `onClosed`. */
   closing: boolean;
   /** You've asked to close it: Escape, or Close. */
@@ -83,7 +91,7 @@ type Props = {
   onClosed: () => void;
 };
 
-function Gatefold({ album, notes, tracks, current, from, closing, onClose, onClosed }: Props) {
+function Gatefold({ album, notes, tracks, current, sleeve, closing, onClose, onClosed }: Props) {
   const stage = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<NotesStyle>(() =>
@@ -140,41 +148,65 @@ function Gatefold({ album, notes, tracks, current, from, closing, onClose, onClo
     return () => removeEventListener("resize", run);
   }, [style, typeface, notes, tracks]);
 
-  // Arrive from where the sleeve was, then open the cover.
-  useLayoutEffect(() => {
-    const el = stage.current;
-    const strip = el?.querySelector(".gf-strip")?.getBoundingClientRect();
-    if (el && from && strip?.width) {
-      const dx = from.left + from.width / 2 - (strip.left + strip.width / 2);
-      const dy = from.top + from.height / 2 - (strip.top + strip.height / 2);
-      el.animate(
-        [
-          { transform: `translate(${dx}px, ${dy}px) scale(${from.width / strip.width})` },
-          { transform: "none" },
-        ],
-        { duration: 500, easing: "cubic-bezier(.2,.75,.15,1)" },
-      );
-    }
-    const t = setTimeout(() => setOpen(true), 380);
-    return () => clearTimeout(t);
-    // Only on arrival.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- from is where it came from, fixed while it's open
-  }, []);
-
-  // Fold back to the start, close the cover, then hand back to the sleeve.
+  // The latest props, for the timers below.
   const closed = useRef(onClosed);
+  const sleeveNow = useRef(sleeve);
   useEffect(() => {
     closed.current = onClosed;
+    sleeveNow.current = sleeve;
   });
+
+  /**
+   * The transform that lays the closed gatefold exactly over the sleeve's
+   * front. Null if either can't be measured. It's measured with no flight
+   * running on the gatefold, so a flight can't throw it off.
+   */
+  const overSleeve = (): string | null => {
+    const at = sleeveNow.current();
+    const strip = stage.current?.querySelector(".gf-strip")?.getBoundingClientRect();
+    if (!at?.width || !strip?.width) return null;
+    const dx = at.left + at.width / 2 - (strip.left + strip.width / 2);
+    const dy = at.top + at.height / 2 - (strip.top + strip.height / 2);
+    return `translate(${dx}px, ${dy}px) scale(${at.width / strip.width})`;
+  };
+
+  // Come out of the sleeve's front, then open the cover. React runs this
+  // twice in development: the first flight is cancelled before the second
+  // measures, or the second would fly from where the first had put it, which
+  // is nowhere, and replace it.
+  useLayoutEffect(() => {
+    const from = overSleeve();
+    const flight = from
+      ? stage.current?.animate([{ transform: from }, { transform: "none" }], ARRIVE)
+      : undefined;
+    const t = setTimeout(() => setOpen(true), 380);
+    return () => {
+      flight?.cancel();
+      clearTimeout(t);
+    };
+    // Only on arrival: overSleeve reads the latest props through refs.
+  }, []);
+
+  // Fold back to the start, close the cover, go back into the sleeve's
+  // front, then hand back to the sleeve.
   useEffect(() => {
     if (!closing) return;
     target.current = 0;
     const wait = Math.min(900, 250 + s.current * 220);
+    let flight: Animation | undefined;
     const t1 = setTimeout(() => setOpen(false), wait);
-    const t2 = setTimeout(() => closed.current(), wait + COVER_MS);
+    const t2 = setTimeout(() => {
+      const to = overSleeve();
+      flight = to
+        ? stage.current?.animate([{ transform: "none" }, { transform: to }], LEAVE)
+        : undefined;
+      if (flight) flight.onfinish = () => closed.current();
+      else closed.current();
+    }, wait + COVER_MS);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      flight?.cancel();
     };
   }, [closing]);
 

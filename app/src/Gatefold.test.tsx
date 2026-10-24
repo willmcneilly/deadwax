@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Notes, NowPlaying } from "./api";
 import { COLLECTION, IN_RAINBOWS, IN_RAINBOWS_DETAILS, PINK_MOON } from "./crateFixtures";
 import Library from "./Library";
@@ -110,9 +110,11 @@ describe("The gatefold", () => {
     expect(
       within(gatefold()).getAllByText("Wired, “The interview” (2007)").length,
     ).toBeGreaterThan(0);
-    // The sleeve it came out of is out of sight while it's open.
+    // The sleeve it came out of is out of sight while it's open, and the
+    // button fades rather than going.
     expect(document.querySelector(".sleeve-out")).toHaveClass("away");
-    expect(document.querySelector(".notes-open")).toBeNull();
+    expect(document.querySelector(".notes-open")).toHaveClass("away");
+    expect(document.querySelector(".notes-open")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("has no Liner notes on the sleeve of an album without notes", async () => {
@@ -184,6 +186,39 @@ describe("The gatefold", () => {
     expect(document.querySelector(".sleeve-out")).not.toHaveClass("away");
     expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
     expect(await linerNotes()).toBeInTheDocument();
+  });
+
+  it("comes out of the sleeve's front, and goes back into it", async () => {
+    // Where things are: jsdom lays nothing out. The sleeve's front is up and
+    // to the left of the closed gatefold, and smaller.
+    const at = (left: number, top: number, size: number) =>
+      ({ left, top, width: size, height: size, right: left + size, bottom: top + size }) as DOMRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.matches(".sleeve-side.front")) return at(100, 50, 400);
+      if (this.matches(".gf-strip")) return at(300, 200, 500);
+      return at(0, 0, 0);
+    });
+    const animate = vi.spyOn(Element.prototype, "animate");
+    const flights = () =>
+      animate.mock.contexts.flatMap((el, i) =>
+        (el as Element).classList.contains("gf-stage") ? [animate.mock.calls[i][0]] : [],
+      );
+    gatefoldBackEnd();
+    await pullOutInRainbows();
+    await openNotes();
+
+    // The centres are 250px and 200px apart, and the sleeve is 0.8 of its size.
+    const over = "translate(-250px, -200px) scale(0.8)";
+    expect(flights()).toEqual([[{ transform: over }, { transform: "none" }]]);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(flights()[1]).toEqual([{ transform: "none" }, { transform: over }]);
+    vi.restoreAllMocks();
   });
 
   it("closes with Close", async () => {

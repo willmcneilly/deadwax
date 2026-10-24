@@ -228,7 +228,6 @@ function Library({ name, onSignedOut }: Props) {
     };
   }, [outId]);
   const outNotes = notes && notes.id === outId ? notes : null;
-  const gatefoldFrom = useRef<DOMRect | null>(null);
   const gatefoldWait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(gatefoldWait.current), []);
 
@@ -471,17 +470,19 @@ function Library({ name, onSignedOut }: Props) {
    */
   const openNotes = () => {
     if (!out || out.returning || out.gatefold) return;
-    const show = () => {
-      gatefoldFrom.current =
-        room.current?.querySelector(".sleeve-side.front")?.getBoundingClientRect() ?? null;
+    const show = () =>
       setPulled((o) => (o && !o.returning ? { ...o, gatefold: "open" } : o));
-    };
     clearTimeout(gatefoldWait.current);
     if (turns % 2) {
       turn();
       gatefoldWait.current = setTimeout(show, TURN_MS);
     } else show();
   };
+  /** Where the sleeve's front is now: the gatefold comes out of it and goes back in. */
+  const sleeveFront = useCallback(
+    () => room.current?.querySelector(".sleeve-side.front")?.getBoundingClientRect() ?? null,
+    [],
+  );
   const closeNotes = useCallback(
     () => setPulled((o) => (o?.gatefold === "open" ? { ...o, gatefold: "closing" } : o)),
     [],
@@ -813,8 +814,16 @@ function Library({ name, onSignedOut }: Props) {
               />
             </>
           )}
-          {out && !out.returning && !out.gatefold && outNotes && (
-            <button type="button" className="notes-open" onClick={openNotes}>
+          {out && outNotes && (
+            // Faded out, not removed, while the notes are open or the record
+            // goes back, so it never snaps away.
+            <button
+              type="button"
+              className={`notes-open ${out.gatefold || out.returning ? "away" : ""}`}
+              onClick={openNotes}
+              aria-hidden={!!out.gatefold || out.returning || undefined}
+              tabIndex={out.gatefold || out.returning ? -1 : undefined}
+            >
               Liner notes
             </button>
           )}
@@ -928,7 +937,7 @@ function Library({ name, onSignedOut }: Props) {
           notes={outNotes.notes}
           tracks={outNotes.tracks}
           current={liveOut ? playingTrack(outNotes.tracks, live) : null}
-          from={gatefoldFrom.current}
+          sleeve={sleeveFront}
           closing={out.gatefold === "closing"}
           onClose={closeNotes}
           onClosed={() => setPulled((o) => o && { ...o, gatefold: undefined })}
