@@ -313,7 +313,8 @@ describe("A missing device", () => {
     expect(await within(sheet).findByRole("status")).toHaveTextContent(MISSING);
 
     devices = [MACBOOK, LIVING_ROOM];
-    fireEvent.click(within(sheet).getByRole("button", { name: "Look again" }));
+    // The note can show while the first look is still going ("Looking…"), so wait for the button.
+    fireEvent.click(await within(sheet).findByRole("button", { name: "Look again" }));
 
     await waitFor(() => expect(within(sheet).queryByRole("status")).toBeNull());
     expect(within(sheet).getByRole("button", { name: /Living Room/ })).toBeEnabled();
