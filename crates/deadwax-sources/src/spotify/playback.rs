@@ -129,6 +129,20 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
         Ok(())
     }
 
+    /// Moves whatever's playing to the device with this ID, from where it
+    /// is in the track (RFC-002, "4. The UI"). `play` says whether it plays
+    /// there or stays paused, so a paused record stays paused when it moves.
+    pub async fn transfer(&self, device_id: &str, play: bool) -> Result<(), SpotifyError> {
+        let body = json!({"device_ids": [device_id], "play": play});
+        self.send_api(
+            |url| self.http.put(url).json(&body),
+            "/v1/me/player",
+            "moving playback",
+        )
+        .await?;
+        Ok(())
+    }
+
     /// What's playing, or `None` if Spotify isn't playing anything anywhere.
     pub async fn playback(&self) -> Result<Option<Playback>, SpotifyError> {
         let response = self
@@ -322,7 +336,15 @@ mod tests {
     const LIVING_ROOM: &str = "b46689a4cdd1d64b2fdf7e4f1d3e8f8bd8e3f3d1";
 
     async fn signed_in(server: &MockServer) -> Spotify<FakeClock, MemoryStore> {
-        let clock = FakeClock::new(Arc::new(Mutex::new(Vec::new())));
+        signed_in_with_log(server, Arc::new(Mutex::new(Vec::new()))).await
+    }
+
+    /// Signed in, with each sleep on the (fake) clock written to `log`.
+    async fn signed_in_with_log(
+        server: &MockServer,
+        log: Arc<Mutex<Vec<String>>>,
+    ) -> Spotify<FakeClock, MemoryStore> {
+        let clock = FakeClock::new(log);
         let endpoints = Endpoints {
             accounts: server.uri(),
             api: server.uri(),
@@ -434,6 +456,54 @@ mod tests {
             .play_album(LIVING_ROOM, IN_RAINBOWS, &StartAt::Track(NUDE.into()))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn transfer_moves_playback_to_one_device_with_its_play_state() {
+        let server = MockServer::start().await;
+        for play in [true, false] {
+            Mock::given(method("PUT"))
+                .and(path("/v1/me/player"))
+                .and(header("authorization", "Bearer access"))
+                .and(body_json(serde_json::json!({
+                    "device_ids": [LIVING_ROOM],
+                    "play": play,
+                })))
+                .respond_with(ResponseTemplate::new(204))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let spotify = signed_in(&server).await;
+
+        spotify.transfer(LIVING_ROOM, true).await.unwrap();
+        spotify.transfer(LIVING_ROOM, false).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn transfer_waits_out_a_429() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/me/player"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "1"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/me/player"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let spotify = signed_in_with_log(&server, log.clone()).await;
+
+        spotify.transfer(LIVING_ROOM, true).await.unwrap();
+
+        // It waited the second Spotify asked for, then tried again.
+        assert_eq!(*log.lock().unwrap(), ["sleep 1s"]);
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
     }
 
     #[tokio::test]

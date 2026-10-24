@@ -641,7 +641,7 @@ pub fn open_album_in_spotify(app: AppHandle, spotify_id: String) -> Result<(), S
         .map_err(|e| e.to_string())
 }
 
-/// A Spotify Connect device, as the device picker shows it.
+/// A Spotify Connect device, as the device list shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceChoice {
@@ -666,7 +666,7 @@ impl From<Device> for DeviceChoice {
     }
 }
 
-/// The device picker: what Spotify lists now, and the device you chose
+/// The device list: what Spotify lists now, and the device you chose
 /// last, which may not be among them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -676,7 +676,7 @@ pub struct Devices {
 }
 
 /// What happened when you pressed Play. Either way, `devices` is the list
-/// as Spotify gave it just before playing, for the picker.
+/// as Spotify gave it just before playing, for the device list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum PlayOutcome {
@@ -685,6 +685,20 @@ pub enum PlayOutcome {
     },
     /// Spotify isn't listing the device. Not a failure: it's asleep or
     /// offline, and waking it is up to you.
+    DeviceMissing {
+        devices: Vec<DeviceChoice>,
+    },
+}
+
+/// What happened when you moved what's playing to another device. Either
+/// way, `devices` is the list as Spotify gave it just before moving.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum TransferOutcome {
+    Moved {
+        devices: Vec<DeviceChoice>,
+    },
+    /// Spotify isn't listing the device, as for `PlayOutcome`.
     DeviceMissing {
         devices: Vec<DeviceChoice>,
     },
@@ -809,7 +823,15 @@ async fn devices<C: Clock, S: TokenStore>(
     })
 }
 
-/// Remembers the device you chose in the picker, by name.
+/// The device Play goes to, by name, or `None` until you've chosen one. It
+/// reads only Deadwax's config, so it doesn't ask Spotify, and the needle
+/// drops without waiting for it.
+#[tauri::command]
+pub fn get_remembered_device(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    remembered_device(&state.config_path)
+}
+
+/// Remembers the device you chose in the device list, by name.
 #[tauri::command]
 pub fn choose_device(state: State<'_, AppState>, name: String) -> Result<(), String> {
     remember_device(&state.config_path, &name)
@@ -817,7 +839,7 @@ pub fn choose_device(state: State<'_, AppState>, name: String) -> Result<(), Str
 
 /// Plays the album in your collection on the device with this name, from
 /// the first track or the track with this Spotify ID. Asks Spotify for its
-/// devices first, because the picker's list may be old and device IDs don't
+/// devices first, because the device list may be old and device IDs don't
 /// last.
 #[tauri::command]
 pub async fn play_album(
@@ -861,20 +883,9 @@ async fn play<C: Clock, S: TokenStore>(
     track_id: Option<String>,
 ) -> Result<PlayOutcome, String> {
     let listed = spotify.devices().await.map_err(spotify_error)?;
-    // Two devices can share a name. Prefer one that can play.
-    let named = || listed.iter().filter(|d| d.name == device_name);
-    let device = named()
-        .find(|d| d.id.is_some() && !d.is_restricted)
-        .or_else(|| named().next())
-        .cloned();
-    let choices = || listed.iter().cloned().map(DeviceChoice::from).collect();
-    let Some(device) = device else {
-        return Ok(PlayOutcome::DeviceMissing { devices: choices() });
-    };
-    let Some(device_id) = device.id.as_deref().filter(|_| !device.is_restricted) else {
-        return Err(format!(
-            "Spotify won't let Deadwax control {device_name}. Play from the Spotify app instead."
-        ));
+    let devices = listed.iter().cloned().map(DeviceChoice::from).collect();
+    let Some(device_id) = controllable(&listed, device_name)? else {
+        return Ok(PlayOutcome::DeviceMissing { devices });
     };
     let start = match track_id {
         Some(id) => StartAt::Track(id),
@@ -885,7 +896,58 @@ async fn play<C: Clock, S: TokenStore>(
         .await
         .map_err(spotify_error)?;
     remember_device(config_path, device_name)?;
-    Ok(PlayOutcome::Playing { devices: choices() })
+    Ok(PlayOutcome::Playing { devices })
+}
+
+/// The ID of the listed device with this name, or `None` if Spotify isn't
+/// listing it. Two devices can share a name: one that can play wins.
+fn controllable<'a>(listed: &'a [Device], device_name: &str) -> Result<Option<&'a str>, String> {
+    let named = || listed.iter().filter(|d| d.name == device_name);
+    let Some(device) = named()
+        .find(|d| d.id.is_some() && !d.is_restricted)
+        .or_else(|| named().next())
+    else {
+        return Ok(None);
+    };
+    match device.id.as_deref().filter(|_| !device.is_restricted) {
+        Some(id) => Ok(Some(id)),
+        None => Err(format!(
+            "Spotify won't let Deadwax control {device_name}. Play from the Spotify app instead."
+        )),
+    }
+}
+
+/// Moves whatever's playing to the device with this name, from the same
+/// place in the track, and remembers it (RFC-002, "4. The UI"). `play` is
+/// whether it plays there: a paused record stays paused. Like `play_album`,
+/// it asks Spotify for its devices first.
+#[tauri::command]
+pub async fn transfer_playback(
+    state: State<'_, AppState>,
+    device: String,
+    play: bool,
+) -> Result<TransferOutcome, String> {
+    let spotify = state.signed_in().await?;
+    transfer(&spotify, &state.config_path, &device, play).await
+}
+
+async fn transfer<C: Clock, S: TokenStore>(
+    spotify: &Spotify<C, S>,
+    config_path: &std::path::Path,
+    device_name: &str,
+    play: bool,
+) -> Result<TransferOutcome, String> {
+    let listed = spotify.devices().await.map_err(spotify_error)?;
+    let devices = listed.iter().cloned().map(DeviceChoice::from).collect();
+    let Some(device_id) = controllable(&listed, device_name)? else {
+        return Ok(TransferOutcome::DeviceMissing { devices });
+    };
+    spotify
+        .transfer(device_id, play)
+        .await
+        .map_err(spotify_error)?;
+    remember_device(config_path, device_name)?;
+    Ok(TransferOutcome::Moved { devices })
 }
 
 /// What Spotify is playing, anywhere, or `None` if nothing is. The crate
@@ -1854,7 +1916,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_picker_lists_the_devices_and_the_one_you_chose_last() {
+    async fn the_device_list_lists_the_devices_and_the_one_you_chose_last() {
         let server = MockServer::start().await;
         let spotify = fake_player(&server).await;
         let dir = tempfile::tempdir().unwrap();
@@ -2030,6 +2092,111 @@ mod tests {
             ["GET /v1/me/player/devices"]
         );
         assert_eq!(remembered_device(&config).unwrap().as_deref(), Some("TV"));
+    }
+
+    /// A fake Spotify listing the devices in `devices.json`, which accepts
+    /// any transfer.
+    async fn fake_transfer(server: &MockServer) -> Spotify<SystemClock, MemoryStore> {
+        let spotify = fake_player(server).await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/me/player"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(server)
+            .await;
+        spotify
+    }
+
+    #[tokio::test]
+    async fn transfer_moves_playback_to_the_named_device_and_keeps_its_place() {
+        let server = MockServer::start().await;
+        let spotify = fake_transfer(&server).await;
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+
+        for play in [true, false] {
+            let outcome = transfer(&spotify, &config, "Living Room", play)
+                .await
+                .unwrap();
+            assert!(
+                matches!(outcome, TransferOutcome::Moved { ref devices } if devices.len() == 3)
+            );
+        }
+
+        // It lists the devices, then moves playback with one device ID and
+        // the play state. Nothing starts the album again, so the track
+        // carries on from where it was.
+        assert_eq!(
+            player_requests(&server).await,
+            [
+                "GET /v1/me/player/devices",
+                "PUT /v1/me/player",
+                "GET /v1/me/player/devices",
+                "PUT /v1/me/player",
+            ]
+        );
+        let bodies: Vec<serde_json::Value> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.method.as_str() == "PUT")
+            .map(|r| r.body_json().unwrap())
+            .collect();
+        assert_eq!(
+            bodies,
+            [
+                json!({"device_ids": [LIVING_ROOM_ID], "play": true}),
+                json!({"device_ids": [LIVING_ROOM_ID], "play": false}),
+            ]
+        );
+        assert_eq!(
+            remembered_device(&config).unwrap().as_deref(),
+            Some("Living Room")
+        );
+    }
+
+    #[tokio::test]
+    async fn transfer_to_a_device_spotify_isnt_listing_is_missing_and_moves_nothing() {
+        let server = MockServer::start().await;
+        let spotify = fake_transfer(&server).await;
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        remember_device(&config, "Living Room").unwrap();
+
+        let outcome = transfer(&spotify, &config, "TV", true).await;
+
+        assert!(
+            matches!(outcome, Ok(TransferOutcome::DeviceMissing { ref devices }) if devices.len() == 3),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            player_requests(&server).await,
+            ["GET /v1/me/player/devices"]
+        );
+        assert_eq!(
+            remembered_device(&config).unwrap().as_deref(),
+            Some("Living Room")
+        );
+    }
+
+    #[tokio::test]
+    async fn transfer_to_a_device_spotify_wont_control_says_so() {
+        let server = MockServer::start().await;
+        let spotify = fake_transfer(&server).await;
+        let dir = tempfile::tempdir().unwrap();
+
+        let error = transfer(&spotify, &config_in(&dir), "Kitchen", true)
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            "Spotify won't let Deadwax control Kitchen. Play from the Spotify app instead."
+        );
+        assert_eq!(
+            player_requests(&server).await,
+            ["GET /v1/me/player/devices"]
+        );
     }
 
     #[tokio::test]
@@ -2304,10 +2471,24 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(PlayOutcome::Playing {
+                devices: vec![device.clone()],
+            })
+            .unwrap(),
+            json!({"state": "playing", "devices": [device_json.clone()]})
+        );
+        assert_eq!(
+            serde_json::to_value(TransferOutcome::Moved {
+                devices: vec![device.clone()],
+            })
+            .unwrap(),
+            json!({"state": "moved", "devices": [device_json.clone()]})
+        );
+        assert_eq!(
+            serde_json::to_value(TransferOutcome::DeviceMissing {
                 devices: vec![device],
             })
             .unwrap(),
-            json!({"state": "playing", "devices": [device_json]})
+            json!({"state": "deviceMissing", "devices": [device_json]})
         );
         assert_eq!(
             serde_json::to_value(NowPlaying {

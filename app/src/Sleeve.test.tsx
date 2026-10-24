@@ -33,6 +33,7 @@ function sleeveBackEnd(replies: Record<string, (args?: unknown) => unknown> = {}
     refresh_album: () => null,
     get_playback: () => null,
     get_session: () => ({ state: "signedIn", name: "Will" }),
+    get_remembered_device: () => "Living Room",
     get_devices: () => ({ devices: [LIVING_ROOM], remembered: "Living Room" }),
     choose_device: () => null,
     play_album: (): PlayOutcome => ({ state: "playing", devices: [LIVING_ROOM] }),
@@ -171,9 +172,6 @@ describe("The sleeve", () => {
     const calls = sleeveBackEnd();
     await pullOutInRainbows();
     await turnOver();
-    await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("Living Room"),
-    );
 
     fireEvent.click(screen.getByRole("button", { name: "Play Reckoner" }));
 

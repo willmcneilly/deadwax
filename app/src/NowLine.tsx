@@ -1,5 +1,6 @@
 // Now playing (RFC-002, "4. The UI"): the line under the floating record,
 // and the chip that stands for it when the record is back in the crate.
+// Each names the device it's on, which brings up the device list.
 //
 // The clock counts on from Spotify's last answer by itself, writing only its
 // own text and bar, so nothing else redraws while it runs (PR #16's advice,
@@ -36,11 +37,20 @@ type Props = {
   /** Offered for a stranger's record. */
   onAdd?: () => void;
   adding?: boolean;
+  /** "on Kitchen" brings up the device list, to play somewhere else. */
+  onDevice: () => void;
   onFailed: (error: unknown) => void;
 };
 
 /** The line under the floating record: where it is, the track and the clock. */
-export function NowLine({ live, tracks, onAdd, adding = false, onFailed }: Props) {
+export function NowLine({
+  live,
+  tracks,
+  onAdd,
+  adding = false,
+  onDevice,
+  onFailed,
+}: Props) {
   const state = live.starting ? " · starting" : live.paused ? " · paused" : "";
   return (
     <section
@@ -58,7 +68,19 @@ export function NowLine({ live, tracks, onAdd, adding = false, onFailed }: Props
         <p className="now-album">
           {live.artist}
           {live.album && ` — ${live.album}`}
-          {live.device && ` · on ${live.device}`}
+          {live.device && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                className="now-device"
+                title="Play somewhere else"
+                onClick={onDevice}
+              >
+                on {live.device}
+              </button>
+            </>
+          )}
         </p>
       )}
       {live.durationMs > 0 && <Clock live={live} />}
@@ -150,11 +172,14 @@ export function Chip({
   live,
   cover,
   onOpen,
+  onDevice,
 }: {
   live: Live;
   /** A small cover: the record's 320, or Spotify's for a stranger's. */
   cover: string | null;
   onOpen: () => void;
+  /** The device on it brings up the device list, to play somewhere else. */
+  onDevice: () => void;
 }) {
   const advert = live.kind === "advert";
   return (
@@ -176,7 +201,16 @@ export function Chip({
           {live.paused && " · paused"}
         </span>
       </button>
-      {live.device && <span className="chip-device">{live.device}</span>}
+      {live.device && (
+        <button
+          type="button"
+          className="chip-device"
+          title="Play somewhere else"
+          onClick={onDevice}
+        >
+          {live.device}
+        </button>
+      )}
     </section>
   );
 }

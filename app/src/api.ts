@@ -170,7 +170,7 @@ export const removeAlbum = (id: AlbumId) =>
 export const openAlbumInSpotify = (spotifyId: string) =>
   invoke<void>("open_album_in_spotify", { spotifyId });
 
-/** A Spotify Connect device, as the device picker shows it. */
+/** A Spotify Connect device, as the device list shows it. */
 export type DeviceChoice = {
   name: string;
   /** "Speaker", "TV", "Computer" and so on. */
@@ -190,6 +190,15 @@ export type Devices = { devices: DeviceChoice[]; remembered: string | null };
  */
 export type PlayOutcome =
   | { state: "playing"; devices: DeviceChoice[] }
+  /** Spotify isn't listing the device: it's asleep or offline. */
+  | { state: "deviceMissing"; devices: DeviceChoice[] };
+
+/**
+ * What happened when you moved what's playing to another device, with the
+ * device list as Spotify gave it just before.
+ */
+export type TransferOutcome =
+  | { state: "moved"; devices: DeviceChoice[] }
   /** Spotify isn't listing the device: it's asleep or offline. */
   | { state: "deviceMissing"; devices: DeviceChoice[] };
 
@@ -225,6 +234,12 @@ export type NowPlaying = {
 };
 
 export const getDevices = () => invoke<Devices>("get_devices");
+/**
+ * The device Play goes to, by name, or null until you've chosen one. From
+ * Deadwax's config: it doesn't ask Spotify.
+ */
+export const getRememberedDevice = () =>
+  invoke<string | null>("get_remembered_device");
 /** Remembers the device you chose, by name. */
 export const chooseDevice = (name: string) =>
   invoke<void>("choose_device", { name });
@@ -237,6 +252,13 @@ export const playAlbum = (
   device: string,
   trackId: string | null,
 ) => invoke<PlayOutcome>("play_album", { id, device, trackId });
+/**
+ * Moves what's playing to the named device, from the same place in the
+ * track, and remembers it. `play` is whether it plays there: a paused record
+ * stays paused.
+ */
+export const transferPlayback = (device: string, play: boolean) =>
+  invoke<TransferOutcome>("transfer_playback", { device, play });
 /** Null when Spotify isn't playing anything. */
 export const getPlayback = () => invoke<NowPlaying | null>("get_playback");
 export const pausePlayback = () => invoke<void>("pause_playback");

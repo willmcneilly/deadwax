@@ -2,8 +2,8 @@
 // out from its place, shows its cover large, and turns over to its back: the
 // tracklist in sides, the year and the label, Open in Spotify and a quiet way
 // to take it out of the crate. Picking a track drops the needle: the album
-// plays from there, on the device chosen below it, and the record turns to
-// its front and floats while it plays, with now playing's line under it.
+// plays from there, on the remembered device, and the record turns to its
+// front and floats while it plays, with now playing's line under it.
 //
 // Kept to DESIGN.md's rules: no CSS filter on the cover (rule 3), the back is
 // built the first time it's turned over (rule 4), and the 1600 the crate
@@ -15,7 +15,6 @@ import {
   errorMessage,
   getAlbum,
   openAlbumInSpotify,
-  playAlbum,
   refreshAlbum,
   removeAlbum,
   type AlbumCard,
@@ -24,13 +23,11 @@ import {
   type AlbumTrack,
 } from "./api";
 import { SleeveFront } from "./Crate";
-import DevicePicker from "./DevicePicker";
 import { NowLine } from "./NowLine";
 import type { Place } from "./place";
 import { playingTrack, type Live } from "./playing";
 import { duration, sides } from "./sides";
 import { wearStyle } from "./textures";
-import useDevices from "./useDevices";
 import "./Sleeve.css";
 
 const FLY_OUT = { duration: 760, easing: "cubic-bezier(.2,.75,.15,1)" };
@@ -64,12 +61,10 @@ type Props = {
   live: Live | null;
   /** Floating in its glow, front up, with now playing's line under it. */
   floating: boolean;
-  /** You've pressed a track on this device: the needle is dropping. */
-  onStarting: (track: AlbumTrack, device: string) => void;
-  /** Spotify said yes. */
-  onStarted: () => void;
-  /** It didn't start: the device is missing, or the call failed. */
-  onNotStarted: () => void;
+  /** You've pressed a track: the crate drops the needle (Library.tsx). */
+  onPlay: (track: AlbumTrack) => void;
+  /** You've asked to play somewhere else, from "on Kitchen". */
+  onDevice: () => void;
   onFailed: (error: unknown) => void;
   /** The 1600 is decoded and on top (the crate spike's measuring). */
   onLargeReady?: () => void;
@@ -85,9 +80,8 @@ function Sleeve({
   onRemoved,
   live,
   floating,
-  onStarting,
-  onStarted,
-  onNotStarted,
+  onPlay,
+  onDevice,
   onFailed,
   onLargeReady,
 }: Props) {
@@ -95,7 +89,6 @@ function Sleeve({
   const [details, setDetails] = useState<AlbumDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const devices = useDevices(onFailed);
   // The latest handlers, so new ones from the parent don't load it again.
   const failed = useRef(onFailed);
   const returned = useRef(onReturned);
@@ -181,27 +174,7 @@ function Sleeve({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- toCrate reads the fixed `from`
   }, [returning]);
 
-  /**
-   * Drops the needle: plays the album from this track on the chosen device.
-   * If Spotify isn't listing the device, the record turns back and the
-   * picker below says so.
-   */
-  async function play(track: AlbumTrack) {
-    const device = devices.selected;
-    if (device === null) return;
-    onStarting(track, device);
-    try {
-      const outcome = await playAlbum(id, device, track.spotifyId);
-      devices.setDevices(outcome.devices);
-      if (outcome.state === "playing") onStarted();
-      else onNotStarted();
-    } catch (e) {
-      onNotStarted();
-      onFailed(e);
-    }
-  }
   const starting = live?.starting ?? false;
-  const canPlay = devices.selected !== null && !starting;
   const current = playingTrack(details?.tracks ?? [], live);
 
   const large = album.covers?.large;
@@ -260,7 +233,7 @@ function Sleeve({
                     details={details}
                     error={error}
                     current={current}
-                    onPlay={canPlay ? (track) => void play(track) : null}
+                    onPlay={starting ? null : onPlay}
                     onRemoved={onRemoved}
                     onFailed={onFailed}
                   />
@@ -271,15 +244,12 @@ function Sleeve({
         </div>
       </div>
       <div className="sleeve-desk">
-        {floating && live ? (
-          <NowLine live={live} tracks={details?.tracks ?? null} onFailed={onFailed} />
-        ) : (
-          <DevicePicker
-            devices={devices.devices}
-            selected={devices.selected}
-            refreshing={devices.refreshing}
-            onChoose={devices.choose}
-            onRefresh={devices.refresh}
+        {floating && live && (
+          <NowLine
+            live={live}
+            tracks={details?.tracks ?? null}
+            onDevice={onDevice}
+            onFailed={onFailed}
           />
         )}
       </div>

@@ -25,11 +25,12 @@ export function backEnd(
 }
 
 /**
- * Nothing playing, and no devices. The crate always asks what's playing and
- * the sleeve lists devices, so most tests need these.
+ * Nothing playing, no devices and none remembered. The crate always asks
+ * what's playing and which device Play goes to, so most tests need these.
  */
 export const NOTHING_PLAYING = {
   get_playback: () => null,
+  get_remembered_device: () => null,
   get_devices: () => ({ devices: [], remembered: null }),
 };
 
