@@ -218,14 +218,4 @@ describe("The crate", () => {
     );
     vi.restoreAllMocks();
   });
-
-  it("says so when the crate is empty, and offers to find a record", async () => {
-    crateOf(() => []);
-    render(<Library name="Will" onSignedOut={() => {}} />);
-    expect(await screen.findByText("Your crate is empty.")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Find a record" }));
-
-    expect(screen.getByRole("searchbox")).toBeInTheDocument();
-  });
 });

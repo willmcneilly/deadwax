@@ -54,7 +54,7 @@ function open(replies: Record<string, () => unknown> = {}) {
 describe("The Develop menu's liner notes", () => {
   it("does nothing until the Develop menu asks", async () => {
     const calls = open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     expect(calls.map((c) => c.cmd)).not.toContain("import_prototype_notes");
     expect(calls.map((c) => c.cmd)).not.toContain("notes_report");
@@ -63,7 +63,7 @@ describe("The Develop menu's liner notes", () => {
 
   it("imports the prototype's notes, and says which matched an album and which didn't", async () => {
     const calls = open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     await emit(IMPORT_PROTOTYPE_NOTES);
 
@@ -90,7 +90,7 @@ describe("The Develop menu's liner notes", () => {
       },
       get_session: () => ({ state: "signedIn", name: "Will" }),
     });
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     await emit(IMPORT_PROTOTYPE_NOTES);
 
@@ -102,7 +102,7 @@ describe("The Develop menu's liner notes", () => {
 
   it("reports every notes file, with what's wrong with an invalid one", async () => {
     open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     await emit(NOTES_REPORT);
 
@@ -123,7 +123,7 @@ describe("The Develop menu's liner notes", () => {
 
   it("says when no album has notes yet", async () => {
     open({ notes_report: () => ({ folder: "/notes", files: [] }) });
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     await emit(NOTES_REPORT);
 

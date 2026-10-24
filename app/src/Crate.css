@@ -55,6 +55,18 @@
   pointer-events: none;
 }
 
+/*
+ * Under search, it isn't drawn once it has dimmed, and shows again at once
+ * when search closes (DESIGN.md, "Search over the crate").
+ */
+.crate.away {
+  visibility: hidden;
+  transition:
+    transform 0.9s cubic-bezier(.3, .7, .2, 1),
+    opacity 0.7s,
+    visibility 0s 0.7s;
+}
+
 .crate-stack {
   position: absolute;
   left: 50%;
@@ -247,17 +259,36 @@
   font-weight: 700;
 }
 
+/* The empty crate: search's first-run line, and a quiet way back to it. */
 .crate-empty {
   position: absolute;
   inset: 0;
+  z-index: 5;
   display: grid;
   place-content: center;
   justify-items: center;
   gap: calc(var(--space) * 2);
-  font-family: var(--font-record);
-  font-size: 1.4rem;
 }
 
 .crate-empty p {
   margin: 0;
+  font-family: var(--font-hand);
+  font-size: 2.2rem;
+  opacity: 0.7;
+}
+
+.library .crate-empty button {
+  padding: var(--space) calc(var(--space) * 2);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.library .crate-empty button:hover {
+  background: var(--line);
 }

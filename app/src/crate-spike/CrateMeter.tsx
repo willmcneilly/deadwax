@@ -27,6 +27,10 @@ export type CrateHandle = {
   putBack: () => void;
   /** Pretends Spotify is playing the record out, or stops pretending. */
   setPlaying: (on: boolean) => void;
+  /** Opens the search wall over the crate with a tile for each record, or closes it. */
+  setSearch: (on: boolean) => void;
+  /** Scrolls the search wall by this many pixels. */
+  scrollSearch: (by: number) => void;
   /** Calls `f` when the pulled-out sleeve's 1600 is decoded and on top. */
   onLargeReady: (f: () => void) => void;
   takeLongestCommit: () => number;
@@ -34,7 +38,7 @@ export type CrateHandle = {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The spike's controller, on the real crate. It has no search yet. */
+/** The spike's controller, on the real crate. */
 function controller(crate: CrateHandle): Controller {
   let pulledAt = 0;
   let first: Promise<number> = Promise.resolve(0);
@@ -54,9 +58,6 @@ function controller(crate: CrateHandle): Controller {
       });
     });
   });
-  const none = () => {
-    throw new Error("The crate has no search yet.");
-  };
   return {
     count: crate.count,
     records: crate.records,
@@ -72,8 +73,8 @@ function controller(crate: CrateHandle): Controller {
     largePainted: () => new Promise((resolve) => (waiting = resolve)),
     takeLongestCommit: crate.takeLongestCommit,
     setPlaying: crate.setPlaying,
-    setSearch: none,
-    scrollSearch: none,
+    setSearch: crate.setSearch,
+    scrollSearch: crate.scrollSearch,
   };
 }
 

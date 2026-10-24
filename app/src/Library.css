@@ -15,6 +15,13 @@
   gap: calc(var(--space) * 2);
   color: var(--room-ink);
   font-size: 0.8rem;
+  transition: opacity 0.4s;
+}
+
+.library-header.hidden,
+.library .find.hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .signed-in {
@@ -62,8 +69,8 @@
 }
 
 /*
- * Errors, the Develop menu's reports and the search box, in a column over
- * the room.
+ * Errors and the Develop menu's reports, in a column over the room and the
+ * search wall.
  */
 .library-panels {
   position: fixed;
@@ -84,17 +91,6 @@
   padding: var(--space) calc(var(--space) * 2);
   border-radius: var(--radius);
   background: var(--surface);
-}
-
-.search-panel {
-  padding: calc(var(--space) * 2);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--ink);
-}
-
-.search-panel .search {
-  margin: calc(var(--space) * 2) 0 0;
 }
 
 .library button {
@@ -118,63 +114,6 @@
   border: 1px solid var(--ink-muted);
 }
 
-.search {
-  margin: calc(var(--space) * 2) 0 calc(var(--space) * 4);
-}
-
-.search-form {
-  display: flex;
-  gap: var(--space);
-}
-
-.search-form input {
-  flex: 1;
-  padding: var(--space);
-  font: inherit;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--ink-muted);
-  border-radius: var(--radius);
-}
-
-.results {
-  list-style: none;
-  padding: 0;
-  margin: calc(var(--space) * 2) 0;
-}
-
-.result {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--space) * 1.5);
-  padding: var(--space) 0;
-  border-bottom: 1px solid var(--surface);
-}
-
-/* Covers keep their own shape: sized by width only, never cropped. */
-.result-cover {
-  width: 64px;
-  height: auto;
-  flex: none;
-  border-radius: var(--radius);
-}
-
-.result-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.result-title {
-  font-weight: 600;
-}
-
-.result-meta,
-.in-collection {
-  color: var(--ink-muted);
-}
-
 .no-cover {
   aspect-ratio: 1;
   display: grid;
@@ -184,10 +123,6 @@
   background: var(--surface);
   color: var(--ink-muted);
   text-align: center;
-}
-
-.result-cover.no-cover {
-  font-size: 0;
 }
 
 /* The dev list's offer and reports (development builds only). */
