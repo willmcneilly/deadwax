@@ -35,7 +35,9 @@ const PLAIN: &[&str] = &[
 /// `AlbumId` is a Deadwax album ID: a `String` with its own type, from
 /// `deadwax-core`. `Palette` is an album's colours, each a `Colour` (three
 /// bytes, sent as `#rrggbb`), and a `bool`, from `deadwax_core::palette`.
-const KNOWN: &[&str] = &["AlbumId", "Palette"];
+/// `Notes` is an album's liner notes, from `deadwax_core::notes`: strings,
+/// lists of them and numbers, in the prototype's schema.
+const KNOWN: &[&str] = &["AlbumId", "Palette", "Notes"];
 
 /// Names that suggest something holds a credential.
 const FORBIDDEN: &[&str] = &[

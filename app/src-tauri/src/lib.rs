@@ -14,6 +14,7 @@ use commands::AppState;
 use deadwax_core::collection::Collection;
 use deadwax_core::covers::Store;
 use deadwax_core::location::{self, Build};
+use deadwax_core::notes::NotesDir;
 use deadwax_sources::artwork::{Endpoints, Finder};
 use deadwax_sources::clock::SystemClock;
 use jobs::{ALBUM_UPDATED, AlbumJobs, RETRY_AFTER};
@@ -21,7 +22,7 @@ use jobs::{ALBUM_UPDATED, AlbumJobs, RETRY_AFTER};
 /// The menu item that opens the setup screen, and the event it sends the UI.
 const CHANGE_CLIENT_ID: &str = "change-client-id";
 
-/// What kind of build this is, for where the database and covers live. A development
+/// What kind of build this is, for where the database, covers and notes live. A development
 /// build knows its checkout from where it was compiled: this crate is
 /// `app/src-tauri` inside it.
 fn build() -> Build {
@@ -55,7 +56,10 @@ fn open_collection(app_data: &std::path::Path) -> Result<Collection, String> {
 /// which does the work so it can show progress and errors.
 #[cfg(debug_assertions)]
 fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<Submenu<R>> {
-    use commands::dev::{ARTWORK_REPORT, CRATE_SPIKE, RESET_COLLECTION, RESTORE_FROM_DEV_LIST};
+    use commands::dev::{
+        ARTWORK_REPORT, CRATE_SPIKE, IMPORT_PROTOTYPE_NOTES, NOTES_REPORT, RESET_COLLECTION,
+        RESTORE_FROM_DEV_LIST,
+    };
     let reset = MenuItem::with_id(
         handle,
         RESET_COLLECTION,
@@ -71,12 +75,26 @@ fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Resul
         None::<&str>,
     )?;
     let report = MenuItem::with_id(handle, ARTWORK_REPORT, "Artwork report", true, None::<&str>)?;
+    let import = MenuItem::with_id(
+        handle,
+        IMPORT_PROTOTYPE_NOTES,
+        "Import prototype notes",
+        true,
+        None::<&str>,
+    )?;
+    let notes = MenuItem::with_id(
+        handle,
+        NOTES_REPORT,
+        "Liner notes report",
+        true,
+        None::<&str>,
+    )?;
     let spike = MenuItem::with_id(handle, CRATE_SPIKE, "Crate spike", true, None::<&str>)?;
     Submenu::with_items(
         handle,
         "Develop",
         true,
-        &[&reset, &restore, &report, &spike],
+        &[&reset, &restore, &report, &import, &notes, &spike],
     )
 }
 
@@ -117,6 +135,7 @@ pub fn run() {
                 config::path(&app_data),
                 collection,
                 covers,
+                NotesDir::new(location::notes_dir(&build(), &app_data)),
                 jobs,
             )?);
 
@@ -143,6 +162,8 @@ pub fn run() {
                 commands::dev::RESET_COLLECTION,
                 commands::dev::RESTORE_FROM_DEV_LIST,
                 commands::dev::ARTWORK_REPORT,
+                commands::dev::IMPORT_PROTOTYPE_NOTES,
+                commands::dev::NOTES_REPORT,
                 commands::dev::CRATE_SPIKE,
             ];
             #[cfg(not(debug_assertions))]
@@ -165,6 +186,7 @@ pub fn run() {
             commands::refresh_album,
             commands::remove_album,
             commands::open_album_in_spotify,
+            commands::get_notes,
             commands::get_devices,
             commands::get_remembered_device,
             commands::choose_device,
@@ -183,6 +205,10 @@ pub fn run() {
             commands::dev::restore_from_dev_list,
             #[cfg(debug_assertions)]
             commands::dev::artwork_report,
+            #[cfg(debug_assertions)]
+            commands::dev::import_prototype_notes,
+            #[cfg(debug_assertions)]
+            commands::dev::notes_report,
             #[cfg(debug_assertions)]
             commands::dev::crate_spike_keep_in_front,
         ])

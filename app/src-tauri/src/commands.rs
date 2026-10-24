@@ -19,6 +19,7 @@ use std::time::SystemTime;
 
 use deadwax_core::collection::{self, AlbumId, Collected, Collection};
 use deadwax_core::covers::{Size, Store};
+use deadwax_core::notes::{Notes, NotesDir};
 use deadwax_core::palette::Palette;
 use deadwax_sources::clock::{Clock, SystemClock};
 use deadwax_sources::spotify::albums::{AlbumSummary, is_spotify_id};
@@ -66,6 +67,8 @@ pub struct AppState {
     collection: Arc<std::sync::Mutex<Collection>>,
     /// Each album's cover on disk, in sizes, which `cover://` serves.
     covers: Store,
+    /// Each album's liner notes, for those that have them (RFC-002).
+    notes: NotesDir,
     /// Looks up and downloads covers in the background (RFC-002).
     jobs: AlbumJobs,
     spotify: RwLock<Option<Arc<Client>>>,
@@ -79,6 +82,7 @@ impl AppState {
         config_path: PathBuf,
         collection: Arc<std::sync::Mutex<Collection>>,
         covers: Store,
+        notes: NotesDir,
         jobs: AlbumJobs,
     ) -> Result<Self, String> {
         let config = config::load(&config_path)
@@ -88,6 +92,7 @@ impl AppState {
             config_path,
             collection,
             covers,
+            notes,
             jobs,
             spotify: RwLock::new(spotify),
             waiting_sign_in: Mutex::new(None),
@@ -620,6 +625,22 @@ fn remove(
     covers
         .remove(id)
         .map_err(|e| format!("Couldn't delete the album's covers: {e}"))
+}
+
+/// The album's liner notes (RFC-002, "5. Liner notes in the app"), read from
+/// its file in the notes folder. `None` if it has none. A file that isn't
+/// valid notes is treated as none, never as a broken page: it's logged, and
+/// the Develop menu's Liner notes report says what's wrong with it.
+#[tauri::command]
+pub fn get_notes(state: State<'_, AppState>, id: AlbumId) -> Option<Notes> {
+    album_notes(&state.notes, &id)
+}
+
+fn album_notes(dir: &NotesDir, id: &AlbumId) -> Option<Notes> {
+    dir.read(id).unwrap_or_else(|error| {
+        eprintln!("The liner notes for {id} can't be read, so it has none: {error}");
+        None
+    })
 }
 
 /// The album's page on Spotify. Spotify's developer policy wants every album
@@ -2527,5 +2548,59 @@ mod tests {
                 },
             })
         );
+    }
+
+    /// Liner notes with one of everything the schema has, as JSON.
+    const NOTES: &str = r#"{
+        "albumTitle": "In Rainbows", "artist": "Radiohead",
+        "headline": "Pay What You Want", "standfirst": "In October 2007.",
+        "sections": [{ "heading": "The release", "paragraphs": ["It opens with [[15 Step]]."] }],
+        "quotes": [], "facts": [{ "figure": "10", "label": "tracks" }],
+        "credits": [{ "role": "Producer", "names": ["Nigel Godrich"] }],
+        "sources": [{ "title": "Interview", "publisher": "Wired", "url": "https://example.com", "year": 2007 }]
+    }"#;
+
+    fn notes_folder(files: &[(&str, &str)]) -> (tempfile::TempDir, NotesDir) {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("notes");
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, json) in files {
+            std::fs::write(dir.join(name), json).unwrap();
+        }
+        (root, NotesDir::new(dir))
+    }
+
+    #[test]
+    fn an_album_with_a_notes_file_has_its_notes() {
+        let (_root, dir) = notes_folder(&[("deadwax-id.json", NOTES)]);
+
+        let notes = album_notes(&dir, &"deadwax-id".into()).unwrap();
+
+        assert_eq!(notes.headline, "Pay What You Want");
+        // Sent to the UI in the schema's own names.
+        let sent = serde_json::to_value(&notes).unwrap();
+        assert_eq!(sent["albumTitle"], "In Rainbows");
+        assert_eq!(sent["sources"][0]["year"], 2007);
+        assert_eq!(sent["sections"][0].get("pullQuote"), None);
+    }
+
+    #[test]
+    fn an_album_with_no_notes_file_has_none() {
+        let (_root, dir) = notes_folder(&[("another.json", NOTES)]);
+        assert_eq!(album_notes(&dir, &"deadwax-id".into()), None);
+        assert_eq!(
+            album_notes(&NotesDir::new("/nowhere/notes"), &"deadwax-id".into()),
+            None
+        );
+    }
+
+    #[test]
+    fn an_album_whose_notes_file_is_invalid_has_none() {
+        let (_root, dir) = notes_folder(&[
+            ("not-json.json", "{"),
+            ("not-notes.json", r#"{ "albumTitle": "In Rainbows" }"#),
+        ]);
+        assert_eq!(album_notes(&dir, &"not-json".into()), None);
+        assert_eq!(album_notes(&dir, &"not-notes".into()), None);
     }
 }
