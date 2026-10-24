@@ -15,8 +15,10 @@ const RUST = [
   "rust-toolchain.toml",
   "crates/",
   "app/src-tauri/",
-  // A test checks the setup screen shows the redirect URI sign-in uses.
-  "app/src/Setup.tsx",
+  // Tests check the setup card shows the redirect URI sign-in uses, and
+  // that the UI's tests fail with the sentences Rust really says.
+  "app/src/Account.tsx",
+  "app/src/mockBackEnd.ts",
 ];
 
 /**

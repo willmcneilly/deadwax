@@ -95,6 +95,21 @@ pub enum SpotifyError {
     },
 }
 
+impl SpotifyError {
+    /// Spotify couldn't be reached, or couldn't answer: no connection, a rate
+    /// limit, or a fault at Spotify's end. You're still signed in, and the
+    /// collection still works without it.
+    pub fn is_unreachable(&self) -> bool {
+        match self {
+            Self::Http(HttpError::Network(_) | HttpError::RateLimited(_)) => true,
+            Self::Unexpected { status, .. } | Self::Refused { status, .. } => {
+                status.is_server_error()
+            }
+            _ => false,
+        }
+    }
+}
+
 /// What Deadwax shows about you.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Profile {
@@ -112,7 +127,13 @@ pub struct Spotify<C, S> {
     /// refresh. Spotify may rotate the refresh token, and the loser would be
     /// signed out.
     refresh_lock: Mutex<()>,
+    /// Told when a call finds you signed out (`on_signed_out`).
+    signed_out: Option<SignedOutHook>,
 }
+
+/// Hears `SpotifyError::SignedOut` or `NotSignedIn`, from whichever call
+/// found it.
+type SignedOutHook = Box<dyn Fn(&SpotifyError) + Send + Sync>;
 
 impl<C: Clock, S: TokenStore> Spotify<C, S> {
     pub fn new(client_id: String, clock: C, store: S, endpoints: Endpoints) -> Self {
@@ -122,7 +143,18 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
             client_id,
             endpoints,
             refresh_lock: Mutex::new(()),
+            signed_out: None,
         }
+    }
+
+    /// Calls `hook` whenever a call finds you signed out: Spotify has just
+    /// rejected the refresh token (`SignedOut`), or there are no tokens
+    /// (`NotSignedIn`). Every call that needs a token passes through here, so
+    /// the app hears about it however it was found (RFC-002, "What the back
+    /// end gains").
+    pub fn on_signed_out(mut self, hook: impl Fn(&SpotifyError) + Send + Sync + 'static) -> Self {
+        self.signed_out = Some(Box::new(hook));
+        self
     }
 
     pub fn has_tokens(&self) -> Result<bool, SpotifyError> {
@@ -267,6 +299,16 @@ impl<C: Clock, S: TokenStore> Spotify<C, S> {
     /// A working access token, refreshed first if it's about to expire (or
     /// `force` is set).
     async fn access_token(&self, force: bool) -> Result<String, SpotifyError> {
+        let token = self.fresh_token(force).await;
+        if let Err(error @ (SpotifyError::SignedOut | SpotifyError::NotSignedIn)) = &token
+            && let Some(hook) = &self.signed_out
+        {
+            hook(error);
+        }
+        token
+    }
+
+    async fn fresh_token(&self, force: bool) -> Result<String, SpotifyError> {
         let _guard = self.refresh_lock.lock().await;
         let tokens = self.store.load()?.ok_or(SpotifyError::NotSignedIn)?;
         let expiring = self.http.clock().now() + EXPIRY_MARGIN >= tokens.expires_at();

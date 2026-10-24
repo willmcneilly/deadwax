@@ -72,7 +72,7 @@ function gatefoldBackEnd({
 
 /** Opens the crate and pulls out In Rainbows, the record in front. */
 async function pullOutInRainbows() {
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" }),
   );

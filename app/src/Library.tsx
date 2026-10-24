@@ -18,7 +18,6 @@ import {
   getCollection,
   getNotes,
   getRememberedDevice,
-  getSession,
   nextTrack,
   pausePlayback,
   playAlbum,
@@ -31,7 +30,6 @@ import {
   type Notes,
   type NowPlaying,
   type SearchResults,
-  type Session,
 } from "./api";
 import ArtworkReport from "./ArtworkReport";
 import Crate from "./Crate";
@@ -49,6 +47,8 @@ import Gatefold from "./Gatefold";
 import Glow, { type GlowLevel } from "./Glow";
 import NotesReport from "./NotesReport";
 import { Chip } from "./NowLine";
+import { useNotice } from "./notice";
+import QuietLine from "./QuietLine";
 import SearchWall from "./SearchWall";
 import Sleeve from "./Sleeve";
 import Stranger, { type StrangerRecord } from "./Stranger";
@@ -57,6 +57,7 @@ import {
   confirms,
   liveFrom,
   playingTrack,
+  UNANSWERED_AFTER,
   usePlayback,
   type Heard,
   type Live,
@@ -66,9 +67,8 @@ import { installTextures } from "./textures";
 import "./Library.css";
 
 type Props = {
-  name: string;
-  /** Called when a Spotify call fails because you're no longer signed in. */
-  onSignedOut: (session: Session) => void;
+  /** Your Spotify name, or null when Spotify couldn't be reached to ask. */
+  name: string | null;
 };
 
 /** The record you've pulled out of the crate, and where it came from. */
@@ -136,9 +136,9 @@ const DECODED = 4;
  * turns the crate to the last record you added. An empty collection opens
  * straight onto search.
  */
-function Library({ name, onSignedOut }: Props) {
+function Library({ name }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { notice, say, hush } = useNotice();
   const [order, setOrder] = useState<Order>("genre");
   // The first record, behind the first divider.
   const [focus, setFocus] = useState<Focus>({ key: null, index: 1 });
@@ -187,9 +187,9 @@ function Library({ name, onSignedOut }: Props) {
         if (!loaded.current && collection.length === 0) setSearching(true);
         loaded.current = true;
       },
-      (e: unknown) => setError(errorMessage(e)),
+      (e: unknown) => say(errorMessage(e)),
     );
-  }, []);
+  }, [say]);
 
   useEffect(load, [load]);
 
@@ -733,18 +733,10 @@ function Library({ name, onSignedOut }: Props) {
     load();
   }
 
-  // A failed Spotify call may mean the sign-in has expired. If so, go back
-  // to the sign-in screen with what Rust said, rather than an error here.
-  async function failed(e: unknown) {
-    const message = errorMessage(e);
-    const session = await getSession().catch(() => null);
-    if (session?.state === "signedOut") {
-      onSignedOut({ state: "signedOut", message });
-    } else if (session && session.state !== "signedIn") {
-      onSignedOut(session);
-    } else {
-      setError(message);
-    }
+  // A failed call says why in the quiet line. One that found you signed
+  // out also brings up the sign-in card: Rust tells App (`SIGNED_OUT`).
+  function failed(e: unknown) {
+    say(errorMessage(e));
   }
 
   // The crate spike's measuring (DWX-20), in development builds only. The
@@ -922,7 +914,7 @@ function Library({ name, onSignedOut }: Props) {
       </nav>
 
       <header className={`library-header ${searching ? "hidden" : ""}`}>
-        <p className="signed-in">Signed in as {name}</p>
+        {name !== null && <p className="signed-in">Signed in as {name}</p>}
         {albums !== null && !empty && (
           <button
             type="button"
@@ -941,16 +933,6 @@ function Library({ name, onSignedOut }: Props) {
       </header>
 
       <div className="library-panels">
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        {playback.error && (
-          <p className="error" role="status">
-            Couldn't check what's playing: {playback.error}
-          </p>
-        )}
         {import.meta.env.DEV && <ArtworkReport onFailed={failed} />}
         {import.meta.env.DEV && <NotesReport onFailed={failed} />}
         {import.meta.env.DEV && (
@@ -968,7 +950,7 @@ function Library({ name, onSignedOut }: Props) {
           added(album);
         }}
         onFailed={failed}
-        onStarted={() => setError(null)}
+        onStarted={hush}
         pretend={import.meta.env.DEV ? pretendSearch : undefined}
       />
 
@@ -1000,6 +982,10 @@ function Library({ name, onSignedOut }: Props) {
           onFailed={failed}
         />
       )}
+      <QuietLine
+        notice={notice}
+        unanswered={playback.failures >= UNANSWERED_AFTER}
+      />
       {import.meta.env.DEV && <CrateMeter crate={meter} />}
     </div>
   );

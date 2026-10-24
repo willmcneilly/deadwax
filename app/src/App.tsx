@@ -5,12 +5,11 @@ import {
   errorMessage,
   getClientId,
   getSession,
+  SIGNED_OUT,
   type Session,
 } from "./api";
+import { AccountRoom, Setup, SignIn, Trouble } from "./Account";
 import Library from "./Library";
-import Setup from "./Setup";
-import SignIn from "./SignIn";
-import "./App.css";
 
 type View =
   | { kind: "loading" }
@@ -49,6 +48,27 @@ function App() {
     };
   }, []);
 
+  // Any command that finds you signed out, from anywhere, brings up the
+  // sign-in card. Calls that were already on their way find no tokens and
+  // say so without a message: the card keeps saying the sign-in expired.
+  useEffect(() => {
+    const unlisten = listen<string | null>(SIGNED_OUT, ({ payload }) => {
+      setView((previous) => {
+        const shown =
+          previous.kind === "session" &&
+          previous.session.state === "signedOut";
+        if (shown && !payload) return previous;
+        return {
+          kind: "session",
+          session: { state: "signedOut", message: payload },
+        };
+      });
+    });
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+
   const show = (session: Session) => setView({ kind: "session", session });
 
   const retry = () => {
@@ -67,34 +87,44 @@ function render(
 ) {
   switch (view.kind) {
     case "loading":
-      return null;
+      return <AccountRoom />;
     case "error":
       return (
-        <section className="panel">
-          <p className="error" role="alert">
-            {view.message}
-          </p>
-          <button type="button" onClick={retry}>
-            Try again
-          </button>
-        </section>
+        <AccountRoom>
+          <Trouble message={view.message} onRetry={retry} />
+        </AccountRoom>
       );
     case "changeClientId":
       return (
-        <Setup
-          current={view.current}
-          onSaved={show}
-          onCancel={() => setView(view.previous)}
-        />
+        <AccountRoom>
+          <Setup
+            current={view.current}
+            onSaved={show}
+            onCancel={() => setView(view.previous)}
+          />
+        </AccountRoom>
       );
     case "session":
       switch (view.session.state) {
         case "needsClientId":
-          return <Setup current={null} onSaved={show} />;
+          return (
+            <AccountRoom>
+              <Setup current={null} onSaved={show} />
+            </AccountRoom>
+          );
         case "signedOut":
-          return <SignIn message={view.session.message} onSignedIn={show} />;
+          return (
+            <AccountRoom>
+              {/* Keyed by what it says, so a new expiry starts it afresh. */}
+              <SignIn
+                key={view.session.message ?? ""}
+                message={view.session.message}
+                onSignedIn={show}
+              />
+            </AccountRoom>
+          );
         case "signedIn":
-          return <Library name={view.session.name} onSignedOut={show} />;
+          return <Library name={view.session.name} />;
       }
   }
 }

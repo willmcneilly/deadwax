@@ -6,7 +6,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  errorMessage,
   getPlayback,
   type AlbumCard,
   type AlbumId,
@@ -16,6 +15,9 @@ import {
 
 /** How often to ask Spotify what's playing. */
 export const POLL_MS = 2000;
+
+/** How many failed polls in a row mean Spotify isn't answering. */
+export const UNANSWERED_AFTER = 2;
 
 /**
  * How far Spotify's position can be from where the clock has counted it to
@@ -72,7 +74,12 @@ export function settle(
 export function usePlayback(onNews: (heard: Heard) => void) {
   /** Undefined until Spotify first answers. */
   const [heard, setHeard] = useState<Heard | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * How many polls in a row have failed, up to `UNANSWERED_AFTER`: 0 once
+   * Spotify answers. It stops counting there, so a long outage doesn't
+   * redraw the crate every poll (DESIGN.md, rule 8).
+   */
+  const [failures, setFailures] = useState(0);
   const [asked, setAsked] = useState(0);
   const last = useRef<Heard | undefined>(undefined);
   /** A pause or resume shown straight away, until Spotify agrees. */
@@ -106,11 +113,11 @@ export function usePlayback(onNews: (heard: Heard) => void) {
         try {
           const now = await getPlayback();
           if (stopped) return;
-          setError(null);
+          setFailures(0);
           hear(now);
-        } catch (e) {
+        } catch {
           if (stopped) return;
-          setError(errorMessage(e));
+          setFailures((n) => Math.min(n + 1, UNANSWERED_AFTER));
         }
       }
       if (!stopped) timer = setTimeout(() => void poll(), POLL_MS);
@@ -148,7 +155,7 @@ export function usePlayback(onNews: (heard: Heard) => void) {
   /** Spotify's latest answer, for a callback that needs it now. */
   const latest = useCallback(() => last.current, []);
 
-  return { heard, error, askNow, toggled, latest };
+  return { heard, failures, askNow, toggled, latest };
 }
 
 /** A track you've pressed, while Spotify gets going: the needle is dropping. */

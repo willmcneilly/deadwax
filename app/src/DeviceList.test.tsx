@@ -113,7 +113,7 @@ function crate(
 
 /** Pulls In Rainbows out of the crate, and turns it over to its tracklist. */
 async function openInRainbows() {
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   fireEvent.click(
     await screen.findByRole("button", {
       name: "Pull out In Rainbows by Radiohead",
@@ -371,7 +371,7 @@ describe("Changing device", () => {
         ...more,
       },
     );
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     return calls;
   }
   const chip = () => screen.findByRole("region", { name: "Playing" });
@@ -507,7 +507,7 @@ describe("Changing device", () => {
 
   it("only remembers the device when nothing is playing", async () => {
     const calls = crate({ devices: [MACBOOK, LIVING_ROOM], remembered: "Living Room" });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" });
 
     fireEvent.keyDown(window, { key: "d" });

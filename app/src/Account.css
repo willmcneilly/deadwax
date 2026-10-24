@@ -1,0 +1,150 @@
+/*
+ * The account cards (DWX-25, prototypes/crate/src/connect.css): plain
+ * centred cards in the crate's dark room, which is dark in light and dark
+ * mode alike.
+ */
+
+.account {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--space) * 3);
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse 70% 65% at 50% 50%, var(--room-light), var(--clear) 70%),
+    radial-gradient(ellipse at 50% 40%, var(--room), var(--room-dark) 90%);
+  color: var(--room-ink);
+  line-height: 1.4;
+}
+
+.account-card {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  padding: 34px 36px 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--sheet);
+  box-shadow: 0 30px 90px var(--shadow);
+  user-select: text;
+  animation: account-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes account-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.account-mark {
+  margin: 0 0 20px;
+  font-family: var(--font-label);
+  font-size: 0.6rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  opacity: 0.45;
+}
+
+.account-card h1 {
+  margin: 0 0 14px;
+  font-family: var(--font-record);
+  font-size: 1.9rem;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+}
+
+.account-card p {
+  margin: 0 0 12px;
+  line-height: 1.55;
+  opacity: 0.85;
+}
+
+.account-card .account-small {
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+.account-steps {
+  margin: 0 0 20px;
+  padding-left: 1.2em;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+.account-steps code {
+  font-family: var(--font-label);
+  font-size: 0.82em;
+  user-select: all;
+}
+
+.account-card form {
+  display: flex;
+  gap: var(--space);
+}
+
+.account-card input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.account-card input:focus {
+  border-color: var(--field-focus);
+}
+
+.account-card button {
+  padding: 8px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.account-card button.primary {
+  border-color: var(--room-ink);
+  background: var(--room-ink);
+  color: var(--room);
+}
+
+.account-card button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.account-card .account-link {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.account-actions {
+  display: flex;
+  gap: var(--space);
+  margin-top: 18px;
+}
+
+.account-card .account-error {
+  margin: 14px 0 0;
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  opacity: 0.8;
+}

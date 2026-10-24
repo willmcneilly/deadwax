@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
-use commands::AppState;
+use commands::{AppState, SIGNED_OUT, SignedOutNotice};
 use deadwax_core::collection::Collection;
 use deadwax_core::covers::Store;
 use deadwax_core::location::{self, Build};
@@ -21,6 +21,14 @@ use jobs::{ALBUM_UPDATED, AlbumJobs, RETRY_AFTER};
 
 /// The menu item that opens the setup screen, and the event it sends the UI.
 const CHANGE_CLIENT_ID: &str = "change-client-id";
+
+/// Sends the UI `SIGNED_OUT` when a Spotify call finds you signed out, so
+/// whatever was asked, the sign-in card comes up.
+fn signed_out_notice(app: tauri::AppHandle) -> SignedOutNotice {
+    Arc::new(move |message| {
+        let _ = app.emit(SIGNED_OUT, message);
+    })
+}
 
 /// What kind of build this is, for where the database, covers and notes live. A development
 /// build knows its checkout from where it was compiled: this crate is
@@ -137,6 +145,7 @@ pub fn run() {
                 covers,
                 NotesDir::new(location::notes_dir(&build(), &app_data)),
                 jobs,
+                signed_out_notice(app.handle().clone()),
             )?);
 
             let handle = app.handle();

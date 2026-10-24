@@ -4,7 +4,7 @@
 
 Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter. **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still.
 
-This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), the needle drop, now playing and a stranger's sleeve (DWX-22), the gatefold (DWX-26), and the search wall (DWX-24), are under "Patterns".
+This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), the needle drop, now playing and a stranger's sleeve (DWX-22), the gatefold (DWX-26), the search wall (DWX-24), and the quiet line and the account cards (DWX-25), are under "Patterns".
 
 ## The frame budget
 
@@ -247,6 +247,26 @@ Finding records to add is a full-screen wall of covers (`app/src/SearchWall.tsx`
 - **Add** is under each cover, never over it: these are Spotify's covers, shown as they are (RFC-002, resolved open question 1). One click adds it. A copy of the cover lifts a little and drops off the bottom of the screen toward the crate behind, by transform and opacity only (rule 7), and the tile says "In your crate".
 - **Closing** turns the crate to the last record you added, in its place.
 - **First run.** When the collection is empty, Deadwax opens straight onto search, with "Your crate is empty. Find the first record for it." over it. Closing it leaves the same line in the room, with **Find a record** under it.
+
+### The quiet line
+
+Spotify's errors are one quiet line at the top of the room, never a panel (`app/src/QuietLine.tsx`, RFC-002 "4. The UI"). It's small print in the room's ink, centred above the caption, over the crate, the search wall and the gatefold.
+
+- **An error fades after 8 seconds.** A failed play, search, add or transfer says why in Rust's plain sentence ("Couldn't reach Spotify. Check the connection, then try again."), fades in, and fades out 8 seconds later. Another error, even in the same words, starts the 8 seconds again. Starting a new search clears it.
+- **Spotify not answering is said once, and stays.** One failed poll says nothing. Two in a row say "Spotify isn't answering. Deadwax will keep trying." until a poll works again. An error shows over it while it lasts, and then the line goes back to saying Spotify isn't answering. The poll stops counting at two, so a long outage doesn't redraw the crate every 2 seconds (rule 8).
+- **The crate keeps working.** The collection, its covers, the sleeves' tracklists and the liner notes are on disk, so flipping, pulling out, turning over and reading all work while Spotify is unreachable. Deadwax opens to the crate even if Spotify can't be reached to say who you are; it just doesn't say "Signed in as".
+- **It moves by opacity and transform only** (rule 7), and takes no clicks: nothing under it is ever blocked.
+- **Not for the cards.** An account card says what went wrong on the card itself, under its buttons. The Develop menu's panels keep their own.
+
+### The account cards
+
+Setting up the client ID, signing in, waiting for the browser, signed out and expired are plain centred cards in the dark room (`app/src/Account.tsx`). They're deliberate, but not part of the crate's world: you see them once, or when something has gone wrong.
+
+- **A card** is a small dark sheet (`--sheet`) with a hairline edge: "Deadwax" in spaced small capitals, a light serif heading, a line or two, and pill buttons, the one to press filled in the room's ink.
+- **Connect Deadwax to Spotify** walks through making your own Spotify app, with the redirect URI to copy, and a field for the Client ID. From Spotify › Change Client ID… it has Cancel too.
+- **Sign in to Spotify** says "Deadwax plays your records through Spotify. Sign in to start." **Waiting for Spotify** follows it while the browser is open, with Cancel. **Sign in again** is the expired card: it says Rust's sentence, "Your Spotify sign-in has expired. Sign in again to carry on."
+- **An expired sign-in found anywhere** brings up the expired card: the poll, a play, a search, a Develop menu restore. Rust tells the UI (`SIGNED_OUT`) whichever command found it, so the crate never shows an error for it.
+- **Deadwax couldn't start** is the one card for a failure before any of these, such as the Keychain refusing: it says why, with **Try again**. Spotify being out of reach never gets here.
 
 ### Album colours
 

@@ -2,8 +2,9 @@
 // conventions"): never a real one.
 
 import type { InvokeArgs } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import type { AlbumCard } from "./api";
+import { SIGNED_OUT, type AlbumCard } from "./api";
 
 export type Call = { cmd: string; args?: InvokeArgs };
 
@@ -22,6 +23,26 @@ export function backEnd(
     { shouldMockEvents: true },
   );
   return calls;
+}
+
+/**
+ * What Rust's commands fail with, word for word. A Rust test
+ * (`the_ui_tests_fail_with_the_sentences_rust_really_says`) checks each one.
+ */
+export const SPOTIFY_SAYS = {
+  network: "Couldn't reach Spotify. Check the connection, then try again.",
+  rateLimited: "Spotify is rate limiting Deadwax. Try again in 40 seconds.",
+  expired: "Your Spotify sign-in has expired. Sign in again to carry on.",
+  notSignedIn: "Sign in to Spotify first.",
+};
+
+/**
+ * A command finding the sign-in expired, as Rust's do: it tells the UI
+ * (`SIGNED_OUT`, with the expired sentence), then fails with it.
+ */
+export async function expired(): Promise<never> {
+  await emit(SIGNED_OUT, SPOTIFY_SAYS.expired);
+  throw SPOTIFY_SAYS.expired;
 }
 
 /**

@@ -56,7 +56,7 @@ describe("The dev list", () => {
       report: { restored: 2, failed: [] },
       restored: [album(1), album(2)],
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     expect(await offer()).toHaveTextContent(
       "Your dev list has 2 albums that aren't in this collection. Restore them?",
@@ -76,7 +76,7 @@ describe("The dev list", () => {
       dev_list_missing: () => 1,
       restore_from_dev_list: () => new Promise(() => {}),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
 
@@ -89,7 +89,7 @@ describe("The dev list", () => {
       dev_list_missing: () => 1,
       restore_from_dev_list: () => new Promise(() => {}),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
     expect(await offer()).toHaveTextContent("Restoring from the dev list…");
@@ -103,7 +103,7 @@ describe("The dev list", () => {
 
   it("doesn't offer when the dev list has nothing to restore", async () => {
     const calls = devBackEnd([], { missing: 0 });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     expect(
       await screen.findByText("Your crate is empty. Find the first record for it."),
@@ -118,7 +118,7 @@ describe("The dev list", () => {
 
   it("doesn't ask about the dev list when the collection has albums", async () => {
     const calls = devBackEnd([album(1)], { missing: 3 });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     await vi.waitFor(async () => expect(await records()).not.toHaveLength(0));
     expect(commands(calls)).not.toContain("dev_list_missing");
@@ -129,7 +129,7 @@ describe("The dev list", () => {
 
   it("can be put off", async () => {
     devBackEnd([], { missing: 1 });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     expect(await offer()).toHaveTextContent(
       "Your dev list has 1 album that isn't in this collection. Restore it?",
@@ -150,7 +150,7 @@ describe("The dev list", () => {
       },
       restored: [album(1)],
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
 
@@ -163,27 +163,6 @@ describe("The dev list", () => {
     ).toBeInTheDocument();
   });
 
-  it("goes back to sign-in if the sign-in expired while restoring", async () => {
-    const message =
-      "Your Spotify sign-in has expired. Sign in again to carry on.";
-    backEnd({
-      get_collection: () => [],
-      dev_list_missing: () => 1,
-      restore_from_dev_list: () => {
-        throw message;
-      },
-      get_session: () => ({ state: "signedOut", message: null }),
-    });
-    const onSignedOut = vi.fn();
-    render(<Library name="Will" onSignedOut={onSignedOut} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
-
-    await vi.waitFor(() =>
-      expect(onSignedOut).toHaveBeenCalledWith({ state: "signedOut", message }),
-    );
-  });
-
   it("shows a dev list it can't read", async () => {
     backEnd({
       get_collection: () => [],
@@ -192,7 +171,7 @@ describe("The dev list", () => {
       },
       get_session: () => ({ state: "signedIn", name: "Will" }),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't read the dev list: unreadable",
@@ -202,7 +181,7 @@ describe("The dev list", () => {
   describe("the Develop menu", () => {
     it("resets the collection, then offers to restore it", async () => {
       const calls = devBackEnd([album(1), album(2)], { missing: 2 });
-      render(<Library name="Will" onSignedOut={() => {}} />);
+      render(<Library name="Will" />);
       await vi.waitFor(async () => expect(await records()).not.toHaveLength(0));
 
       await emit(RESET_COLLECTION);
@@ -219,7 +198,7 @@ describe("The dev list", () => {
         report: { restored: 1, failed: [] },
         restored: [album(2)],
       });
-      render(<Library name="Will" onSignedOut={() => {}} />);
+      render(<Library name="Will" />);
       await vi.waitFor(async () => expect(await records()).not.toHaveLength(0));
 
       await emit(RESTORE_FROM_DEV_LIST);

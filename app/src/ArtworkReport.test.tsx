@@ -103,7 +103,7 @@ function open() {
     ...EMPTY_COLLECTION,
     artwork_report: () => report,
   });
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   return {
     calls,
     change: (next: Report) => (report = next),

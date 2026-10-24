@@ -69,8 +69,8 @@
 }
 
 /*
- * Errors and the Develop menu's reports, in a column over the room and the
- * search wall.
+ * The Develop menu's panels, in a column over the room and the search wall.
+ * Spotify's errors are the quiet line (QuietLine.css).
  */
 .library-panels {
   position: fixed;
@@ -86,11 +86,9 @@
   gap: var(--space);
 }
 
-.library-panels > .error {
-  margin: 0;
-  padding: var(--space) calc(var(--space) * 2);
-  border-radius: var(--radius);
-  background: var(--surface);
+/* A Develop menu panel's own error. */
+.library-panels .error {
+  color: var(--accent);
 }
 
 .library button {

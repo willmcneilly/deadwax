@@ -15,7 +15,8 @@ const BASE: TreeFile[] = [
   { hash: "2", path: "Cargo.lock" },
   { hash: "3", path: "app/package.json" },
   { hash: "4", path: "app/src/App.tsx" },
-  { hash: "5", path: "app/src/Setup.tsx" },
+  { hash: "5", path: "app/src/Account.tsx" },
+  { hash: "e", path: "app/src/mockBackEnd.ts" },
   { hash: "6", path: "app/src-tauri/src/lib.rs" },
   { hash: "7", path: "app/src-tauri/tauri.conf.json" },
   { hash: "8", path: "crates/deadwax-core/src/collection.rs" },
@@ -97,8 +98,9 @@ describe("plan", () => {
     expect(running(changing("Cargo.lock")).includes(RELEASE)).toBe(false);
   });
 
-  it("runs both for the setup screen, which a Rust test reads", () => {
-    expect(running(changing("app/src/Setup.tsx"))).toEqual([...RUST, ...FRONTEND]);
+  it("runs both for the account cards and the mocked back end, which Rust tests read", () => {
+    expect(running(changing("app/src/Account.tsx"))).toEqual([...RUST, ...FRONTEND]);
+    expect(running(changing("app/src/mockBackEnd.ts"))).toEqual([...RUST, ...FRONTEND]);
   });
 
   it("checks scripts/check itself with the frontend jobs", () => {
