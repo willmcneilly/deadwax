@@ -61,6 +61,8 @@ type Props = {
   live: Live | null;
   /** Floating in its glow, front up, with now playing's line under it. */
   floating: boolean;
+  /** Out of sight while its liner notes are open in the gatefold. */
+  away?: boolean;
   /** You've pressed a track: the crate drops the needle (Library.tsx). */
   onPlay: (track: AlbumTrack) => void;
   /** You've asked to play somewhere else, from "on Kitchen". */
@@ -80,6 +82,7 @@ function Sleeve({
   onRemoved,
   live,
   floating,
+  away = false,
   onPlay,
   onDevice,
   onFailed,
@@ -182,7 +185,7 @@ function Sleeve({
 
   return (
     <div
-      className={`sleeve-out ${floating ? "floating" : ""} ${starting ? "starting" : ""}`}
+      className={`sleeve-out ${floating ? "floating" : ""} ${starting ? "starting" : ""} ${away ? "away" : ""}`}
     >
       <div className="sleeve-lift" ref={lift}>
         <div className="sleeve-offset">

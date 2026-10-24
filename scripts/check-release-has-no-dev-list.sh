@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves a release build of Deadwax contains no dev list and no Develop menu
 # (RFC-001, "A dev list that survives resets"; DWX-5), including the Develop
-# menu's Artwork report (DWX-7). Run it after
+# menu's Artwork report (DWX-7) and its liner notes items (DWX-26). Run it after
 # `npm run tauri build`, from the repository root. CI runs it on every PR.
 #
 # The Rust side (in deadwax-core and the app) is compiled out with
@@ -44,6 +44,14 @@ rust_markers=(
   # the Develop menu's crate spike (DWX-20)
   "Crate spike"
   "crate_spike_keep_in_front"
+  # the Develop menu's liner notes items (DWX-26)
+  "Import prototype notes"
+  "import-prototype-notes"
+  "import_prototype_notes"
+  "Liner notes report"
+  "notes-report"
+  "notes_report"
+  "prototypes/crate/public/notes"
 )
 
 # What the UI's dev list would leave in the bundle.
@@ -56,6 +64,9 @@ ui_markers=(
   "Artwork report"
   "crate_spike_keep_in_front"
   "spike-crate"
+  "import_prototype_notes"
+  "notes_report"
+  "Import prototype notes"
 )
 
 failed=0

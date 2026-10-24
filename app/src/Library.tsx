@@ -14,7 +14,9 @@ import {
   ALBUM_UPDATED,
   chooseDevice,
   errorMessage,
+  getAlbum,
   getCollection,
+  getNotes,
   getRememberedDevice,
   getSession,
   nextTrack,
@@ -26,6 +28,7 @@ import {
   type AlbumCard,
   type AlbumId,
   type AlbumTrack,
+  type Notes,
   type NowPlaying,
   type Session,
 } from "./api";
@@ -41,7 +44,9 @@ import {
 } from "./crateOrder";
 import DeviceList, { type DeviceAsk } from "./DeviceList";
 import DevList from "./DevList";
+import Gatefold from "./Gatefold";
 import Glow, { type GlowLevel } from "./Glow";
+import NotesReport from "./NotesReport";
 import { Chip } from "./NowLine";
 import Search from "./Search";
 import Sleeve from "./Sleeve";
@@ -50,6 +55,7 @@ import { frontPlace, type Place } from "./place";
 import {
   confirms,
   liveFrom,
+  playingTrack,
   usePlayback,
   type Heard,
   type Live,
@@ -77,7 +83,12 @@ type Out = {
   nowPlaying: boolean;
   /** Development builds' measuring: load its 1600 as if never seen. */
   bust?: number;
+  /** Its liner notes are open in the gatefold, or folding back up. */
+  gatefold?: "open" | "closing";
 };
+
+/** The liner notes of the record out, with its tracklist to find tracks in. */
+type OutNotes = { id: AlbumId; notes: Notes; tracks: AlbumTrack[] };
 
 /** A stranger's record that has risen from below, or is going back down. */
 type StrangerOut = { record: StrangerRecord; returning: boolean };
@@ -100,6 +111,9 @@ const CONFIRM_MS = 6000;
 /** How long the crate takes to turn to a record before it comes out. */
 const BRING_OUT_MS = 300;
 
+/** How long a sleeve takes to turn over (Sleeve.css), before the gatefold opens. */
+const TURN_MS = 750;
+
 /** What's in front: kept by key, so it stays put when the crate re-sorts. */
 type Focus = { key: string | null; index: number };
 
@@ -115,8 +129,9 @@ const DECODED = 4;
  * the crate when it's put back. Play goes to the remembered device, which
  * stays out of sight: the device list comes up only when you ask for it
  * (the device named under the record or on the chip, or D), on the first
- * play, or when the device isn't showing up. The old search box opens from
- * Find a record until DWX-24 replaces it.
+ * play, or when the device isn't showing up. A record with liner notes has
+ * a Liner notes button while it's out, which opens them in the gatefold. The
+ * old search box opens from Find a record until DWX-24 replaces it.
  */
 function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
@@ -194,6 +209,27 @@ function Library({ name, onSignedOut }: Props) {
   // A record that has left the crate while out (the Develop menu's Reset,
   // say) isn't out any more.
   const out = outAlbum ? pulled : null;
+
+  // The record out's liner notes, if it has some: asked for as it comes out.
+  const [notes, setNotes] = useState<OutNotes | null>(null);
+  const outId = outAlbum?.id ?? null;
+  useEffect(() => {
+    if (!outId) return;
+    let current = true;
+    void (async () => {
+      // Notes are local, so a failure is simply no notes.
+      const found = await getNotes(outId).catch(() => null);
+      if (!found || !current) return;
+      const details = await getAlbum(outId).catch(() => null);
+      if (current) setNotes({ id: outId, notes: found, tracks: details?.tracks ?? [] });
+    })();
+    return () => {
+      current = false;
+    };
+  }, [outId]);
+  const outNotes = notes && notes.id === outId ? notes : null;
+  const gatefoldWait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(gatefoldWait.current), []);
 
   const heard = (import.meta.env.DEV && pretend) || playback.heard;
   const live = useMemo(
@@ -427,6 +463,30 @@ function Library({ name, onSignedOut }: Props) {
       void failed(e);
     }
   }
+
+  /**
+   * Opens the record's liner notes. The gatefold opens from the front, so a
+   * record showing its back turns over first.
+   */
+  const openNotes = () => {
+    if (!out || out.returning || out.gatefold) return;
+    const show = () =>
+      setPulled((o) => (o && !o.returning ? { ...o, gatefold: "open" } : o));
+    clearTimeout(gatefoldWait.current);
+    if (turns % 2) {
+      turn();
+      gatefoldWait.current = setTimeout(show, TURN_MS);
+    } else show();
+  };
+  /** Where the sleeve's front is now: the gatefold comes out of it and goes back in. */
+  const sleeveFront = useCallback(
+    () => room.current?.querySelector(".sleeve-side.front")?.getBoundingClientRect() ?? null,
+    [],
+  );
+  const closeNotes = useCallback(
+    () => setPulled((o) => (o?.gatefold === "open" ? { ...o, gatefold: "closing" } : o)),
+    [],
+  );
 
   /** Brings up the device list to play somewhere else, or puts it away. */
   const changeDevice = () =>
@@ -746,12 +806,26 @@ function Library({ name, onSignedOut }: Props) {
                 onRemoved={removed}
                 live={liveOut || advertOut ? live : null}
                 floating={floating}
+                away={!!out.gatefold}
                 onPlay={(track) => void playTrack(outAlbum, track)}
                 onDevice={changeDevice}
                 onFailed={failed}
                 onLargeReady={() => largeReady.current?.()}
               />
             </>
+          )}
+          {out && outNotes && (
+            // Faded out, not removed, while the notes are open or the record
+            // goes back, so it never snaps away.
+            <button
+              type="button"
+              className={`notes-open ${out.gatefold || out.returning ? "away" : ""}`}
+              onClick={openNotes}
+              aria-hidden={!!out.gatefold || out.returning || undefined}
+              tabIndex={out.gatefold || out.returning ? -1 : undefined}
+            >
+              Liner notes
+            </button>
           )}
           {stranger && (
             <>
@@ -835,6 +909,7 @@ function Library({ name, onSignedOut }: Props) {
           </p>
         )}
         {import.meta.env.DEV && <ArtworkReport onFailed={failed} />}
+        {import.meta.env.DEV && <NotesReport onFailed={failed} />}
         {import.meta.env.DEV && (
           <DevList empty={empty} onChanged={load} onFailed={failed} />
         )}
@@ -856,6 +931,18 @@ function Library({ name, onSignedOut }: Props) {
         )}
       </div>
 
+      {out?.gatefold && !out.returning && outAlbum && outNotes && (
+        <Gatefold
+          album={outAlbum}
+          notes={outNotes.notes}
+          tracks={outNotes.tracks}
+          current={liveOut ? playingTrack(outNotes.tracks, live) : null}
+          sleeve={sleeveFront}
+          closing={out.gatefold === "closing"}
+          onClose={closeNotes}
+          onClosed={() => setPulled((o) => o && { ...o, gatefold: undefined })}
+        />
+      )}
       {live && !out && !stranger && !searching && (
         <Chip
           live={live}

@@ -170,6 +170,34 @@ export const removeAlbum = (id: AlbumId) =>
 export const openAlbumInSpotify = (spotifyId: string) =>
   invoke<void>("open_album_in_spotify", { spotifyId });
 
+/**
+ * An album's liner notes: a researched long-form essay, which the sleeve
+ * opens as a gatefold (`Notes` in crates/deadwax-core/src/notes.rs, the
+ * prototype's schema from PR #9). In the essay, `*x*` is italic and
+ * `[[Track]]` mentions a track by its title.
+ */
+export type Notes = {
+  albumTitle: string;
+  artist: string;
+  headline: string;
+  standfirst: string;
+  sections: {
+    heading: string;
+    paragraphs: string[];
+    pullQuote?: { text: string; attribution: string | null };
+  }[];
+  quotes: { text: string; who: string; sourceIndex: number }[];
+  facts: { figure: string; label: string }[];
+  credits: { role: string; names: string[] }[];
+  sources: { title: string; publisher: string; url: string; year: number | null }[];
+};
+
+/**
+ * The album's liner notes, or null if it has none. Rust reads them from the
+ * notes folder, and treats a file that isn't valid notes as none.
+ */
+export const getNotes = (id: AlbumId) => invoke<Notes | null>("get_notes", { id });
+
 /** A Spotify Connect device, as the device list shows it. */
 export type DeviceChoice = {
   name: string;
