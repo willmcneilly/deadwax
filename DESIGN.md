@@ -300,13 +300,14 @@ The glow drops no more frames than the crate does at rest: the one or two a run 
 
 | | Opening | Scrolling | GPU process | Page |
 |---|---|---|---|---|
-| The spike's search over 400 records (DWX-20) | 52–58 fps, 3–9 dropped | 60 fps, 0 dropped | – | – |
+| The spike's search over 400 records, the prototype (DWX-20) | 52–58 fps, 3–9 dropped | 60 fps, 0 dropped | – | – |
+| The spike's search over 400 records, the final cuts (DWX-20) | 56–60 fps, 1–5 dropped | 60 fps, 0 dropped | – | – |
 | The wall, 10 tiles | 57–58 fps, 2–3 dropped, longest gap 50–72 ms | 60 fps, 0 dropped | 5% | 12–13% |
 | The wall, 400 tiles | 53–55 fps, 6–8 dropped, longest gap 71–90 ms | 60 fps, 0 dropped | 5–6% | 21% |
 | 400 tiles, each rising in on its own | 49–53 fps, 8–13 dropped | 60 fps, 0 dropped | 5–7% | 25–27% |
 | 400 tiles, each rising in, with `content-visibility: auto` | 51–55 fps, 6–10 dropped | 60 fps, 1 dropped | 6% | 23% |
 
-So each search's wall rises in as one, not tile by tile as in the prototype, and tiles have no `content-visibility`, which cost scrolling a frame. Opening a search isn't in the frame budget: as in DWX-20, its few dropped frames are mounting the covers. A real search shows 10 at a time, and each **More** adds 10.
+So each search's wall rises in as one, not tile by tile as in the prototype, and tiles have no `content-visibility`, which cost scrolling a frame. With 400 tiles the wall opens a little worse than the spike's final cuts did (6–8 dropped against 1–5), and about as the prototype's did; the spike's search was plain 320s, where the wall draws the 640s with the title, artist and Add under each. Opening a search isn't in the frame budget: as in DWX-20, its few dropped frames are mounting the covers. A real search shows 10 at a time, and each **More** adds 10.
 
 ## Do's and Don'ts
 

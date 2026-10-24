@@ -181,6 +181,51 @@ describe("Search", () => {
     expect(calls.filter((c) => c.cmd === "search_albums")).toHaveLength(1);
   });
 
+  it("waits until you stop typing, and searches once, for what you typed last", async () => {
+    const calls = backEnd({ ...EMPTY_COLLECTION, search_albums: () => page(0) });
+    render(<Library name="Will" onSignedOut={() => {}} />);
+    await screen.findByText(EMPTY_LINE);
+
+    for (const text of ["e", "en", "eno"]) {
+      fireEvent.change(searchbox(), { target: { value: text } });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    // Still typing: nothing asked yet.
+    expect(calls.filter((c) => c.cmd === "search_albums")).toHaveLength(0);
+
+    await waitFor(() => expect(tiles()).toHaveLength(10));
+    expect(calls.filter((c) => c.cmd === "search_albums")).toEqual([
+      { cmd: "search_albums", args: { query: "eno", offset: 0 } },
+    ]);
+  });
+
+  it("ignores a slow search that answers after a newer one", async () => {
+    let finishFirst: (results: SearchResults) => void = () => {};
+    backEnd({
+      ...EMPTY_COLLECTION,
+      search_albums: (args) => {
+        const { query } = args as { query: string };
+        if (query === "slow") {
+          return new Promise<SearchResults>((resolve) => (finishFirst = resolve));
+        }
+        return page(0, true);
+      },
+    });
+    render(<Library name="Will" onSignedOut={() => {}} />);
+    await screen.findByText(EMPTY_LINE);
+
+    await searchFor("slow");
+    fireEvent.submit(searchbox());
+    await searchFor("fast");
+    fireEvent.submit(searchbox());
+    await waitFor(() => expect(tiles()).toHaveLength(3));
+
+    finishFirst(page(0));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(tiles()).toHaveLength(3);
+  });
+
   it("says when nothing on Spotify matches", async () => {
     backEnd({
       ...EMPTY_COLLECTION,

@@ -15,9 +15,6 @@
   gap: calc(var(--space) * 2);
   color: var(--room-ink);
   font-size: 0.8rem;
-}
-
-.library-header {
   transition: opacity 0.4s;
 }
 

@@ -209,6 +209,8 @@ describe("The dev list", () => {
 
       expect(await offer()).toHaveTextContent("Your dev list has 2 albums");
       expect(screen.getByText("Your crate is empty. Find the first record for it.")).toBeInTheDocument();
+      // Only a collection that's empty when it first loads opens on search.
+      expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
       expect(commands(calls)).toContain("reset_collection");
     });
 

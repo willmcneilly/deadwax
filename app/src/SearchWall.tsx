@@ -51,7 +51,7 @@ function SearchWall({
   pretend,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<Results | null>(null);
+  const [found, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState<"search" | "more" | null>(null);
   const [adding, setAdding] = useState<ReadonlySet<string>>(new Set());
   const input = useRef<HTMLInputElement>(null);
@@ -61,7 +61,6 @@ function SearchWall({
   useEffect(() => () => clearTimeout(typing.current), []);
   const results: Results | null =
     import.meta.env.DEV && pretend ? { query: "", ...pretend } : found;
-  const setResults = setFound;
 
   useEffect(() => {
     if (open) input.current?.focus();
