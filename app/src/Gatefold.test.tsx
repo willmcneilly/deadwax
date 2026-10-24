@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Notes, NowPlaying } from "./api";
 import { COLLECTION, IN_RAINBOWS, IN_RAINBOWS_DETAILS, PINK_MOON } from "./crateFixtures";
@@ -89,7 +89,10 @@ async function openNotes() {
 }
 
 describe("The gatefold", () => {
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
 
   it("shows Liner notes on the sleeve of an album with notes, and opens them", async () => {
     const calls = gatefoldBackEnd();
@@ -200,11 +203,19 @@ describe("The gatefold", () => {
       if (this.matches(".gf-strip")) return at(300, 200, 500);
       return at(0, 0, 0);
     });
-    const animate = vi.spyOn(Element.prototype, "animate");
-    const flights = () =>
-      animate.mock.contexts.flatMap((el, i) =>
-        (el as Element).classList.contains("gf-stage") ? [animate.mock.calls[i][0]] : [],
-      );
+    // Flights that finish only when the test says, unlike test-setup's.
+    const flying: { el: Element; keyframes: unknown; flight: { onfinish: (() => void) | null } }[] =
+      [];
+    vi.spyOn(Element.prototype, "animate").mockImplementation(function (
+      this: Element,
+      keyframes,
+    ) {
+      const flight = { onfinish: null as (() => void) | null, cancel() {} };
+      flying.push({ el: this, keyframes, flight });
+      return flight as unknown as Animation;
+    });
+    const stage = () => flying.filter((f) => f.el.classList.contains("gf-stage"));
+    const flights = () => stage().map((f) => f.keyframes);
     gatefoldBackEnd();
     await pullOutInRainbows();
     await openNotes();
@@ -214,11 +225,18 @@ describe("The gatefold", () => {
     expect(flights()).toEqual([[{ transform: over }, { transform: "none" }]]);
 
     fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(flights()).toHaveLength(2), { timeout: 3000 });
     expect(flights()[1]).toEqual([{ transform: "none" }, { transform: over }]);
-    vi.restoreAllMocks();
+
+    // The sleeve waits, out of sight, until the gatefold has landed on it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gatefold()).toBeInTheDocument();
+    expect(document.querySelector(".sleeve-out")).toHaveClass("away");
+
+    act(() => stage()[1].flight.onfinish?.());
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.querySelector(".sleeve-out")).not.toHaveClass("away");
   });
 
   it("closes with Close", async () => {

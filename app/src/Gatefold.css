@@ -95,14 +95,16 @@
  * as the sleeve's sides are (Sleeve.css): in the same plane, WebKit drew the
  * outside, mirrored, over the title page, and backface-visibility alone
  * didn't hide it. Each side is also hidden outright once the cover has
- * swung past edge-on, about halfway through its turn.
+ * swung past edge-on, and shown as it comes back to it. With the cover's
+ * 1.1s turn and its easing, it's edge-on 0.4s in (398ms), opening or
+ * closing, so the sides swap then.
  */
 .gf-cover-out,
 .gf-cover-in {
   position: absolute;
   inset: 0;
   backface-visibility: hidden;
-  transition: visibility 0s 0.5s;
+  transition: visibility 0s 0.4s;
 }
 .gf-cover-out {
   transform: translateZ(1px);
