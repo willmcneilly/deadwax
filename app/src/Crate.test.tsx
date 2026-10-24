@@ -34,7 +34,7 @@ const slot = (name: string) =>
 
 async function openCrate(albums: AlbumCard[] = COLLECTION) {
   crateOf(() => albums);
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   await waitFor(() => expect(front()).toBeDefined());
 }
 
@@ -184,7 +184,7 @@ describe("The crate", () => {
   it("changes a sleeve in place when Rust has its cover, and re-sorts it when its genre is found", async () => {
     let pinkMoon: AlbumCard = { ...PINK_MOON, covers: card(4).covers, worn: false };
     crateOf(() => [IN_RAINBOWS, KIND_OF_BLUE, pinkMoon]);
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await waitFor(() => expect(front()).toBeDefined());
     const img = slot("Pink Moon").querySelector("img");
     expect(img).toHaveAttribute("src", "https://i.scdn.co/image/cover4");

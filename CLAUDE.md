@@ -61,7 +61,7 @@ scripts/check-release-has-no-dev-list.sh            # the release build has no d
 `cargo build`/`clippy`/`test` compile the app crate in dev mode, so they don't need `app/dist`. Only `tauri build` needs the frontend built, and it does that itself.
 
 **Before opening a PR, run `scripts/check` and fix everything it reports.** It runs the checks above that the change needs, against `origin/main`, in parallel:
-- Rust (fmt, clippy, test) when `crates/`, `app/src-tauri/`, `Cargo.*`, `rust-toolchain.toml` or `app/src/Setup.tsx` (a Rust test reads it) changed;
+- Rust (fmt, clippy, test) when `crates/`, `app/src-tauri/`, `Cargo.*`, `rust-toolchain.toml`, `app/src/Account.tsx` or `app/src/mockBackEnd.ts` (Rust tests read them) changed;
 - the frontend checks (typecheck, lint, test) when anything else under `app/` changed, `app/scripts/` included;
 - the release build and its dev-list check only when they could break: when `app/src-tauri/`, `app/package.json`, `crates/deadwax-core/src/dev_list*`, `scripts/check-release-has-no-dev-list.sh` or a Rust file containing `debug_assertions` changed. CI builds it on every PR.
 

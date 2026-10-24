@@ -23,12 +23,28 @@ const MAX_WAIT: Duration = Duration::from_secs(30);
 /// The wait when a `429` has no usable `Retry-After`.
 const DEFAULT_WAIT: Duration = Duration::from_secs(5);
 
+/// Each is a plain sentence for the UI (RFC-002, "What the back end gains").
+/// The HTTP library's own text stays in the `source`, out of sight.
 #[derive(Debug, thiserror::Error)]
 pub enum HttpError {
-    #[error("couldn't reach Spotify: {0}")]
-    Network(#[from] reqwest::Error),
+    /// No connection, a timeout, or a reply that broke off.
+    #[error("Couldn't reach Spotify. Check the connection, then try again.")]
+    Network(#[source] reqwest::Error),
+    /// A reply that isn't the JSON Spotify documents.
+    #[error("Spotify sent a reply Deadwax couldn't read.")]
+    Unreadable(#[source] reqwest::Error),
     #[error("Spotify is rate limiting Deadwax. Try again in {} seconds.", .0.as_secs())]
     RateLimited(Duration),
+}
+
+impl From<reqwest::Error> for HttpError {
+    fn from(error: reqwest::Error) -> Self {
+        if error.is_decode() {
+            Self::Unreadable(error)
+        } else {
+            Self::Network(error)
+        }
+    }
 }
 
 pub struct SpotifyHttp<C> {
@@ -105,6 +121,7 @@ mod tests {
     use wiremock::{Mock, MockServer, Request as MockRequest, Respond, ResponseTemplate};
 
     use super::*;
+    use crate::clock::SystemClock;
     use crate::clock::fake::FakeClock;
 
     /// Writes "request" to the shared log, then replies with `response`.
@@ -209,5 +226,52 @@ mod tests {
             .unwrap();
 
         assert_eq!(*log.lock().unwrap(), ["request", "sleep 5s", "request"]);
+    }
+
+    /// A port nothing is listening on: one that was free a moment ago.
+    fn closed_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    #[tokio::test]
+    async fn no_connection_is_a_plain_sentence_not_the_http_librarys() {
+        let http = SpotifyHttp::new(SystemClock);
+
+        let error = http
+            .send(http.get(&format!("http://127.0.0.1:{}/v1/me", closed_port())))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, HttpError::Network(_)), "{error:?}");
+        assert_eq!(
+            error.to_string(),
+            "Couldn't reach Spotify. Check the connection, then try again."
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reply_that_isnt_json_says_so_rather_than_blaming_the_connection() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/me"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html>"))
+            .mount(&server)
+            .await;
+        let http = SpotifyHttp::new(SystemClock);
+
+        let response = http
+            .send(http.get(&format!("{}/v1/me", server.uri())))
+            .await
+            .unwrap();
+        let error = HttpError::from(response.json::<serde_json::Value>().await.unwrap_err());
+
+        assert_eq!(
+            error.to_string(),
+            "Spotify sent a reply Deadwax couldn't read."
+        );
     }
 }

@@ -1,0 +1,39 @@
+/*
+ * The quiet line (DWX-25, prototypes/crate/src/connect.css): Spotify's
+ * errors, one line at the top of the room, over the crate, the search wall
+ * and the gatefold. It fades in and out by opacity and transform only.
+ */
+
+.quiet-line {
+  position: fixed;
+  top: calc(var(--space) * 2.5);
+  left: 50%;
+  z-index: 70;
+  max-width: min(40rem, 60vw);
+  margin: 0;
+  transform: translate(-50%, -6px);
+  color: var(--room-ink);
+  font-family: var(--font-label);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.5s,
+    transform 0.5s;
+}
+
+.quiet-line.on {
+  opacity: 0.75;
+  transform: translate(-50%, 0);
+  animation: quiet-in 0.5s;
+}
+
+@keyframes quiet-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+}

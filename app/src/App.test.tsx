@@ -1,9 +1,17 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CHANGE_CLIENT_ID, type Session } from "./api";
+import { CHANGE_CLIENT_ID, SIGNED_OUT, type Session } from "./api";
 import App from "./App";
-import { backEnd, EMPTY_COLLECTION } from "./mockBackEnd";
+import { COLLECTION, IN_RAINBOWS_DETAILS } from "./crateFixtures";
+import {
+  backEnd,
+  card,
+  EMPTY_COLLECTION,
+  expired,
+  NOTHING_PLAYING,
+  SPOTIFY_SAYS,
+} from "./mockBackEnd";
 
 const CLIENT_ID = "0123456789abcdef0123456789abcdef";
 
@@ -91,7 +99,10 @@ describe("App", () => {
       await screen.findByRole("button", { name: "Sign in with Spotify" }),
     );
     expect(
-      await screen.findByText("Waiting for you to agree in your browser…"),
+      await screen.findByRole("heading", { name: "Waiting for Spotify" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Agree in your browser, then come back here."),
     ).toBeInTheDocument();
 
     finish({ state: "signedIn", name: "Will" });
@@ -154,17 +165,127 @@ describe("App", () => {
     expect(await screen.findByText("Signed in as Will")).toBeInTheDocument();
   });
 
-  it("returns to sign-in with a plain message when the sign-in has expired", async () => {
-    const message =
-      "Your Spotify sign-in has expired. Sign in again to carry on.";
-    backEnd({ get_session: session({ state: "signedOut", message }) });
+  it("signed out, says what Deadwax is for", async () => {
+    backEnd({ get_session: session({ state: "signedOut", message: null }) });
     render(<App />);
 
-    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Sign in to Spotify" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Deadwax plays your records through Spotify. Sign in to start.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("returns to sign-in with a plain message when the sign-in has expired", async () => {
+    backEnd({
+      get_session: session({ state: "signedOut", message: SPOTIFY_SAYS.expired }),
+    });
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in again" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(SPOTIFY_SAYS.expired)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Sign in with Spotify" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("opens the crate when Spotify can't be reached to say who you are", async () => {
+    backEnd({
+      get_session: session({ state: "signedIn", name: null }),
+      get_collection: () => [card(1)],
+      dev_list_missing: () => 0,
+      ...NOTHING_PLAYING,
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+    expect(screen.queryByText(/Signed in as/)).not.toBeInTheDocument();
+  });
+
+  describe("a command that finds the sign-in expired, from anywhere, shows the expired card", () => {
+    async function expectsTheExpiredCard() {
+      expect(
+        await screen.findByRole("heading", { name: "Sign in again" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(SPOTIFY_SAYS.expired)).toBeInTheDocument();
+      expect(screen.queryByText("Signed in as Will")).not.toBeInTheDocument();
+    }
+
+    it("asking what's playing", async () => {
+      backEnd({
+        get_session: session({ state: "signedIn", name: "Will" }),
+        ...EMPTY_COLLECTION,
+        get_playback: expired,
+      });
+      render(<App />);
+
+      await expectsTheExpiredCard();
+    });
+
+    it("searching", async () => {
+      backEnd({
+        get_session: session({ state: "signedIn", name: "Will" }),
+        ...EMPTY_COLLECTION,
+        search_albums: expired,
+      });
+      render(<App />);
+
+      // An empty collection opens straight onto search.
+      fireEvent.change(await screen.findByRole("searchbox"), {
+        target: { value: "pink moon" },
+      });
+
+      await expectsTheExpiredCard();
+    });
+
+    it("pressing a track", async () => {
+      backEnd({
+        get_session: session({ state: "signedIn", name: "Will" }),
+        get_collection: () => COLLECTION,
+        dev_list_missing: () => 0,
+        ...NOTHING_PLAYING,
+        get_remembered_device: () => "Living Room",
+        get_album: () => IN_RAINBOWS_DETAILS,
+        refresh_album: () => null,
+        get_notes: () => null,
+        play_album: expired,
+      });
+      render(<App />);
+
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Pull out In Rainbows by Radiohead",
+        }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Turn In Rainbows over" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Play 15 Step" }),
+      );
+
+      await expectsTheExpiredCard();
+    });
+
+    it("keeps saying it expired when calls already on their way find no tokens", async () => {
+      backEnd({
+        get_session: session({ state: "signedIn", name: "Will" }),
+        ...EMPTY_COLLECTION,
+        get_playback: expired,
+      });
+      render(<App />);
+      await expectsTheExpiredCard();
+
+      await emit(SIGNED_OUT, null);
+
+      expect(screen.getByText(SPOTIFY_SAYS.expired)).toBeInTheDocument();
+    });
   });
 
   it("changes the client ID from the menu, or cancels back", async () => {
@@ -188,15 +309,18 @@ describe("App", () => {
     let fail = true;
     backEnd({
       get_session: () => {
-        if (fail) throw "couldn't reach Spotify";
+        if (fail) throw "Couldn't read Deadwax's config: permission denied";
         return { state: "signedIn", name: "Will" };
       },
       ...EMPTY_COLLECTION,
     });
     render(<App />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "couldn't reach Spotify",
+    expect(
+      await screen.findByRole("heading", { name: "Deadwax couldn't start" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't read Deadwax's config: permission denied",
     );
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));

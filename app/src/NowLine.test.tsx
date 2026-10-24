@@ -112,7 +112,7 @@ async function turnOverInRainbows() {
 
 /** Drops the needle on Nude, and Spotify confirms it. */
 async function playNude(calls = playingBackEnd()) {
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   await turnOverInRainbows();
   fireEvent.click(screen.getByRole("button", { name: "Play Nude" }));
   await waitFor(() => expect(calls.map((c) => c.cmd)).toContain("play_album"));
@@ -134,7 +134,7 @@ afterEach(() => {
 describe("Dropping the needle", () => {
   it("shows starting with the clock at 0:00 until the mocked playback confirms", async () => {
     const calls = playingBackEnd();
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await turnOverInRainbows();
 
     fireEvent.click(screen.getByRole("button", { name: "Play Reckoner" }));
@@ -197,7 +197,7 @@ describe("Dropping the needle", () => {
 
   it("is confirmed by the track's Spotify ID", async () => {
     playingBackEnd();
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await turnOverInRainbows();
     fireEvent.click(screen.getByRole("button", { name: "Play Reckoner" }));
     await waitFor(() => expect(glow()).toHaveClass("warming"));
@@ -211,7 +211,7 @@ describe("Dropping the needle", () => {
 
   it("isn't cut short by an earlier needle drop's wait", async () => {
     playingBackEnd();
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await turnOverInRainbows();
     fireEvent.click(screen.getByRole("button", { name: "Play Nude" }));
     await waitFor(() => expect(side()).toBe("Side A · 3 · starting"));
@@ -245,7 +245,7 @@ describe("Dropping the needle", () => {
       play_album: (): PlayOutcome => ({ state: "deviceMissing", devices: [] }),
       get_devices: () => ({ devices: [MACBOOK], remembered: "Living Room" }),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await turnOverInRainbows();
 
     fireEvent.click(screen.getByRole("button", { name: "Play Nude" }));
@@ -381,7 +381,7 @@ describe("What's playing, over the crate", () => {
   it("is a chip that brings the record out of its place, floating", async () => {
     playingBackEnd();
     play(IN_RAINBOWS, NUDE);
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     const chip = await screen.findByRole("region", { name: "Playing" });
     expect(chip).toHaveTextContent("Nude");
@@ -409,7 +409,7 @@ describe("A stranger's record", () => {
   it("rises in a plain sleeve with Spotify's cover, unaltered, a neutral glow and Add to the crate", async () => {
     const calls = playingBackEnd({ add_album: () => STRANGER });
     play(STRANGER, SAFE);
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Bring out Blue Lines" }));
 
@@ -447,7 +447,7 @@ describe("Polling", () => {
     const commits = vi.fn();
     render(
       <Profiler id="library" onRender={commits}>
-        <Library name="Will" onSignedOut={() => {}} />
+        <Library name="Will" />
       </Profiler>,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Bring out In Rainbows" }));

@@ -51,7 +51,7 @@ const back = () => screen.getByRole("group", { name: "The back of In Rainbows" }
 
 /** Opens the crate and pulls out In Rainbows, the record in front. */
 async function pullOutInRainbows() {
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" }),
   );
@@ -87,7 +87,7 @@ describe("The sleeve", () => {
 
   it("pulls out with Enter, and goes back when you click the room around it", async () => {
     sleeveBackEnd();
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" });
 
     fireEvent.keyDown(window, { key: "Enter" });

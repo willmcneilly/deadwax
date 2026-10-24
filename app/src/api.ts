@@ -6,10 +6,17 @@ import { invoke } from "@tauri-apps/api/core";
 export type Session =
   | { state: "needsClientId" }
   | { state: "signedOut"; message: string | null }
-  | { state: "signedIn"; name: string };
+  /** `name` is null when Spotify couldn't be reached to ask. */
+  | { state: "signedIn"; name: string | null };
 
 /** The event the Spotify › Change Client ID… menu item sends. */
 export const CHANGE_CLIENT_ID = "change-client-id";
+
+/**
+ * The event Rust sends when any command finds you signed out, with what the
+ * sign-in card should say: that the sign-in expired, or null.
+ */
+export const SIGNED_OUT = "signed-out";
 
 export const getSession = () => invoke<Session>("get_session");
 export const getClientId = () => invoke<string | null>("get_client_id");

@@ -47,7 +47,7 @@ function open(replies: Record<string, () => unknown> = {}) {
     notes_report: () => REPORT,
     ...replies,
   });
-  render(<Library name="Will" onSignedOut={() => {}} />);
+  render(<Library name="Will" />);
   return calls;
 }
 

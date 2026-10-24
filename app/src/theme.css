@@ -73,6 +73,9 @@ body {
   --line: rgb(255 255 255 / 0.08);
   --line-strong: rgb(255 255 255 / 0.22);
   --clear: rgb(0 0 0 / 0);
+  /* The account cards' text field. */
+  --field: rgb(0 0 0 / 0.25);
+  --field-focus: rgb(255 255 255 / 0.45);
 
   /*
    * A sleeve's printed colours until its palette has been worked out. Once

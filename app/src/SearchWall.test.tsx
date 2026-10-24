@@ -87,7 +87,7 @@ describe("Search", () => {
 
   it("opens from the faint search icon, and closes back to the crate", async () => {
     backEnd({ get_collection: () => [IN_RAINBOWS], ...NOTHING_PLAYING });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" });
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
 
@@ -105,7 +105,7 @@ describe("Search", () => {
 
   it("hides the crate while search is open, and shows it again when it closes", async () => {
     backEnd({ get_collection: () => [IN_RAINBOWS], ...NOTHING_PLAYING });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" });
     expect(crate()).not.toHaveClass("away");
 
@@ -125,7 +125,7 @@ describe("Search", () => {
         return page(offset, offset === 10);
       },
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByText(EMPTY_LINE);
 
     await searchFor("  album  ");
@@ -165,7 +165,7 @@ describe("Search", () => {
 
   it("searches straight away on Enter", async () => {
     const calls = backEnd({ ...EMPTY_COLLECTION, search_albums: () => page(0) });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByText(EMPTY_LINE);
 
     await searchFor("album");
@@ -183,7 +183,7 @@ describe("Search", () => {
 
   it("waits until you stop typing, and searches once, for what you typed last", async () => {
     const calls = backEnd({ ...EMPTY_COLLECTION, search_albums: () => page(0) });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByText(EMPTY_LINE);
 
     for (const text of ["e", "en", "eno"]) {
@@ -211,7 +211,7 @@ describe("Search", () => {
         return page(0, true);
       },
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByText(EMPTY_LINE);
 
     await searchFor("slow");
@@ -231,7 +231,7 @@ describe("Search", () => {
       ...EMPTY_COLLECTION,
       search_albums: () => ({ results: [], nextOffset: null }),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     await searchFor("zzzz");
 
@@ -253,7 +253,7 @@ describe("Search", () => {
         return next;
       },
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     await searchFor("album");
     await waitFor(() => expect(tiles()).toHaveLength(10));
@@ -276,7 +276,7 @@ describe("Search", () => {
         return results;
       },
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     await searchFor("album");
 
@@ -307,7 +307,7 @@ describe("Search", () => {
       }),
       add_album: () => new Promise<AlbumCard>((resolve) => (finish = resolve)),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out Album 50 by Artist 50" });
 
     await searchFor("in rainbows");
@@ -363,7 +363,7 @@ describe("Search", () => {
         return spotifyId === IN_RAINBOWS.spotifyId ? IN_RAINBOWS : album(1);
       },
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out Album 50 by Artist 50" });
 
     await searchFor("album");
@@ -390,7 +390,7 @@ describe("Search", () => {
       get_collection: () => [album(1), album(50)],
       search_albums: () => page(0),
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByRole("button", { name: "Pull out Album 1 by Artist 1" });
     fireEvent.keyDown(window, { key: "ArrowRight" });
     await screen.findByRole("button", { name: "Pull out Album 50 by Artist 50" });
@@ -406,7 +406,7 @@ describe("Search", () => {
 
   it("opens on search with an empty collection, and closing it leaves the same line and a button", async () => {
     backEnd({ ...EMPTY_COLLECTION, search_albums: () => page(0) });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     // Straight onto search, with the line over it.
     expect(await screen.findByRole("searchbox", { name: "Find a record" })).toHaveFocus();
@@ -426,7 +426,7 @@ describe("Search", () => {
 
   it("doesn't open on search when the crate has records", async () => {
     backEnd({ get_collection: () => [IN_RAINBOWS], ...NOTHING_PLAYING });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" });
 
@@ -443,7 +443,7 @@ describe("Search", () => {
       }),
       add_album: () => IN_RAINBOWS,
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
     await screen.findByText(EMPTY_LINE);
 
     await searchFor("in rainbows");
@@ -466,33 +466,12 @@ describe("Search", () => {
         throw "couldn't reach Spotify";
       },
     });
-    render(<Library name="Will" onSignedOut={() => {}} />);
+    render(<Library name="Will" />);
 
     await searchFor("album");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "couldn't reach Spotify",
     );
-  });
-
-  it("goes back to sign-in when the sign-in has expired", async () => {
-    const message =
-      "Your Spotify sign-in has expired. Sign in again to carry on.";
-    const onSignedOut = vi.fn();
-    backEnd({
-      ...EMPTY_COLLECTION,
-      get_session: () => ({ state: "signedOut", message: null }),
-      search_albums: () => {
-        throw message;
-      },
-    });
-    render(<Library name="Will" onSignedOut={onSignedOut} />);
-
-    await searchFor("album");
-
-    await waitFor(() =>
-      expect(onSignedOut).toHaveBeenCalledWith({ state: "signedOut", message }),
-    );
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

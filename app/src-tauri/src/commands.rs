@@ -48,13 +48,18 @@ pub enum Session {
     NeedsClientId,
     /// Show the sign-in screen, with `message` if there's something to say,
     /// such as the sign-in having expired.
-    SignedOut {
-        message: Option<String>,
-    },
-    SignedIn {
-        name: String,
-    },
+    SignedOut { message: Option<String> },
+    /// `name` is your profile's name, or null when Spotify can't be reached
+    /// to ask: the crate works without it (RFC-002, "4. The UI").
+    SignedIn { name: Option<String> },
 }
+
+/// The event Rust sends when any command finds you signed out, with what the
+/// sign-in card should say (`SignedOut`'s `message`).
+pub const SIGNED_OUT: &str = "signed-out";
+
+/// Tells the UI you're signed out (`SIGNED_OUT`), with the card's message.
+pub type SignedOutNotice = Arc<dyn Fn(Option<String>) + Send + Sync>;
 
 /// Shown when Spotify has rejected the refresh token, after six months or
 /// because access was revoked.
@@ -75,6 +80,9 @@ pub struct AppState {
     /// Dropping this cancels the sign-in that's waiting for the browser, and
     /// closes its listener.
     waiting_sign_in: Mutex<Option<oneshot::Sender<()>>>,
+    /// Each Spotify client tells the UI through this when a call finds you
+    /// signed out.
+    signed_out: SignedOutNotice,
 }
 
 impl AppState {
@@ -84,10 +92,14 @@ impl AppState {
         covers: Store,
         notes: NotesDir,
         jobs: AlbumJobs,
+        signed_out: SignedOutNotice,
     ) -> Result<Self, String> {
         let config = config::load(&config_path)
             .map_err(|e| format!("Couldn't read Deadwax's config: {e}"))?;
-        let spotify = config.spotify_client_id.map(client).transpose()?;
+        let spotify = config
+            .spotify_client_id
+            .map(|id| client(id, signed_out.clone()))
+            .transpose()?;
         Ok(Self {
             config_path,
             collection,
@@ -96,6 +108,7 @@ impl AppState {
             jobs,
             spotify: RwLock::new(spotify),
             waiting_sign_in: Mutex::new(None),
+            signed_out,
         })
     }
 
@@ -114,14 +127,12 @@ impl AppState {
     }
 }
 
-fn client(client_id: String) -> Result<Arc<Client>, String> {
+fn client(client_id: String, signed_out: SignedOutNotice) -> Result<Arc<Client>, String> {
     let store = KeychainStore::new().map_err(|e| e.to_string())?;
-    Ok(Arc::new(Spotify::new(
-        client_id,
-        SystemClock,
-        store,
-        Endpoints::default(),
-    )))
+    Ok(Arc::new(
+        Spotify::new(client_id, SystemClock, store, Endpoints::default())
+            .on_signed_out(move |error| signed_out(signed_out_message(error))),
+    ))
 }
 
 /// Where things stand: no client ID, signed out, or signed in as you (which
@@ -139,11 +150,16 @@ async fn session<C: Clock, S: TokenStore>(spotify: &Spotify<C, S>) -> Result<Ses
         return Ok(Session::SignedOut { message: None });
     }
     match spotify.profile().await {
-        Ok(profile) => Ok(Session::SignedIn { name: profile.name }),
+        Ok(profile) => Ok(Session::SignedIn {
+            name: Some(profile.name),
+        }),
         Err(SpotifyError::SignedOut) => Ok(Session::SignedOut {
             message: Some(EXPIRED_MESSAGE.into()),
         }),
         Err(SpotifyError::NotSignedIn) => Ok(Session::SignedOut { message: None }),
+        // The collection is on disk: the crate opens anyway, and says
+        // Spotify isn't answering once its polls fail.
+        Err(error) if error.is_unreachable() => Ok(Session::SignedIn { name: None }),
         Err(error) => Err(error.to_string()),
     }
 }
@@ -174,7 +190,7 @@ pub async fn set_client_id(
         config.spotify_client_id = Some(client_id.clone());
         config::save(&state.config_path, &config)
             .map_err(|e| format!("Couldn't save the client ID: {e}"))?;
-        *spotify = Some(client(client_id)?);
+        *spotify = Some(client(client_id, state.signed_out.clone())?);
     }
     let current = spotify.clone().expect("a client ID was just set");
     drop(spotify);
@@ -358,9 +374,18 @@ pub struct SearchResults {
 fn spotify_error(error: SpotifyError) -> String {
     match error {
         SpotifyError::SignedOut => EXPIRED_MESSAGE.into(),
-        SpotifyError::NotSignedIn => "Sign in to Spotify first.".into(),
+        SpotifyError::NotSignedIn => NOT_SIGNED_IN_MESSAGE.into(),
         error => error.to_string(),
     }
+}
+
+/// Said when a call needs you signed in and you aren't.
+const NOT_SIGNED_IN_MESSAGE: &str = "Sign in to Spotify first.";
+
+/// What the sign-in card says when a call has found you signed out: that
+/// the sign-in expired, or nothing, if there were no tokens to begin with.
+fn signed_out_message(error: &SpotifyError) -> Option<String> {
+    matches!(error, SpotifyError::SignedOut).then(|| EXPIRED_MESSAGE.into())
 }
 
 fn collection_error(error: collection::CollectionError) -> String {
@@ -1023,6 +1048,15 @@ mod tests {
         server: &MockServer,
         refresh: ResponseTemplate,
     ) -> Spotify<SystemClock, MemoryStore> {
+        signed_in_with_api_at(server, refresh, server.uri()).await
+    }
+
+    /// As `signed_in_with_expired_token`, with the Web API at `api`.
+    async fn signed_in_with_api_at(
+        server: &MockServer,
+        refresh: ResponseTemplate,
+        api: String,
+    ) -> Spotify<SystemClock, MemoryStore> {
         Mock::given(method("POST"))
             .and(path("/api/token"))
             .and(body_string_contains("grant_type=authorization_code"))
@@ -1039,7 +1073,7 @@ mod tests {
             .await;
         let endpoints = Endpoints {
             accounts: server.uri(),
-            api: server.uri(),
+            api,
             redirect_port: 0,
         };
         let spotify = Spotify::new("id".into(), SystemClock, MemoryStore::default(), endpoints);
@@ -1071,6 +1105,111 @@ mod tests {
         );
     }
 
+    /// A Web API address nothing is listening at: a port that was free a
+    /// moment ago.
+    fn unreachable_api() -> String {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        format!("http://127.0.0.1:{port}")
+    }
+
+    fn fresh_token() -> ResponseTemplate {
+        ResponseTemplate::new(200)
+            .set_body_json(json!({"access_token": "fresh", "expires_in": 3600}))
+    }
+
+    #[tokio::test]
+    async fn with_spotify_out_of_reach_you_are_still_signed_in_without_a_name() {
+        let server = MockServer::start().await;
+        let spotify = signed_in_with_api_at(&server, fresh_token(), unreachable_api()).await;
+
+        assert_eq!(
+            session(&spotify).await,
+            Ok(Session::SignedIn { name: None })
+        );
+    }
+
+    #[tokio::test]
+    async fn with_spotify_failing_at_its_end_you_are_still_signed_in_without_a_name() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/me"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let spotify = signed_in_with_expired_token(&server, fresh_token()).await;
+
+        assert_eq!(
+            session(&spotify).await,
+            Ok(Session::SignedIn { name: None })
+        );
+    }
+
+    #[tokio::test]
+    async fn no_connection_is_the_plain_network_sentence() {
+        let server = MockServer::start().await;
+        let spotify = signed_in_with_api_at(&server, fresh_token(), unreachable_api()).await;
+
+        assert_eq!(
+            search(&spotify, &empty_collection(), "in rainbows", 0).await,
+            Err("Couldn't reach Spotify. Check the connection, then try again.".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn an_expired_sign_in_found_by_any_command_tells_the_ui_with_the_expired_message() {
+        let server = MockServer::start().await;
+        let rejected = ResponseTemplate::new(400).set_body_json(json!({"error": "invalid_grant"}));
+        let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = told.clone();
+        let spotify = signed_in_with_expired_token(&server, rejected)
+            .await
+            .on_signed_out(move |error| log.lock().unwrap().push(signed_out_message(error)));
+
+        let searched = search(&spotify, &empty_collection(), "in rainbows", 0).await;
+        assert_eq!(searched, Err(EXPIRED_MESSAGE.into()));
+        assert_eq!(*told.lock().unwrap(), [Some(EXPIRED_MESSAGE.to_string())]);
+        // The tokens are gone: the next command is a plain sign-in card.
+        assert_eq!(
+            spotify.pause().await.map_err(spotify_error),
+            Err(NOT_SIGNED_IN_MESSAGE.into())
+        );
+        assert_eq!(
+            *told.lock().unwrap(),
+            [Some(EXPIRED_MESSAGE.to_string()), None]
+        );
+    }
+
+    /// The UI's tests answer with these sentences (`SPOTIFY_SAYS` in
+    /// mockBackEnd.ts), so they must be what Rust really says.
+    #[tokio::test]
+    async fn the_ui_tests_fail_with_the_sentences_rust_really_says() {
+        let server = MockServer::start().await;
+        let offline = signed_in_with_api_at(&server, fresh_token(), unreachable_api()).await;
+        let network = spotify_error(offline.playback().await.unwrap_err());
+        let rate_limited = spotify_error(SpotifyError::Http(
+            deadwax_sources::spotify::http::HttpError::RateLimited(std::time::Duration::from_secs(
+                40,
+            )),
+        ));
+        let mock = include_str!("../../src/mockBackEnd.ts");
+
+        for sentence in [
+            network.as_str(),
+            rate_limited.as_str(),
+            EXPIRED_MESSAGE,
+            NOT_SIGNED_IN_MESSAGE,
+        ] {
+            assert!(
+                mock.contains(&format!("\"{sentence}\"")),
+                "mockBackEnd.ts doesn't say {sentence:?}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn a_working_sign_in_is_your_name() {
         let server = MockServer::start().await;
@@ -1089,7 +1228,7 @@ mod tests {
         assert_eq!(
             session(&spotify).await,
             Ok(Session::SignedIn {
-                name: "Will".into()
+                name: Some("Will".into())
             })
         );
     }
@@ -1097,9 +1236,20 @@ mod tests {
     #[tokio::test]
     async fn other_failures_are_errors() {
         let server = MockServer::start().await;
-        let spotify = signed_in_with_expired_token(&server, ResponseTemplate::new(503)).await;
+        // Spotify refuses an account its app hasn't been opened to.
+        Mock::given(method("GET"))
+            .and(path("/v1/me"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": {"status": 403, "message": "User not registered in the Developer Dashboard"},
+            })))
+            .mount(&server)
+            .await;
+        let spotify = signed_in_with_expired_token(&server, fresh_token()).await;
 
-        assert!(session(&spotify).await.is_err());
+        assert_eq!(
+            session(&spotify).await,
+            Err("Spotify replied 403 Forbidden to your profile: User not registered in the Developer Dashboard".into())
+        );
     }
 
     #[tokio::test]
@@ -1124,7 +1274,7 @@ mod tests {
 
         assert_eq!(REDIRECT_PORT, 43117);
         assert_eq!(Endpoints::default().redirect_port, REDIRECT_PORT);
-        let setup = include_str!("../../src/Setup.tsx");
+        let setup = include_str!("../../src/Account.tsx");
         assert!(setup.contains(&format!("http://127.0.0.1:{REDIRECT_PORT}/callback")));
     }
 
@@ -1888,9 +2038,13 @@ mod tests {
             ),
             (
                 Session::SignedIn {
-                    name: "Will".into(),
+                    name: Some("Will".into()),
                 },
                 json!({"state": "signedIn", "name": "Will"}),
+            ),
+            (
+                Session::SignedIn { name: None },
+                json!({"state": "signedIn", "name": null}),
             ),
         ];
         for (session, expected) in cases {

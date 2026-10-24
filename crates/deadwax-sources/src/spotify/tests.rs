@@ -290,6 +290,84 @@ async fn a_rejected_refresh_token_signs_out_and_forgets_the_tokens() {
     assert!(!spotify.has_tokens().unwrap());
 }
 
+/// A client whose `on_signed_out` hook writes what it heard to the log.
+fn listening(
+    server: &MockServer,
+) -> (
+    Spotify<FakeClock, MemoryStore>,
+    FakeClock,
+    Arc<Mutex<Vec<String>>>,
+) {
+    let (spotify, clock) = spotify(server);
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let log = heard.clone();
+    let spotify = spotify.on_signed_out(move |error| log.lock().unwrap().push(error.to_string()));
+    (spotify, clock, heard)
+}
+
+#[tokio::test]
+async fn any_call_that_finds_the_sign_in_expired_says_so_to_the_hook() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/token"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({"error": "invalid_grant"})))
+        .mount(&server)
+        .await;
+    let (spotify, clock, heard) = listening(&server);
+    signed_in(&spotify, &clock);
+    clock.advance(HOUR);
+
+    // Not the profile: asking what's playing, as the crate does every couple of seconds.
+    assert!(matches!(
+        spotify.playback().await,
+        Err(SpotifyError::SignedOut)
+    ));
+    assert_eq!(*heard.lock().unwrap(), ["the Spotify sign-in has expired"]);
+    // With the tokens gone, the next call is not signed in, and says so too.
+    assert!(matches!(
+        spotify.pause().await,
+        Err(SpotifyError::NotSignedIn)
+    ));
+    assert_eq!(
+        *heard.lock().unwrap(),
+        [
+            "the Spotify sign-in has expired",
+            "not signed in to Spotify"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn other_failures_say_nothing_to_the_signed_out_hook() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/token"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let (spotify, clock, heard) = listening(&server);
+    signed_in(&spotify, &clock);
+    clock.advance(HOUR);
+
+    let error = spotify.playback().await.unwrap_err();
+    assert!(error.is_unreachable(), "{error:?}");
+    assert!(heard.lock().unwrap().is_empty());
+}
+
+#[test]
+fn only_spotify_being_out_of_reach_counts_as_unreachable() {
+    let unexpected = |status| SpotifyError::Unexpected {
+        what: "your profile",
+        status,
+    };
+
+    assert!(SpotifyError::Http(HttpError::RateLimited(HOUR)).is_unreachable());
+    assert!(unexpected(StatusCode::BAD_GATEWAY).is_unreachable());
+    assert!(!unexpected(StatusCode::FORBIDDEN).is_unreachable());
+    assert!(!SpotifyError::SignedOut.is_unreachable());
+    assert!(!SpotifyError::NotSignedIn.is_unreachable());
+}
+
 #[tokio::test]
 async fn other_refresh_failures_keep_the_tokens() {
     let server = MockServer::start().await;
