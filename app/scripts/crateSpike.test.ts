@@ -32,9 +32,9 @@ describe("the runs", () => {
 });
 
 describe("the crate's runs", () => {
-  it("measure the app's own crate, flipping and pulling, on the real collection and 400 records", () => {
+  it("measure the app's own crate, flipping, pulling and searching, on the real collection and 400 records", () => {
     expect(CRATE_PLANS.every((p) => p.target === "crate")).toBe(true);
-    for (const scenario of ["flip", "pull", "glow"] as const) {
+    for (const scenario of ["flip", "pull", "glow", "search"] as const) {
       const runs = CRATE_PLANS.filter((p) => p.scenario === scenario);
       expect(runs.some((p) => p.many)).toBe(true);
       expect(runs.some((p) => !p.many)).toBe(true);

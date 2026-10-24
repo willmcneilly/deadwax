@@ -106,7 +106,7 @@ describe("The dev list", () => {
     render(<Library name="Will" onSignedOut={() => {}} />);
 
     expect(
-      await screen.findByText("Your crate is empty."),
+      await screen.findByText("Your crate is empty. Find the first record for it."),
     ).toBeInTheDocument();
     await vi.waitFor(() =>
       expect(commands(calls)).toContain("dev_list_missing"),
@@ -208,7 +208,7 @@ describe("The dev list", () => {
       await emit(RESET_COLLECTION);
 
       expect(await offer()).toHaveTextContent("Your dev list has 2 albums");
-      expect(screen.getByText("Your crate is empty.")).toBeInTheDocument();
+      expect(screen.getByText("Your crate is empty. Find the first record for it.")).toBeInTheDocument();
       expect(commands(calls)).toContain("reset_collection");
     });
 

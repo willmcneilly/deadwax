@@ -30,6 +30,7 @@ import {
   type AlbumTrack,
   type Notes,
   type NowPlaying,
+  type SearchResults,
   type Session,
 } from "./api";
 import ArtworkReport from "./ArtworkReport";
@@ -48,7 +49,7 @@ import Gatefold from "./Gatefold";
 import Glow, { type GlowLevel } from "./Glow";
 import NotesReport from "./NotesReport";
 import { Chip } from "./NowLine";
-import Search from "./Search";
+import SearchWall from "./SearchWall";
 import Sleeve from "./Sleeve";
 import Stranger, { type StrangerRecord } from "./Stranger";
 import { frontPlace, type Place } from "./place";
@@ -130,8 +131,10 @@ const DECODED = 4;
  * stays out of sight: the device list comes up only when you ask for it
  * (the device named under the record or on the chip, or D), on the first
  * play, or when the device isn't showing up. A record with liner notes has
- * a Liner notes button while it's out, which opens them in the gatefold. The
- * old search box opens from Find a record until DWX-24 replaces it.
+ * a Liner notes button while it's out, which opens them in the gatefold.
+ * The faint search icon opens search as a wall of covers, and closing it
+ * turns the crate to the last record you added. An empty collection opens
+ * straight onto search.
  */
 function Library({ name, onSignedOut }: Props) {
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
@@ -142,6 +145,8 @@ function Library({ name, onSignedOut }: Props) {
   const [pulled, setPulled] = useState<Out | null>(null);
   const [turns, setTurns] = useState(0);
   const [searching, setSearching] = useState(false);
+  /** The last record added from search, which the crate turns to when it closes. */
+  const lastAdded = useRef<AlbumId | null>(null);
   // Each answer with news: confirming the needle drop, or following a
   // change made elsewhere (below). The latest, so it sees this render.
   const news = useRef<(heard: Heard) => void>(() => {});
@@ -173,11 +178,28 @@ function Library({ name, onSignedOut }: Props) {
   const [many, setMany] = useState(false);
   const room = useRef<HTMLDivElement>(null);
 
+  // First run: with nothing to flip through, Deadwax opens on search, once.
+  const loaded = useRef(false);
   const load = useCallback(() => {
-    getCollection().then(setAlbums, (e: unknown) => setError(errorMessage(e)));
+    getCollection().then(
+      (collection) => {
+        setAlbums(collection);
+        if (!loaded.current && collection.length === 0) setSearching(true);
+        loaded.current = true;
+      },
+      (e: unknown) => setError(errorMessage(e)),
+    );
   }, []);
 
   useEffect(load, [load]);
+
+  /** The Spotify IDs of the records in the crate, which search dims. */
+  const owned = useMemo(
+    () => new Set((albums ?? []).map((a) => a.spotifyId)),
+    [albums],
+  );
+  /** Development builds' measuring: a search wall with a tile for each record. */
+  const [pretendSearch, setPretendSearch] = useState<SearchResults | null>(null);
   useEffect(() => void installTextures(), []);
 
   // When an album's cover is on disk, or its palette, genre and label are
@@ -581,6 +603,14 @@ function Library({ name, onSignedOut }: Props) {
     }
   }
 
+  /** Closes search, with the crate turned to the last record you added. */
+  const closeSearch = useCallback(() => {
+    setSearching(false);
+    const id = lastAdded.current;
+    lastAdded.current = null;
+    if (id) setFocus({ key: id, index: indexRef.current });
+  }, []);
+
   const reorder = (next: Order) => {
     if (next === order) return;
     setOrder(next);
@@ -653,12 +683,12 @@ function Library({ name, onSignedOut }: Props) {
       if (document.querySelector('[aria-modal="true"], .crate-spike')) return;
       const target = e.target as HTMLElement;
       if (target.closest?.("input, select, textarea")) {
-        if (e.key === "Escape" && searching) setSearching(false);
+        if (e.key === "Escape" && searching) closeSearch();
         return;
       }
       const onControl = !!target.closest?.("button, a");
       if (e.key === "Escape") {
-        if (searching) setSearching(false);
+        if (searching) closeSearch();
         else if (out) putBack();
         else if (stranger) setStranger((s) => s && { ...s, returning: true });
       } else if (searching) {
@@ -754,6 +784,12 @@ function Library({ name, onSignedOut }: Props) {
         setTurns(0);
         setPulled((o) => o && { ...o, nowPlaying: true });
       },
+      setSearch: (on) => {
+        if (on) setPretendSearch(pretendWall(itemsRef.current));
+        setSearching(on);
+      },
+      scrollSearch: (by) =>
+        room.current?.parentElement?.querySelector(".search-wall")?.scrollBy(0, by),
       onLargeReady: (f) => (largeReady.current = f),
       takeLongestCommit: () => {
         const ms = longestCommit.current;
@@ -780,6 +816,7 @@ function Library({ name, onSignedOut }: Props) {
             focus={index}
             hiddenKey={out && !out.returning ? out.key : null}
             dim={pulledOut || searching}
+            hidden={searching}
             onPick={pick}
           />
           {(out || stranger) && (
@@ -859,7 +896,7 @@ function Library({ name, onSignedOut }: Props) {
         )}
         {empty && !searching && (
           <div className="crate-empty">
-            <p>Your crate is empty.</p>
+            <p>Your crate is empty. Find the first record for it.</p>
             <button type="button" onClick={() => setSearching(true)}>
               Find a record
             </button>
@@ -884,15 +921,21 @@ function Library({ name, onSignedOut }: Props) {
         ))}
       </nav>
 
-      <header className="library-header">
+      <header className={`library-header ${searching ? "hidden" : ""}`}>
         <p className="signed-in">Signed in as {name}</p>
-        {albums !== null && !searching && !empty && (
+        {albums !== null && !empty && (
           <button
             type="button"
-            className="find"
+            className={`find ${pulledOut ? "hidden" : ""}`}
             onClick={() => setSearching(true)}
+            aria-label="Find a record"
+            title="Find a record"
+            tabIndex={pulledOut || searching ? -1 : undefined}
           >
-            Find a record
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M15.5 15.5 21 21" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
           </button>
         )}
       </header>
@@ -913,23 +956,21 @@ function Library({ name, onSignedOut }: Props) {
         {import.meta.env.DEV && (
           <DevList empty={empty} onChanged={load} onFailed={failed} />
         )}
-        {searching && (
-          <section className="search-panel" aria-label="Find a record">
-            <button
-              type="button"
-              className="secondary close"
-              onClick={() => setSearching(false)}
-            >
-              Back to the crate
-            </button>
-            <Search
-              onAdded={added}
-              onFailed={failed}
-              onStarted={() => setError(null)}
-            />
-          </section>
-        )}
       </div>
+
+      <SearchWall
+        open={searching}
+        empty={empty}
+        owned={owned}
+        onClose={closeSearch}
+        onAdded={(album) => {
+          lastAdded.current = album.id;
+          added(album);
+        }}
+        onFailed={failed}
+        onStarted={() => setError(null)}
+        pretend={import.meta.env.DEV ? pretendSearch : undefined}
+      />
 
       {out?.gatefold && !out.returning && outAlbum && outNotes && (
         <Gatefold
@@ -1017,6 +1058,30 @@ function pretendPlaying(album: AlbumCard): NowPlaying {
       coverUrl: album.covers?.large ?? null,
     },
   };
+}
+
+/**
+ * Development builds' measuring: the search wall with a tile for each
+ * record in the crate, its 640, so it can be measured without Spotify.
+ */
+function pretendWall(items: CrateItem[]): SearchResults {
+  const results = items.flatMap((item) =>
+    item.kind === "album"
+      ? [
+          {
+            album: {
+              spotifyId: item.key,
+              title: item.album.title,
+              artist: item.album.artist,
+              year: item.album.year,
+              coverUrl: item.album.covers?.medium ?? null,
+            },
+            inCollection: false,
+          },
+        ]
+      : [],
+  );
+  return { results, nextOffset: null };
 }
 
 /**

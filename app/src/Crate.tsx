@@ -73,6 +73,11 @@ type Props = {
   hiddenKey: string | null;
   /** Dimmed and out of reach while a sleeve is out or search is open. */
   dim: boolean;
+  /**
+   * Not drawn at all once it has dimmed, while search covers it (DESIGN.md,
+   * "Search over the crate").
+   */
+  hidden: boolean;
   /** A click: the record in front comes out, any other comes to the front. */
   onPick: (index: number) => void;
 };
@@ -91,6 +96,7 @@ const Crate = memo(function Crate({
   focus,
   hiddenKey,
   dim,
+  hidden,
   onPick,
 }: Props) {
   const slots = [];
@@ -141,7 +147,7 @@ const Crate = memo(function Crate({
   }
   return (
     <div
-      className={`crate ${dim ? "dim" : ""}`}
+      className={`crate ${dim ? "dim" : ""} ${hidden ? "away" : ""}`}
       role="region"
       aria-label="Your crate"
     >

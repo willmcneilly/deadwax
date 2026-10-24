@@ -115,7 +115,7 @@ const report = () => screen.findByRole("region", { name: "Artwork report" });
 describe("The Artwork report", () => {
   it("isn't shown until the Develop menu asks for it", async () => {
     const { calls } = open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     expect(
       screen.queryByRole("region", { name: "Artwork report" }),
@@ -125,7 +125,7 @@ describe("The Artwork report", () => {
 
   it("lists every album with its cover source, size and steps, and totals by source", async () => {
     open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     await emit(ARTWORK_REPORT);
 
@@ -196,7 +196,7 @@ describe("The Artwork report", () => {
 
   it("shows each album's palette as swatches, sleeve colours then glow colours", async () => {
     open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
 
     await emit(ARTWORK_REPORT);
 
@@ -225,7 +225,7 @@ describe("The Artwork report", () => {
 
   it("refreshes, and closes", async () => {
     const { change } = open();
-    await screen.findByText("Your crate is empty.");
+    await screen.findByText("Your crate is empty. Find the first record for it.");
     await emit(ARTWORK_REPORT);
     await report();
 
