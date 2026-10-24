@@ -4,7 +4,7 @@ import { COLLECTION, IN_RAINBOWS_DETAILS } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd, SPOTIFY_SAYS } from "./mockBackEnd";
 import { POLL_MS } from "./playing";
-import { QUIET_MS, UNANSWERED } from "./notice";
+import { UNANSWERED } from "./notice";
 
 /** Spotify's answer to what's playing: it fails while `down` is set. */
 let down = false;
@@ -29,6 +29,8 @@ function crate(replies: Record<string, () => unknown> = {}) {
 }
 
 const line = () => screen.queryByRole("alert");
+/** How long an error shows (the ticket's 8 seconds), written out so the tests pin it. */
+const QUIET_MS = 8000;
 const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 const poll = () => wait(POLL_MS);
 
@@ -85,6 +87,20 @@ describe("The quiet line", () => {
     expect(line()).toHaveClass("on");
     await wait(QUIET_MS);
     expect(line()).not.toHaveClass("on");
+  });
+
+  it("clears an error when a new search starts", async () => {
+    crate({ search_albums: () => new Promise(() => {}) });
+    render(<Library name="Will" />);
+    await failToOpen();
+    await waitFor(() => expect(line()).toHaveTextContent(SPOTIFY_SAYS.network));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Find a record" }));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "pink moon" } });
+    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Enter" });
+
+    await waitFor(() => expect(line()).not.toHaveClass("on"));
   });
 
   it("says nothing after one failed poll, and that Spotify isn't answering after two in a row", async () => {

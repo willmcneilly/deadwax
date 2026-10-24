@@ -1,5 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CHANGE_CLIENT_ID, SIGNED_OUT, type Session } from "./api";
 import App from "./App";
@@ -282,9 +282,32 @@ describe("App", () => {
       render(<App />);
       await expectsTheExpiredCard();
 
-      await emit(SIGNED_OUT, null);
+      // Inside act, so React has drawn whatever the event changed.
+      await act(() => emit(SIGNED_OUT, null));
 
+      expect(
+        screen.getByRole("heading", { name: "Sign in again" }),
+      ).toBeInTheDocument();
       expect(screen.getByText(SPOTIFY_SAYS.expired)).toBeInTheDocument();
+    });
+
+    it("turns a sign-in that's waiting for the browser into the expired card", async () => {
+      backEnd({
+        get_session: session({ state: "signedOut", message: null }),
+        sign_in: () => new Promise<Session>(() => {}),
+      });
+      render(<App />);
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Sign in with Spotify" }),
+      );
+      await screen.findByRole("heading", { name: "Waiting for Spotify" });
+
+      await act(() => emit(SIGNED_OUT, SPOTIFY_SAYS.expired));
+
+      await expectsTheExpiredCard();
+      expect(
+        screen.getByRole("button", { name: "Sign in with Spotify" }),
+      ).toBeInTheDocument();
     });
   });
 
