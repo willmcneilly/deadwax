@@ -1,6 +1,7 @@
 // When a flight reaches one of its keyframes. A Web Animation's easing bends
 // its whole progress, and keyframe offsets are measured in that bent
 // progress, so the keyframe at 0.8 isn't reached at 80% of the duration.
+// The put-back flight's timing lives here too, so its tests can read it.
 
 export type Timing = { duration: number; delay?: number; easing: string };
 
@@ -27,3 +28,18 @@ export function reaches({ duration, delay = 0, easing }: Timing, offset: number)
   }
   return delay + bezier(x1, x2, (low + high) / 2) * duration;
 }
+
+/** A sleeve's flight back into its place in the crate (Sleeve.tsx). */
+export const FLY_BACK = {
+  duration: 620,
+  delay: 260,
+  easing: "cubic-bezier(.5,0,.3,1)",
+  fill: "forwards" as const,
+};
+/** Where on the flight back it's over its place, and starts to fade. */
+export const LANDS = 0.8;
+/**
+ * When that is, in milliseconds after the flight back starts: its place in
+ * the crate shows from then, under the fading sleeve.
+ */
+export const LANDS_AT = reaches(FLY_BACK, LANDS);

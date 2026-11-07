@@ -23,7 +23,7 @@ import {
   type AlbumTrack,
 } from "./api";
 import { SleeveFront } from "./Crate";
-import { reaches } from "./flight";
+import { FLY_BACK, LANDS, LANDS_AT } from "./flight";
 import { NowLine } from "./NowLine";
 import type { Place } from "./place";
 import { playingTrack, type Live } from "./playing";
@@ -32,19 +32,6 @@ import { wearStyle } from "./textures";
 import "./Sleeve.css";
 
 const FLY_OUT = { duration: 760, easing: "cubic-bezier(.2,.75,.15,1)" };
-const FLY_BACK = {
-  duration: 620,
-  delay: 260,
-  easing: "cubic-bezier(.5,0,.3,1)",
-  fill: "forwards" as const,
-};
-/** Where on the flight back it's over its place, and starts to fade. */
-const LANDS = 0.8;
-/**
- * When that is, in milliseconds after the flight back starts: its place in
- * the crate shows from then, under the fading sleeve.
- */
-export const LANDS_AT = reaches(FLY_BACK, LANDS);
 
 type Props = {
   album: AlbumCard;

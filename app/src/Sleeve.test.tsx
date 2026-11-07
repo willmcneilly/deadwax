@@ -11,7 +11,7 @@ import {
 } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
-import { LANDS_AT } from "./Sleeve";
+import { LANDS_AT } from "./flight";
 
 afterEach(() => {
   vi.restoreAllMocks();
