@@ -14,17 +14,22 @@ Each groove is a straight line from the stem, a semicircle around the label, and
 | | |
 |---|---|
 | Grooves | 2 |
-| Groove width | 36 |
-| Gap between grooves | 34 |
-| Dead wax (label to first groove) | 56 |
-| Label radius | 100 |
-| Spindle hole radius | 28 |
-| Straight length (stem to curve) | 150 |
-| Nudge right of centre | 36 |
-| Nudge up | −5 |
+| Groove width | 51 |
+| Gap between grooves | 41 |
+| Dead wax (label to first groove) | 68 |
+| Label radius | 126 |
+| Spindle hole radius | 36 |
+| Straight length (stem to curve) | 182 |
+| Nudge right of centre | 34 |
+| Nudge up | −6 |
 
 The first groove's centre line is at label + dead wax + width ÷ 2 from the label's centre, and the next
 is width + gap further out. The mark is centred on x = 512, then nudged.
+
+The mark fills about 80% of the square's height (674 of 824), so it reads at the same size as the marks
+on other Dock icons. Leave the square itself at 824: it's Apple's grid, and every other app's icon uses
+it, so a bigger square would look bigger than its neighbours in the Dock. To make the mark bigger or
+smaller, scale every value in the table by the same amount.
 
 ## Making the icon set
 
