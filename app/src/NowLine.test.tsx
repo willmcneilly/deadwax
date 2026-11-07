@@ -254,7 +254,8 @@ describe("Dropping the needle", () => {
     expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
     expect(frontSide()).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByRole("button", { name: "Play Reckoner" })).toBeEnabled();
-    expect(glow()).toHaveClass("off");
+    // Back to the still glow of a record out.
+    expect(glow()).toHaveClass("out");
   });
 
   it("isn't cut short by an earlier needle drop's wait", async () => {
@@ -302,7 +303,7 @@ describe("Dropping the needle", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Living Room isn't showing up",
     );
-    expect(glow()).toHaveClass("off");
+    expect(glow()).toHaveClass("out");
   });
 
   it("pauses with Space and skips with ← →", async () => {
@@ -523,7 +524,7 @@ describe("Pulling out the record that's playing", () => {
 
     expect(document.querySelector(".sleeve-out")).not.toHaveClass("floating");
     expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
-    expect(glow()).toHaveClass("off");
+    expect(glow()).toHaveClass("out");
   });
 
   it("turns over to the tracklist with the playing track picked out, and floats again turned back", async () => {
@@ -537,6 +538,77 @@ describe("Pulling out the record that's playing", () => {
     fireEvent.keyDown(window, { key: "Enter" });
     await waitFor(() => expect(document.querySelector(".sleeve-out")).toHaveClass("floating"));
     expect(side()).toBe("Side A · 3");
+  });
+});
+
+describe("A record out, not playing", () => {
+  /** What a command asks of Spotify, rather than of the disk. */
+  const SPOTIFY = [
+    "get_playback",
+    "play_album",
+    "pause_playback",
+    "resume_playback",
+    "next_track",
+    "previous_track",
+    "get_devices",
+    "choose_device",
+    "refresh_album",
+  ];
+
+  it("comes up in its colours, faint and still, as soon as it's out, without asking Spotify", async () => {
+    const calls = playingBackEnd();
+    render(<Library name="Will" />);
+    const front = await screen.findByRole("button", {
+      name: "Pull out In Rainbows by Radiohead",
+    });
+    expect(document.querySelector(".glow")).toBeNull();
+    const before = calls.length;
+
+    fireEvent.click(front);
+
+    expect(glow()).toHaveClass("out");
+    expect(glow().style.getPropertyValue("--album-deep")).toBe("#101418");
+    expect(glow().style.getPropertyValue("--album-glow-1")).toBe("#3a6ea5");
+    expect(
+      calls.slice(before).filter((c) => SPOTIFY.includes(c.cmd)).map((c) => c.cmd),
+    ).toEqual([]);
+  });
+
+  it("warms from there when a track is pressed, comes up when Spotify confirms, and goes with the record", async () => {
+    playingBackEnd();
+    render(<Library name="Will" />);
+    await turnOverInRainbows();
+    expect(glow()).toHaveClass("out");
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Nude" }));
+    await waitFor(() => expect(glow()).toHaveClass("warming"));
+    play(IN_RAINBOWS, NUDE);
+    await poll();
+    await waitFor(() => expect(glow()).toHaveClass("on"));
+
+    fireEvent.keyDown(window, { key: " " });
+    await poll();
+    await waitFor(() => expect(glow()).toHaveClass("paused"));
+
+    // Put back, it fades out with the flight, as before.
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(glow()).toHaveClass("off"));
+  });
+
+  it("has the plain glow when its palette isn't worked out yet", async () => {
+    playingBackEnd();
+    render(<Library name="Will" />);
+    await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" });
+    fireEvent.keyDown(window, { key: "]" });
+    fireEvent.keyDown(window, { key: "]" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull out Pink Moon by Nick Drake" }),
+    );
+    await screen.findByRole("button", { name: "Turn Pink Moon over" });
+
+    expect(glow()).toHaveClass("out");
+    expect(glow().getAttribute("style") ?? "").not.toContain("--album-");
   });
 });
 

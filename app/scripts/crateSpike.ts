@@ -11,7 +11,7 @@ export type Plan = {
   label: string;
   /** The spike, or the app's own crate (DWX-21), which ignores `effects`. */
   target?: "spike" | "crate";
-  scenario: "idle" | "flip" | "pull" | "glow" | "search" | "putback";
+  scenario: "idle" | "flip" | "pull" | "glow" | "out" | "search" | "putback";
   many: boolean;
   effects: Effects;
   cold?: boolean;
@@ -111,7 +111,8 @@ export const PLANS: Plan[] = [
  * The app's own crate (DWX-21), measured as the spike's final cuts were:
  * flipping the real collection and the 400-record crate at both speeds,
  * pulling records out, warm and cold, and a record floating in its glow
- * while it plays (DWX-22), and the search wall open over it (DWX-24).
+ * while it plays (DWX-22), a record out in its still glow (DWX-32), and
+ * the search wall open over it (DWX-24).
  * `scripts/crate-spike --crate` runs these.
  */
 export const CRATE_PLANS: Plan[] = [false, true].flatMap((many): Plan[] => {
@@ -128,6 +129,8 @@ export const CRATE_PLANS: Plan[] = [false, true].flatMap((many): Plan[] => {
     { ...base, label: `crate: pull ${crate}`, scenario: "pull" },
     { ...base, label: `crate: pull ${crate}, cold`, scenario: "pull", cold: true },
     { ...base, label: `crate: glow ${crate}`, scenario: "glow", seconds: 10 },
+    // A record out and not playing, in its still glow (DWX-32).
+    { ...base, label: `crate: out ${crate}`, scenario: "out", seconds: 10 },
     // The same 10 seconds with nothing moving but the grain, to compare.
     { ...base, label: `crate: idle ${crate}`, scenario: "idle", seconds: 10 },
     // A tile for each record in the crate: the real collection, or 400.
@@ -222,6 +225,7 @@ function describe(plan: Plan, results: Result[], each: (f: (r: Result) => string
       return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | flip work ${each((r) => `${r.flipWorkMs?.median}/${r.flipWorkMs?.longest} (React ${r.flipWorkMs?.reactMedian})`)} ms |`;
     case "idle":
     case "glow":
+    case "out":
       return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | commit ${each((r) => `${r.longestCommitMs ?? "-"}`)} ms |`;
     case "pull":
       return `| ${plan.label} | large worst ${each((r) => `${r.largeWorstMs}`)} ms | all ${results.map((r) => r.largeMs?.join("/")).join(" · ")} | first frame ${results.map((r) => r.largeSteps?.map((t) => t.first).join("/")).join(" · ")} ms | flight dropped ${each((r) => `${r.flightDropped}`)} |`;
