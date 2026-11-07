@@ -288,8 +288,12 @@ describe("The sleeve", () => {
       expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull(),
     );
     const before = front();
-    fireEvent.keyDown(window, { key: "ArrowRight" });
-    expect(front()).not.toBe(before);
+    // The crate's key listener is swapped for one without the record out just
+    // after it draws, so a press in between is ignored: press until it flips.
+    await waitFor(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+      expect(front()).not.toBe(before);
+    });
   });
 
   it("stays out, saying why, when taking it out fails", async () => {
