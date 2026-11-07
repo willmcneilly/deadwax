@@ -276,3 +276,32 @@ describe("A divider's shade", () => {
     expect(shadeOf(slot("In Rainbows"))).toBe(0);
   });
 });
+
+describe("A sleeve flipped past", () => {
+  // In WebKit, a slot that had been past, came back and went past again kept
+  // being drawn at the bottom of the room with opacity 0 (DWX-30). jsdom
+  // can't draw, so this holds the fix in place: visibility goes with the fade.
+  it("is hidden once its fade has finished, however often it has come back", async () => {
+    await openCrate();
+    const first = () => crate().querySelector<HTMLElement>(".crate-slot")!;
+    // The first divider is already past; it comes to the front, then goes
+    // past again: the sequence that left it drawn.
+    expect(first().classList).toContain("past");
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(first().classList).not.toContain("past");
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(first().classList).toContain("past");
+    expect(first().style.opacity).toBe("0");
+    // Nothing inline overrides the class's visibility.
+    expect(first().style.visibility).toBe("");
+
+    expect(rule(".crate-slot.past").visibility).toBe("hidden");
+    // It changes when the fade ends, so the fade still shows, and it comes
+    // back at once: visibility's transition is visible all the way through.
+    const transition = rule(".crate-slot").transition;
+    const duration = (property: string) =>
+      transition.match(new RegExp(`${property} (\\d+ms)`))?.[1];
+    expect(duration("visibility")).toBeDefined();
+    expect(duration("visibility")).toBe(duration("opacity"));
+  });
+});
