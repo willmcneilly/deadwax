@@ -252,6 +252,27 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("brings up sign-in over the crate when Spotify's check finds no tokens", async () => {
+    let answer: (session: Session) => void = () => {};
+    backEnd({
+      get_session: session({ state: "signedIn", name: null }),
+      // Signed out between reading the Keychain and asking Spotify, with
+      // nothing emitted: only the check's answer can say so.
+      check_sign_in: () => new Promise<Session>((resolve) => (answer = resolve)),
+      get_collection: () => [card(1)],
+      dev_list_missing: () => 0,
+      ...NOTHING_PLAYING,
+    });
+    render(<App />);
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+
+    await act(async () => answer({ state: "signedOut", message: null }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in to Spotify" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the crate open when Spotify fails to say who you are", async () => {
     backEnd({
       get_session: session({ state: "signedIn", name: null }),

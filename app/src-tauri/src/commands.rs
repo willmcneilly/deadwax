@@ -142,13 +142,16 @@ fn client(client_id: String, signed_out: SignedOutNotice) -> Result<Arc<Client>,
 /// Spotify behind it.
 #[tauri::command]
 pub async fn get_session(state: State<'_, AppState>) -> Result<Session, String> {
-    let Some(spotify) = state.spotify().await else {
-        return Ok(Session::NeedsClientId);
-    };
-    local_session(&spotify)
+    start_up_session(state.spotify().await.as_deref())
 }
 
-fn local_session<C: Clock, S: TokenStore>(spotify: &Spotify<C, S>) -> Result<Session, String> {
+/// `get_session`'s answer, from the Spotify client if there's a client ID.
+fn start_up_session<C: Clock, S: TokenStore>(
+    spotify: Option<&Spotify<C, S>>,
+) -> Result<Session, String> {
+    let Some(spotify) = spotify else {
+        return Ok(Session::NeedsClientId);
+    };
     if spotify.has_tokens().map_err(|e| e.to_string())? {
         Ok(Session::SignedIn { name: None })
     } else {
@@ -1298,8 +1301,16 @@ mod tests {
             Ok(Session::SignedOut { message: None })
         );
         assert_eq!(
-            local_session(&spotify),
+            start_up_session(Some(&spotify)),
             Ok(Session::SignedOut { message: None })
+        );
+    }
+
+    #[test]
+    fn no_client_id_is_the_setup_screen() {
+        assert_eq!(
+            start_up_session(None::<&Spotify<SystemClock, MemoryStore>>),
+            Ok(Session::NeedsClientId)
         );
     }
 
@@ -1311,7 +1322,7 @@ mod tests {
         let before = server.received_requests().await.unwrap().len();
 
         assert_eq!(
-            local_session(&spotify),
+            start_up_session(Some(&spotify)),
             Ok(Session::SignedIn { name: None })
         );
         assert_eq!(server.received_requests().await.unwrap().len(), before);
