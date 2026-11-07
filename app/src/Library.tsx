@@ -287,9 +287,11 @@ function Library({ name }: Props) {
 
   const itemsRef = useRef(items);
   const indexRef = useRef(index);
+  const liveRef = useRef(live);
   useLayoutEffect(() => {
     itemsRef.current = items;
     indexRef.current = index;
+    liveRef.current = live;
   });
 
   const flipTo = useCallback((to: number) => {
@@ -318,13 +320,17 @@ function Library({ name }: Props) {
 
   /**
    * Pulls out the record in front, to browse or for what's playing. A
-   * divider in front flips past instead.
+   * divider in front flips past instead. The record that's playing, or
+   * paused, comes out for what's playing unless told otherwise.
    */
   const pull = useCallback(
-    ({ bust, nowPlaying = false }: { bust?: number; nowPlaying?: boolean } = {}) => {
+    ({ bust, nowPlaying: asked }: { bust?: number; nowPlaying?: boolean } = {}) => {
       const item = itemsRef.current[indexRef.current];
       if (!item) return;
       if (item.kind === "divider") return step(1);
+      const now = liveRef.current;
+      const nowPlaying =
+        asked ?? (now?.kind === "record" && now.albumId === item.album.id);
       const from = frontPlace(room.current);
       setTurns(0);
       setPulled({ key: item.key, from, returning: false, nowPlaying, bust });
