@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const src = import.meta.dirname;
+const src = resolve(import.meta.dirname, "../src");
 const read = (file: string) => readFileSync(resolve(src, file), "utf8");
 const require = createRequire(import.meta.url);
 
