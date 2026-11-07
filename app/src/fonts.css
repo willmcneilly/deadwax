@@ -1,8 +1,15 @@
 /*
- * The gatefold's type (DWX-26), bundled with the app from Fontsource, so
- * nothing is fetched from the web. Each family's files load only when the
- * gatefold first sets type in it. All are under the SIL Open Font License.
+ * The gatefold's type (DWX-26) and the crate's hand (DWX-28), bundled with
+ * the app from Fontsource, so nothing is fetched from the web. Each family's
+ * files load only when the page first sets type in it. All are under the SIL
+ * Open Font License.
  */
+
+/* Caveat, the hand: the dividers, the caption's section, the empty crate's
+ * line and the search wall's first-run line. 500 for the plain lines and 700
+ * for the rest, the two weights the crate concept loaded. */
+@import "@fontsource/caveat/500.css";
+@import "@fontsource/caveat/700.css";
 
 /* Fraunces and Newsreader with their optical-size axis ("opsz"). */
 @import "@fontsource-variable/fraunces/opsz.css";
