@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { COLLECTION, IN_RAINBOWS_DETAILS } from "./crateFixtures";
+import { COLLECTION, IN_RAINBOWS, IN_RAINBOWS_DETAILS } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd, SPOTIFY_SAYS } from "./mockBackEnd";
 import { POLL_MS } from "./playing";
@@ -147,6 +147,102 @@ describe("The quiet line", () => {
     expect(line()).toHaveTextContent(UNANSWERED);
     expect(line()).toHaveClass("on");
   });
+
+  // The prototype's dev panel failed "the next action" with each of these.
+  // A 429 Rust can wait out is only slow, so it never reaches the UI:
+  // `retries_a_429_after_its_retry_after_and_only_then` covers it.
+  it.each([
+    ["no network", SPOTIFY_SAYS.network],
+    ["a 429 too long to wait out", SPOTIFY_SAYS.rateLimited],
+    ["a 502", SPOTIFY_SAYS.serverError],
+  ])(
+    "says what Spotify said, for %s, when a pause, a skip, a play, a search or an add fails",
+    async (_, sentence) => {
+      /** Fails the next call to Spotify, then works again. */
+      let failNext = false;
+      const once = <T,>(reply: () => T) => () => {
+        if (!failNext) return reply();
+        failNext = false;
+        throw sentence;
+      };
+      const calls = crate({
+        get_playback: () => ({
+          isPlaying: true,
+          device: "Living Room",
+          progressMs: 1000,
+          track: {
+            spotifyId: IN_RAINBOWS_DETAILS.tracks[0].spotifyId,
+            disc: 1,
+            number: 1,
+            title: "15 Step",
+            artist: "Radiohead",
+            album: "In Rainbows",
+            albumId: IN_RAINBOWS.id,
+            spotifyAlbumId: IN_RAINBOWS.spotifyId,
+            durationMs: 237_293,
+            coverUrl: null,
+          },
+        }),
+        pause_playback: once(() => null),
+        next_track: once(() => null),
+        play_album: once(() => ({ state: "playing", devices: [] })),
+        search_albums: once(() => ({
+          results: [
+            {
+              album: {
+                spotifyId: "pink-moon",
+                title: "Pink Moon",
+                artist: "Nick Drake",
+                year: 1972,
+                coverUrl: null,
+              },
+              inCollection: false,
+            },
+          ],
+          nextOffset: null,
+        })),
+        add_album: once(() => null),
+      });
+      render(<Library name="Will" />);
+      // What's playing comes out of the crate, floating, so ← → skip.
+      fireEvent.click(await screen.findByRole("button", { name: "Bring out In Rainbows" }));
+      await screen.findByRole("region", { name: "Now playing" });
+
+      /** Does `act` with the next call failing, and waits for the line to say so and fade. */
+      async function fails(cmd: string, act: () => void | Promise<void>) {
+        failNext = true;
+        await act();
+        await waitFor(() => expect(calls.map((c) => c.cmd)).toContain(cmd));
+        await waitFor(() => expect(line()).toHaveTextContent(sentence));
+        expect(failNext).toBe(false);
+        await wait(QUIET_MS + 500);
+        expect(line()?.classList.contains("on") ?? false).toBe(false);
+      }
+
+      await fails("pause_playback", () => {
+        fireEvent.keyDown(window, { key: " " });
+      });
+      await fails("next_track", () => {
+        fireEvent.keyDown(window, { key: "ArrowRight" });
+      });
+      await fails("play_album", async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Play Nude" }));
+      });
+      fireEvent.keyDown(window, { key: "Escape" });
+      fireEvent.click(await screen.findByRole("button", { name: "Find a record" }));
+      await fails("search_albums", () => {
+        fireEvent.change(screen.getByRole("searchbox"), { target: { value: "pink moon" } });
+        fireEvent.submit(screen.getByRole("searchbox"));
+      });
+      fireEvent.change(screen.getByRole("searchbox"), { target: { value: "nick drake" } });
+      fireEvent.submit(screen.getByRole("searchbox"));
+      const add = await screen.findByRole("button", { name: "Add Pink Moon by Nick Drake" });
+      await fails("add_album", () => {
+        fireEvent.click(add);
+      });
+    },
+  );
 
   it("leaves the crate and the sleeves working while Spotify isn't answering", async () => {
     down = true;

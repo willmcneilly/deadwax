@@ -1195,11 +1195,19 @@ mod tests {
                 40,
             )),
         ));
+        Mock::given(method("PUT"))
+            .and(path("/v1/me/player/pause"))
+            .respond_with(ResponseTemplate::new(502))
+            .mount(&server)
+            .await;
+        let failing = signed_in_with_api_at(&server, fresh_token(), server.uri()).await;
+        let server_error = spotify_error(failing.pause().await.unwrap_err());
         let mock = include_str!("../../src/mockBackEnd.ts");
 
         for sentence in [
             network.as_str(),
             rate_limited.as_str(),
+            server_error.as_str(),
             EXPIRED_MESSAGE,
             NOT_SIGNED_IN_MESSAGE,
         ] {

@@ -32,6 +32,7 @@ export function backEnd(
 export const SPOTIFY_SAYS = {
   network: "Couldn't reach Spotify. Check the connection, then try again.",
   rateLimited: "Spotify is rate limiting Deadwax. Try again in 40 seconds.",
+  serverError: "Spotify replied 502 Bad Gateway to pausing",
   expired: "Your Spotify sign-in has expired. Sign in again to carry on.",
   notSignedIn: "Sign in to Spotify first.",
 };
