@@ -1,6 +1,6 @@
 /*
  * Now playing's line under the floating record, and the chip over the crate
- * (prototypes/crate/src/styles.css and connect.css). Only transforms and
+ * (the prototype's styles.css and connect.css, PRs #9 and #16). Only transforms and
  * opacity move (DESIGN.md, rule 7).
  */
 

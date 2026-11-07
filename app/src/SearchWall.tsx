@@ -1,6 +1,6 @@
 // Finding records to add (RFC-002, "4. The UI"): a full-screen overlay with
 // a wall of covers, best match first, as the prototype has it
-// (prototypes/crate/src/Search.tsx). It doesn't play at being a crate, so
+// (the prototype's Search.tsx, PR #16). It doesn't play at being a crate, so
 // the covers do the talking. Records already in the crate are dimmed, and
 // adding is one click: a copy of the cover drops toward the crate behind.
 

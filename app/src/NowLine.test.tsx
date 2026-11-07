@@ -31,6 +31,8 @@ type Playing = {
   /** Where it was at `since`. */
   from: number;
   since: number;
+  /** Where Spotify says it's playing. */
+  device?: string;
 } | null;
 
 let playing: Playing = null;
@@ -42,10 +44,10 @@ function play(album: AlbumCard | null, t: AlbumTrack | null, isPlaying = true) {
 /** Spotify's answer: an album in the crate, a stranger's, or an advert. */
 function answer(): NowPlaying | null {
   if (!playing) return null;
-  const { album, track: t, isPlaying, from, since } = playing;
+  const { album, track: t, isPlaying, from, since, device = "Living Room" } = playing;
   return {
     isPlaying,
-    device: "Living Room",
+    device,
     progressMs: from + (isPlaying ? Date.now() - since : 0),
     track: t && {
       spotifyId: t.spotifyId,
@@ -89,6 +91,14 @@ function playingBackEnd(replies: Record<string, (args?: unknown) => unknown> = {
 
 /** One poll's wait, for a change made elsewhere to be heard. */
 const poll = () => act(() => vi.advanceTimersByTimeAsync(POLL_MS));
+
+/**
+ * Lets `ms` pass half a second at a time, so React draws in between as it
+ * would in the app, rather than once at the end.
+ */
+async function waitAWhile(ms: number) {
+  for (let t = 0; t < ms; t += 500) await act(() => vi.advanceTimersByTimeAsync(500));
+}
 
 const nowLine = () => screen.getByRole("region", { name: "Now playing" });
 const side = () => nowLine().querySelector(".now-side")?.textContent;
@@ -207,6 +217,44 @@ describe("Dropping the needle", () => {
     await poll();
 
     await waitFor(() => expect(glow()).toHaveClass("on"));
+  });
+
+  it("stays starting while Spotify is slow to start, until it confirms within 6 seconds", async () => {
+    const calls = playingBackEnd();
+    render(<Library name="Will" />);
+    await turnOverInRainbows();
+    fireEvent.click(screen.getByRole("button", { name: "Play Reckoner" }));
+    await waitFor(() => expect(calls.map((c) => c.cmd)).toContain("play_album"));
+
+    // Spotify says nothing is playing, poll after poll, for 3.5 seconds.
+    await waitAWhile(3_500);
+    expect(side()).toBe("Side B · 2 · starting");
+    expect(clock()).toHaveTextContent("0:00");
+    expect(glow()).toHaveClass("warming");
+
+    // Then it starts, and the next poll confirms it.
+    play(IN_RAINBOWS, RECKONER);
+    await waitAWhile(1_000);
+
+    await waitFor(() => expect(side()).toBe("Side B · 2"));
+    expect(glow()).toHaveClass("on");
+  });
+
+  it("gives up after 6 seconds of Spotify saying nothing, and turns back to its tracklist", async () => {
+    const calls = playingBackEnd();
+    render(<Library name="Will" />);
+    await turnOverInRainbows();
+    fireEvent.click(screen.getByRole("button", { name: "Play Reckoner" }));
+    await waitFor(() => expect(calls.map((c) => c.cmd)).toContain("play_album"));
+
+    await waitAWhile(5_500);
+    expect(side()).toBe("Side B · 2 · starting");
+    await waitAWhile(1_000);
+
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
+    expect(frontSide()).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button", { name: "Play Reckoner" })).toBeEnabled();
+    expect(glow()).toHaveClass("off");
   });
 
   it("isn't cut short by an earlier needle drop's wait", async () => {
@@ -344,6 +392,32 @@ describe("Following changes made elsewhere", () => {
     await poll();
 
     await waitFor(() => expect(side()).toBe("Side A · 3 · paused"));
+  });
+
+  it("plays on when it's resumed", async () => {
+    await playNude();
+    if (playing) playing = { ...playing, isPlaying: false, from: 5_000, since: Date.now() };
+    await poll();
+    await waitFor(() => expect(side()).toBe("Side A · 3 · paused"));
+
+    if (playing) playing = { ...playing, isPlaying: true, since: Date.now() };
+    await poll();
+
+    await waitFor(() => expect(side()).toBe("Side A · 3"));
+    expect(glow()).toHaveClass("on");
+  });
+
+  it("says where it's playing when it moves to another device", async () => {
+    await playNude();
+    expect(within(nowLine()).getByRole("button", { name: /on Living Room/ })).toBeInTheDocument();
+
+    if (playing) playing = { ...playing, device: "Will's iPhone" };
+    await poll();
+
+    await waitFor(() =>
+      expect(within(nowLine()).getByRole("button", { name: /on Will's iPhone/ })).toBeInTheDocument(),
+    );
+    expect(side()).toBe("Side A · 3");
   });
 
   it("turns the record back to its tracklist when the music stops", async () => {

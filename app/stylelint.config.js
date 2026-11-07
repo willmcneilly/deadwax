@@ -1,6 +1,6 @@
-// Stylelint fails on a colour written directly in CSS. Project 1 has no
-// DESIGN.md (RFC-001, open question 2): colours live only in the CSS variables
-// in `src/theme.css`, the one file allowed raw colours.
+// Stylelint fails on a colour written directly in CSS. Colours live only in
+// the CSS variables in `src/theme.css`, the one file allowed raw colours
+// (DESIGN.md, "Colour").
 //
 // The escape, for a colour that has to stay (with the reason after `--`):
 //   /* stylelint-disable-next-line <rule> -- <reason> */

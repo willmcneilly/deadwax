@@ -1,5 +1,5 @@
 // The Develop menu's liner notes items (RFC-002, "5. Liner notes in the
-// app"): Import prototype notes, which copies PR #9's five essays into the
+// app"): Import sample notes, which copies PR #9's five essays into the
 // notes folder for the albums in the collection they're about, and the Liner
 // notes report, which lists every notes file and says what's wrong with any
 // the gatefold won't show. A file that isn't valid notes is reported here,
@@ -14,7 +14,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import type { AlbumId } from "./api";
 
 /** The events the Develop menu's items send (app/src-tauri/src/commands/dev.rs). */
-export const IMPORT_PROTOTYPE_NOTES = "import-prototype-notes";
+export const IMPORT_SAMPLE_NOTES = "import-sample-notes";
 export const NOTES_REPORT = "notes-report";
 
 /** `NotesImport` in app/src-tauri/src/commands/dev.rs. */
@@ -23,7 +23,7 @@ export type NotesImport = {
   imported: { id: AlbumId; title: string; artist: string }[];
   /** Essays about albums that aren't in the collection. */
   unmatched: { file: string; albumTitle: string; artist: string }[];
-  /** Files in the prototype's folder that aren't valid notes. */
+  /** Files in the sample notes folder that aren't valid notes. */
   invalid: { file: string; message: string }[];
 };
 
@@ -42,7 +42,7 @@ export type Report = {
   }[];
 };
 
-const importPrototypeNotes = () => invoke<NotesImport>("import_prototype_notes");
+const importSampleNotes = () => invoke<NotesImport>("import_sample_notes");
 const notesReport = () => invoke<Report>("notes_report");
 
 type Props = {
@@ -71,7 +71,7 @@ function NotesReport({ onFailed }: Props) {
   async function importNotes() {
     setShown({ kind: "importing" });
     try {
-      setShown({ kind: "imported", result: await importPrototypeNotes() });
+      setShown({ kind: "imported", result: await importSampleNotes() });
     } catch (e) {
       setShown({ kind: "none" });
       onFailed(e);
@@ -83,7 +83,7 @@ function NotesReport({ onFailed }: Props) {
 
   useEffect(() => {
     const unlistenReport = listen(NOTES_REPORT, () => loadEvent());
-    const unlistenImport = listen(IMPORT_PROTOTYPE_NOTES, () => importEvent());
+    const unlistenImport = listen(IMPORT_SAMPLE_NOTES, () => importEvent());
     return () => {
       void unlistenReport.then((stop) => stop());
       void unlistenImport.then((stop) => stop());
@@ -101,15 +101,15 @@ function NotesReport({ onFailed }: Props) {
       return null;
     case "importing":
       return (
-        <section className="notice" aria-label="Import prototype notes" aria-busy="true">
-          <p>Importing the prototype's notes…</p>
+        <section className="notice" aria-label="Import sample notes" aria-busy="true">
+          <p>Importing the sample notes…</p>
         </section>
       );
     case "imported": {
       const { imported, unmatched, invalid } = shown.result;
       return (
-        <section className="notice notes-report" aria-label="Import prototype notes">
-          <h2>Import prototype notes</h2>
+        <section className="notice notes-report" aria-label="Import sample notes">
+          <h2>Import sample notes</h2>
           <p>
             Imported {essays(imported.length)}
             {imported.length > 0 &&
@@ -151,7 +151,7 @@ function NotesReport({ onFailed }: Props) {
           <h2>Liner notes report</h2>
           <p>{folder}</p>
           {files.length === 0 ? (
-            <p>No albums have liner notes yet. Develop › Import prototype notes adds some.</p>
+            <p>No albums have liner notes yet. Develop › Import sample notes adds some.</p>
           ) : (
             <table>
               <thead>

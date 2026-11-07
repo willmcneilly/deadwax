@@ -1,5 +1,5 @@
 //! The Develop menu's commands: resetting the collection, restoring it from
-//! the dev list, the Artwork report, importing the prototype's liner notes
+//! the dev list, the Artwork report, importing the sample liner notes
 //! and the Liner notes report, and keeping the window in front for the crate
 //! spike (DWX-20). See RFC-001, "A dev list that survives resets" and
 //! "High-res artwork, as an experiment", and RFC-002, "2. Local artwork, in
@@ -31,7 +31,7 @@ pub const RESTORE_FROM_DEV_LIST: &str = "restore-from-dev-list";
 pub const ARTWORK_REPORT: &str = "artwork-report";
 /// The crate spike: DWX-20's measuring of the crate against the frame budget.
 pub const CRATE_SPIKE: &str = "crate-spike";
-pub const IMPORT_PROTOTYPE_NOTES: &str = "import-prototype-notes";
+pub const IMPORT_SAMPLE_NOTES: &str = "import-sample-notes";
 pub const NOTES_REPORT: &str = "notes-report";
 
 /// What restoring did.
@@ -309,7 +309,7 @@ fn report(collection: &Collection, jobs: &AlbumJobs) -> Result<ArtworkReport, St
     Ok(ArtworkReport { albums, totals })
 }
 
-/// What importing the prototype's liner notes did.
+/// What importing the sample liner notes did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotesImport {
@@ -317,7 +317,7 @@ pub struct NotesImport {
     pub imported: Vec<ImportedNotes>,
     /// Essays about albums that aren't in the collection.
     pub unmatched: Vec<UnmatchedNotes>,
-    /// Files in the prototype's folder that aren't valid notes.
+    /// Files in the sample notes folder that aren't valid notes.
     pub invalid: Vec<NotesProblem>,
 }
 
@@ -332,7 +332,7 @@ pub struct ImportedNotes {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnmatchedNotes {
-    /// The file's name in the prototype's folder.
+    /// The file's name in the sample notes folder.
     pub file: String,
     /// The album and artist the essay names.
     pub album_title: String,
@@ -346,17 +346,17 @@ pub struct NotesProblem {
     pub message: String,
 }
 
-/// The prototype's five essays (PR #9), in this checkout.
-fn prototype_notes() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../prototypes/crate/public/notes")
+/// The five sample essays (PR #9), in this checkout.
+fn sample_notes() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("sample-notes")
 }
 
-/// Copies the prototype's essays into the notes folder, each named by the
+/// Copies the sample essays into the notes folder, each named by the
 /// Deadwax ID of the album in the collection with the same title and artist.
 /// An album's notes are replaced if it had some.
 #[tauri::command]
-pub fn import_prototype_notes(state: State<'_, AppState>) -> Result<NotesImport, String> {
-    import_notes(&prototype_notes(), &state.collection, &state.notes)
+pub fn import_sample_notes(state: State<'_, AppState>) -> Result<NotesImport, String> {
+    import_notes(&sample_notes(), &state.collection, &state.notes)
 }
 
 fn notes_error(error: NotesError) -> String {
@@ -373,7 +373,7 @@ fn import_notes(
 ) -> Result<NotesImport, String> {
     let files = NotesDir::new(from)
         .files()
-        .map_err(|e| format!("Couldn't read the prototype's notes: {}", notes_error(e)))?;
+        .map_err(|e| format!("Couldn't read the sample notes: {}", notes_error(e)))?;
     if files.is_empty() {
         return Err(format!(
             "There are no notes to import in {}.",
@@ -1051,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    fn importing_matches_the_prototypes_essays_to_albums_by_title_and_artist() {
+    fn importing_matches_the_sample_essays_to_albums_by_title_and_artist() {
         let root = tempfile::tempdir().unwrap();
         let notes = NotesDir::new(root.path().join("notes"));
         let mut collection = Collection::open_in_memory().unwrap();
@@ -1069,7 +1069,7 @@ mod tests {
         add("ok", "OK Computer", "Radiohead");
         let collection = std::sync::Mutex::new(collection);
 
-        let import = import_notes(&prototype_notes(), &collection, &notes).unwrap();
+        let import = import_notes(&sample_notes(), &collection, &notes).unwrap();
 
         let mut imported: Vec<_> = import.imported.iter().map(|i| i.id.clone()).collect();
         imported.sort();
@@ -1107,7 +1107,7 @@ mod tests {
     }
 
     #[test]
-    fn importing_every_prototype_essay_checks_each_against_the_schema() {
+    fn importing_every_sample_essay_checks_each_against_the_schema() {
         let root = tempfile::tempdir().unwrap();
         let mut collection = Collection::open_in_memory().unwrap();
         for (n, (title, artist)) in [
@@ -1127,7 +1127,7 @@ mod tests {
         let collection = std::sync::Mutex::new(collection);
 
         let import = import_notes(
-            &prototype_notes(),
+            &sample_notes(),
             &collection,
             &NotesDir::new(root.path().join("notes")),
         )
@@ -1140,10 +1140,10 @@ mod tests {
     #[test]
     fn importing_reports_a_file_that_isnt_notes_and_imports_the_rest() {
         let root = tempfile::tempdir().unwrap();
-        let from = root.path().join("prototype");
+        let from = root.path().join("essays");
         std::fs::create_dir_all(&from).unwrap();
         std::fs::copy(
-            prototype_notes().join("pink-moon.json"),
+            sample_notes().join("pink-moon.json"),
             from.join("pink-moon.json"),
         )
         .unwrap();
@@ -1202,7 +1202,7 @@ mod tests {
             .unwrap()
             .id()
             .clone();
-        let essay = std::fs::read_to_string(prototype_notes().join("pink-moon.json")).unwrap();
+        let essay = std::fs::read_to_string(sample_notes().join("pink-moon.json")).unwrap();
         notes
             .write(&pink_moon, &notes::parse(&essay).unwrap())
             .unwrap();

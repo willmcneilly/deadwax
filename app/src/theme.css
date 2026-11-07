@@ -1,8 +1,8 @@
 /*
- * Deadwax's styles for project 1. There's no DESIGN.md yet (RFC-001, open
- * question 2): the whole UI is provisional, and project 2 starts DESIGN.md
- * from what we learn. Until then, colours live only in the variables below,
- * and this is the one file allowed to write a colour (stylelint.config.js).
+ * Deadwax's colours and type (DESIGN.md, "Colour" and "Type"). Colours live
+ * only in the variables below, and this is the one file allowed to write a
+ * colour (stylelint.config.js). The base ones here are the Develop menu's
+ * panels, the only part that follows the system's light or dark mode.
  */
 
 :root {
@@ -50,7 +50,7 @@ body {
 /*
  * The crate (DWX-21): the room the records are in, the backs of the sleeves
  * and the dividers. The room is dark in light and dark mode alike, as the
- * prototype's is (prototypes/crate/src/styles.css). The crate spike
+ * prototype's is (its styles.css, PR #9). The crate spike
  * (src/crate-spike, development builds) uses them too.
  */
 :root {
@@ -108,7 +108,7 @@ body {
 }
 
 /*
- * The gatefold's liner notes (DWX-26, prototypes/crate/src/gatefold.css).
+ * The gatefold's liner notes (DWX-26, the prototype's gatefold.css, PR #9).
  * Each style prints the essay on its own paper. Album colours and Album ×
  * Archive use the album's own colours instead (AlbumColours), falling back
  * to the sleeve colours above until they're worked out.

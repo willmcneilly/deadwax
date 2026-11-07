@@ -7,8 +7,8 @@ use super::*;
 use crate::covers::{self, Size};
 
 /// The test images, each 64 × 64 raw RGB, and what the prototype's
-/// `palette.ts` gave for them. `prototypes/crate/scripts/palette-fixtures.ts`
-/// made both.
+/// `palette.ts` gave for them. The prototype's `scripts/palette-fixtures.ts`
+/// made both (DWX-19, PR #21), before DWX-27 deleted the prototype.
 const FIXTURES: [(&str, &[u8], &str); 5] = [
     (
         "very-dark",

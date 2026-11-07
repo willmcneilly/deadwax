@@ -1,5 +1,5 @@
 // The liner notes, opened like a gatefold (RFC-002, "5. Liner notes in the
-// app"), ported from prototypes/crate/src/Gatefold.tsx. The sleeve's cover
+// app"), ported from the prototype's Gatefold.tsx (PR #9). The sleeve's cover
 // swings open to a title page, and the essay flows in columns across an
 // accordion of panels that keeps unfolding to the right as you read. While
 // the album plays, its track is marked wherever the essay mentions it, and

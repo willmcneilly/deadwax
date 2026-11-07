@@ -1,6 +1,6 @@
 // The crate: your collection as records you flip through, with a handwritten
-// divider in front of each section (RFC-002, "4. The UI"). The prototype's
-// (prototypes/crate), with what DWX-20 measured kept to (DESIGN.md, "Rules"):
+// divider in front of each section (RFC-002, "4. The UI"). The crate
+// prototype's (PR #9), with what DWX-20 measured kept to (DESIGN.md, "Rules"):
 // only the 6 sleeves behind the one in front and the 3 already flipped past
 // are drawn, the front two draw the 640 and the rest the 320, and nothing in
 // the 3D scene has a CSS filter.

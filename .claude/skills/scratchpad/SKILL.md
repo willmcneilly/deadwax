@@ -70,7 +70,7 @@ This runs between projects: at the start of the `rfc` and `plan-project` skills,
    N decisions query --filter '{"property":"Status","status":{"equals":"Open"}}'
    ```
    For each, show what was needed, what was chosen and its screenshot, and propose an outcome with a one-line reason:
-   - **Adopt:** it works and fits the principles. It goes into `DESIGN.md` (its tokens, components or Do's and Don'ts) in a PR, and the `provisional: D-n` marks come out of the code.
-   - **Revise:** the idea is right but it needs a proper design round. It goes back to the design sandbox.
+   - **Adopt:** it works and fits the principles. It goes into `DESIGN.md` (its colour, type, patterns or Do's and Don'ts) in a PR, and the `provisional: D-n` marks come out of the code.
+   - **Revise:** the idea is right but it needs a proper design round. It gets a design round of its own: a prototype, or a design ticket in the next project.
    - **Reject:** an existing pattern does the job. Say which, and the code moves to it.
    Will decides. Then set each `Status` (Adopted, Revised or Rejected). The `DESIGN.md` and code changes are their own work, folded into the project about to start.

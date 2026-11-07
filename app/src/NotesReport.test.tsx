@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import Library from "./Library";
 import { backEnd, EMPTY_COLLECTION } from "./mockBackEnd";
 import {
-  IMPORT_PROTOTYPE_NOTES,
+  IMPORT_SAMPLE_NOTES,
   NOTES_REPORT,
   type NotesImport,
   type Report,
@@ -43,7 +43,7 @@ const REPORT: Report = {
 function open(replies: Record<string, () => unknown> = {}) {
   const calls = backEnd({
     ...EMPTY_COLLECTION,
-    import_prototype_notes: () => IMPORTED,
+    import_sample_notes: () => IMPORTED,
     notes_report: () => REPORT,
     ...replies,
   });
@@ -56,19 +56,19 @@ describe("The Develop menu's liner notes", () => {
     const calls = open();
     await screen.findByText("Your crate is empty. Find the first record for it.");
 
-    expect(calls.map((c) => c.cmd)).not.toContain("import_prototype_notes");
+    expect(calls.map((c) => c.cmd)).not.toContain("import_sample_notes");
     expect(calls.map((c) => c.cmd)).not.toContain("notes_report");
     expect(screen.queryByRole("region", { name: "Liner notes report" })).not.toBeInTheDocument();
   });
 
-  it("imports the prototype's notes, and says which matched an album and which didn't", async () => {
+  it("imports the sample notes, and says which matched an album and which didn't", async () => {
     const calls = open();
     await screen.findByText("Your crate is empty. Find the first record for it.");
 
-    await emit(IMPORT_PROTOTYPE_NOTES);
+    await emit(IMPORT_SAMPLE_NOTES);
 
-    const result = await screen.findByRole("region", { name: "Import prototype notes" });
-    expect(calls.map((c) => c.cmd)).toContain("import_prototype_notes");
+    const result = await screen.findByRole("region", { name: "Import sample notes" });
+    expect(calls.map((c) => c.cmd)).toContain("import_sample_notes");
     expect(result).toHaveTextContent(
       "Imported 2 essays: Pink Moon by Nick Drake, In Rainbows by Radiohead.",
     );
@@ -80,24 +80,24 @@ describe("The Develop menu's liner notes", () => {
     );
 
     fireEvent.click(within(result).getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("region", { name: "Import prototype notes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Import sample notes" })).not.toBeInTheDocument();
   });
 
   it("shows what went wrong when importing fails", async () => {
     open({
-      import_prototype_notes: () => {
-        throw "There are no notes to import in /checkout/prototypes/crate/public/notes.";
+      import_sample_notes: () => {
+        throw "There are no notes to import in /checkout/app/src-tauri/sample-notes.";
       },
       get_session: () => ({ state: "signedIn", name: "Will" }),
     });
     await screen.findByText("Your crate is empty. Find the first record for it.");
 
-    await emit(IMPORT_PROTOTYPE_NOTES);
+    await emit(IMPORT_SAMPLE_NOTES);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "There are no notes to import in /checkout/prototypes/crate/public/notes.",
+      "There are no notes to import in /checkout/app/src-tauri/sample-notes.",
     );
-    expect(screen.queryByRole("region", { name: "Import prototype notes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Import sample notes" })).not.toBeInTheDocument();
   });
 
   it("reports every notes file, with what's wrong with an invalid one", async () => {
@@ -128,7 +128,7 @@ describe("The Develop menu's liner notes", () => {
     await emit(NOTES_REPORT);
 
     expect(await screen.findByRole("region", { name: "Liner notes report" })).toHaveTextContent(
-      "No albums have liner notes yet. Develop › Import prototype notes adds some.",
+      "No albums have liner notes yet. Develop › Import sample notes adds some.",
     );
   });
 });

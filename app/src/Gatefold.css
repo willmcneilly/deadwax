@@ -1,6 +1,6 @@
 /*
  * The gatefold: liner notes that open from the sleeve and unfold sideways
- * (DWX-26), ported from prototypes/crate/src/gatefold.css. The panels move
+ * (DWX-26), ported from the prototype's gatefold.css (PR #9). The panels move
  * by transforms only (DESIGN.md, rule 7), and nothing here filters the cover
  * (rule 3). Colours are theme.css's --notes-* tokens, or the album's own
  * (--album-*, from AlbumColours) in Album colours and Album × Archive.
