@@ -471,6 +471,67 @@ describe("What's playing, over the crate", () => {
   });
 });
 
+describe("Pulling out the record that's playing", () => {
+  /** Waits for Spotify's answer to be heard, then pulls In Rainbows out. */
+  async function pullInRainbows(how: "click" | "key" = "click") {
+    playingBackEnd();
+    render(<Library name="Will" />);
+    await screen.findByRole("region", { name: "Playing" });
+    const front = screen.getByRole("button", { name: "Pull out In Rainbows by Radiohead" });
+    if (how === "click") fireEvent.click(front);
+    else fireEvent.keyDown(window, { key: "Enter" });
+    await screen.findByRole("button", { name: "Turn In Rainbows over" });
+  }
+
+  it("brings it out floating, with now playing's line, when it's clicked", async () => {
+    play(IN_RAINBOWS, NUDE);
+    await pullInRainbows();
+
+    expect(document.querySelector(".sleeve-out")).toHaveClass("floating");
+    expect(side()).toBe("Side A · 3");
+    expect(glow()).toHaveClass("on");
+  });
+
+  it("brings it out floating, with now playing's line, when Enter pulls it out", async () => {
+    play(IN_RAINBOWS, NUDE);
+    await pullInRainbows("key");
+
+    expect(document.querySelector(".sleeve-out")).toHaveClass("floating");
+    expect(side()).toBe("Side A · 3");
+  });
+
+  it("brings it out paused, floating, while it's paused", async () => {
+    play(IN_RAINBOWS, NUDE, false);
+    await pullInRainbows();
+
+    expect(document.querySelector(".sleeve-out")).toHaveClass("floating");
+    expect(side()).toBe("Side A · 3 · paused");
+    expect(glow()).toHaveClass("paused");
+  });
+
+  it("brings any other record out for browsing", async () => {
+    play(PINK_MOON, PINK_MOON_DETAILS.tracks[0]);
+    await pullInRainbows();
+
+    expect(document.querySelector(".sleeve-out")).not.toHaveClass("floating");
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
+    expect(glow()).toHaveClass("off");
+  });
+
+  it("turns over to the tracklist with the playing track picked out, and floats again turned back", async () => {
+    play(IN_RAINBOWS, NUDE);
+    await pullInRainbows();
+
+    fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
+    await waitFor(() => expect(playingOnBack()).toBe("Play Nude"));
+    expect(document.querySelector(".sleeve-out")).not.toHaveClass("floating");
+
+    fireEvent.keyDown(window, { key: "Enter" });
+    await waitFor(() => expect(document.querySelector(".sleeve-out")).toHaveClass("floating"));
+    expect(side()).toBe("Side A · 3");
+  });
+});
+
 describe("A stranger's record", () => {
   const STRANGER = card(9, {
     id: "deadwax-9",
