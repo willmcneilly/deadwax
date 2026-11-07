@@ -296,12 +296,21 @@ describe("A sleeve flipped past", () => {
     expect(first().style.visibility).toBe("");
 
     expect(rule(".crate-slot.past").visibility).toBe("hidden");
-    // It changes when the fade ends, so the fade still shows, and it comes
-    // back at once: visibility's transition is visible all the way through.
-    const transition = rule(".crate-slot").transition;
-    const duration = (property: string) =>
+    // It changes when the fade ends, so the fade still shows. Only going past
+    // waits: the transition is on the past state, which a slot takes it from
+    // as it goes there, and the same as the slot's own transform and opacity.
+    const past = rule(".crate-slot.past").transition;
+    const slot = rule(".crate-slot").transition;
+    const duration = (transition: string, property: string) =>
       transition.match(new RegExp(`${property} (\\d+ms)`))?.[1];
-    expect(duration("visibility")).toBeDefined();
-    expect(duration("visibility")).toBe(duration("opacity"));
+    expect(duration(past, "visibility")).toBeDefined();
+    expect(duration(past, "visibility")).toBe(duration(past, "opacity"));
+    expect(past.replace(/,?\s*visibility \d+ms/, "")).toBe(slot);
+  });
+
+  it("leaves every other change of visibility at once", () => {
+    // The pulled-out record's place is hidden inline (DESIGN.md: its place
+    // "stays empty"), and search hides the whole crate: neither waits.
+    expect(rule(".crate-slot").transition).not.toContain("visibility");
   });
 });
