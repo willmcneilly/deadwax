@@ -1,5 +1,5 @@
 /*
- * The glow (Glow.tsx, prototypes/crate/src/styles.css's ambient). It's drawn
+ * The glow (Glow.tsx, the ambient in the prototype's styles.css, PR #9). It's drawn
  * between the crate and the sleeve, and only while a record is out. It fades
  * in from nothing when it's first drawn, and out a little faster than a
  * sleeve flies back, so it's gone before it's taken away.

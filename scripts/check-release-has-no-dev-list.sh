@@ -45,13 +45,13 @@ rust_markers=(
   "Crate spike"
   "crate_spike_keep_in_front"
   # the Develop menu's liner notes items (DWX-26)
-  "Import prototype notes"
-  "import-prototype-notes"
-  "import_prototype_notes"
+  "Import sample notes"
+  "import-sample-notes"
+  "import_sample_notes"
   "Liner notes report"
   "notes-report"
   "notes_report"
-  "prototypes/crate/public/notes"
+  "sample-notes"
 )
 
 # What the UI's dev list would leave in the bundle.
@@ -64,9 +64,9 @@ ui_markers=(
   "Artwork report"
   "crate_spike_keep_in_front"
   "spike-crate"
-  "import_prototype_notes"
+  "import_sample_notes"
   "notes_report"
-  "Import prototype notes"
+  "Import sample notes"
 )
 
 failed=0

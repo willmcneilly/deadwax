@@ -3,7 +3,7 @@
 // small list comes up only to choose the first one, to change it on purpose
 // (the "on Kitchen" under the floating record, the device on the playing
 // chip, or D), or when the device you pressed Play for isn't showing up.
-// It's the prototype's device sheet (prototypes/crate/src/Devices.tsx).
+// It's the prototype's device sheet (Devices.tsx, PR #16).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDevices, type Devices } from "./api";

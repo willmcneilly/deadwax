@@ -1,5 +1,5 @@
 /*
- * The sleeve you've pulled out (prototypes/crate/src/styles.css). Its flight
+ * The sleeve you've pulled out (the prototype's styles.css, PR #9). Its flight
  * and its turn are transforms only, so Core Animation runs them outside the
  * page (DESIGN.md, rule 7). Its back is printed in the album's own colours
  * (AlbumColours), or theme.css's sleeve colours until they're worked out.

@@ -1,6 +1,6 @@
 /*
  * The crate spike (DWX-20): the prototype's crate, pulled-out sleeve and glow
- * (prototypes/crate/src/styles.css), with each effect DWX-20 measures behind
+ * (the prototype's styles.css, PR #9), with each effect DWX-20 measures behind
  * a class on .crate-spike so it can be turned off. Development builds only.
  */
 

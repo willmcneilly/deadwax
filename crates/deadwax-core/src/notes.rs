@@ -9,8 +9,8 @@
 //! notes, never as a broken page, and the Develop menu's Liner notes report
 //! says what's wrong with it.
 //!
-//! The schema is the prototype's (`Notes` in `prototypes/crate/src/types.ts`,
-//! PR #9), field for field.
+//! The schema is the crate prototype's (`Notes` in its `types.ts`, PR #9),
+//! field for field.
 
 use std::fs;
 use std::io;

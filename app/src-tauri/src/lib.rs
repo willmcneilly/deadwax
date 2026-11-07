@@ -65,7 +65,7 @@ fn open_collection(app_data: &std::path::Path) -> Result<Collection, String> {
 #[cfg(debug_assertions)]
 fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<Submenu<R>> {
     use commands::dev::{
-        ARTWORK_REPORT, CRATE_SPIKE, IMPORT_PROTOTYPE_NOTES, NOTES_REPORT, RESET_COLLECTION,
+        ARTWORK_REPORT, CRATE_SPIKE, IMPORT_SAMPLE_NOTES, NOTES_REPORT, RESET_COLLECTION,
         RESTORE_FROM_DEV_LIST,
     };
     let reset = MenuItem::with_id(
@@ -85,8 +85,8 @@ fn develop_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Resul
     let report = MenuItem::with_id(handle, ARTWORK_REPORT, "Artwork report", true, None::<&str>)?;
     let import = MenuItem::with_id(
         handle,
-        IMPORT_PROTOTYPE_NOTES,
-        "Import prototype notes",
+        IMPORT_SAMPLE_NOTES,
+        "Import sample notes",
         true,
         None::<&str>,
     )?;
@@ -171,7 +171,7 @@ pub fn run() {
                 commands::dev::RESET_COLLECTION,
                 commands::dev::RESTORE_FROM_DEV_LIST,
                 commands::dev::ARTWORK_REPORT,
-                commands::dev::IMPORT_PROTOTYPE_NOTES,
+                commands::dev::IMPORT_SAMPLE_NOTES,
                 commands::dev::NOTES_REPORT,
                 commands::dev::CRATE_SPIKE,
             ];
@@ -215,7 +215,7 @@ pub fn run() {
             #[cfg(debug_assertions)]
             commands::dev::artwork_report,
             #[cfg(debug_assertions)]
-            commands::dev::import_prototype_notes,
+            commands::dev::import_sample_notes,
             #[cfg(debug_assertions)]
             commands::dev::notes_report,
             #[cfg(debug_assertions)]
