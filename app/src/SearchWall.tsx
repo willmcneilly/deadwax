@@ -13,6 +13,7 @@ import {
   type SearchResults,
 } from "./api";
 import Cover from "./Cover";
+import "./fonts.css";
 import "./SearchWall.css";
 
 type Props = {

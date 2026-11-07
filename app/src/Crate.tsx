@@ -9,6 +9,7 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import type { AlbumCard } from "./api";
 import type { CrateItem } from "./crateOrder";
 import { hash, wearStyle } from "./textures";
+import "./fonts.css";
 import "./Crate.css";
 
 /** How many records are drawn behind the one in front (DESIGN.md, rule 2). */

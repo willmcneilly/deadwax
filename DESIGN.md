@@ -51,16 +51,16 @@ Other CSS reads them with a fallback to `theme.css`'s `--sleeve-*` colours, for 
 
 ## Type
 
-Everything but the gatefold is set in faces macOS already has, so nothing is fetched or bundled for it (the variables are in `theme.css`):
+Everything but the hand and the gatefold is set in faces macOS already has, so nothing is fetched or bundled for it (the variables are in `theme.css`):
 
 | Variable | Face | Where |
 |---|---|---|
 | `--font-record` | Georgia | The record's own type: the sleeve's back, the caption's title, now playing's title and album, the search wall's field and titles, the devices' names, and the account cards' headings |
 | `--font-label` | The system's monospace (SF Mono) | Small print: the artist, sides and lengths on the back, the caption's artist, now playing's side and links, the playing chip, the buttons, the quiet line and the search wall's status |
-| `--font-hand` | Bradley Hand | Handwriting: the dividers, the caption's section, and the empty crate's line |
+| `--font-hand` | Caveat, bundled from Fontsource (Bradley Hand if it's missing) | Handwriting: the dividers, the caption's section, the empty crate's line and the search wall's first-run line. 700 for the dividers' names and the section, 500 for the rest |
 | `--font-body` | The system's sans (San Francisco) | The Develop menu's panels, and the track on the playing chip |
 
-The gatefold's essays have type of their own (`--font-notes-*`): Fraunces with JetBrains Mono (Serif) or IBM Plex Sans with Plex Mono (Grotesk), and Newsreader with Instrument Serif for Magazine. They're bundled with the app from Fontsource (`app/src/fonts.css`), under the SIL Open Font License, and load only when the gatefold first sets type in them ("The gatefold", below).
+Caveat is the crate concept's hand. It sets smaller than Bradley Hand, about five sixths of its x-height at the same size, so a line written for one is too small in the other. The gatefold's essays have type of their own (`--font-notes-*`): Fraunces with JetBrains Mono (Serif) or IBM Plex Sans with Plex Mono (Grotesk), and Newsreader with Instrument Serif for Magazine. They're bundled with the app from Fontsource (`app/src/fonts.css`), under the SIL Open Font License, and load only when the gatefold first sets type in them ("The gatefold", below).
 
 ## The frame budget
 
