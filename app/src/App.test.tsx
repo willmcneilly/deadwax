@@ -10,6 +10,7 @@ import {
   EMPTY_COLLECTION,
   expired,
   NOTHING_PLAYING,
+  SIGNED_IN_AS_WILL,
   SPOTIFY_SAYS,
 } from "./mockBackEnd";
 
@@ -49,6 +50,7 @@ describe("App", () => {
       cmd: "set_client_id",
       args: { clientId: CLIENT_ID },
     });
+    expect(calls.map((c) => c.cmd)).not.toContain("check_sign_in");
   });
 
   it("shows why a client ID was refused", async () => {
@@ -157,7 +159,7 @@ describe("App", () => {
 
   it("stays signed in across restarts", async () => {
     backEnd({
-      get_session: session({ state: "signedIn", name: "Will" }),
+      ...SIGNED_IN_AS_WILL,
       ...EMPTY_COLLECTION,
     });
     render(<App />);
@@ -166,7 +168,9 @@ describe("App", () => {
   });
 
   it("signed out, says what Deadwax is for", async () => {
-    backEnd({ get_session: session({ state: "signedOut", message: null }) });
+    const calls = backEnd({
+      get_session: session({ state: "signedOut", message: null }),
+    });
     render(<App />);
 
     expect(
@@ -177,6 +181,7 @@ describe("App", () => {
         "Deadwax plays your records through Spotify. Sign in to start.",
       ),
     ).toBeInTheDocument();
+    expect(calls.map((c) => c.cmd)).not.toContain("check_sign_in");
   });
 
   it("returns to sign-in with a plain message when the sign-in has expired", async () => {
@@ -195,9 +200,82 @@ describe("App", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("opens the crate from disk without waiting for Spotify to say who you are", async () => {
+    let answer: (session: Session) => void = () => {};
+    const calls = backEnd({
+      get_session: session({ state: "signedIn", name: null }),
+      // Spotify's profile call, which hasn't answered yet.
+      check_sign_in: () => new Promise<Session>((resolve) => (answer = resolve)),
+      get_collection: () => [card(1)],
+      dev_list_missing: () => 0,
+      ...NOTHING_PLAYING,
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+    expect(calls.map((c) => c.cmd)).toContain("check_sign_in");
+    expect(screen.queryByText(/Signed in as/)).not.toBeInTheDocument();
+
+    await act(async () => answer({ state: "signedIn", name: "Will" }));
+    expect(await screen.findByText("Signed in as Will")).toBeInTheDocument();
+    expect(screen.getByText("Artist 1")).toBeInTheDocument();
+  });
+
+  it("puts the expired card over the crate when Spotify says the sign-in has expired", async () => {
+    let answer: () => Promise<void> = async () => {};
+    backEnd({
+      get_session: session({ state: "signedIn", name: null }),
+      // As Rust does: the profile call tells the UI it found you signed
+      // out, then answers with the expired card.
+      check_sign_in: () =>
+        new Promise<Session>((resolve) => {
+          answer = async () => {
+            await emit(SIGNED_OUT, SPOTIFY_SAYS.expired);
+            resolve({ state: "signedOut", message: SPOTIFY_SAYS.expired });
+          };
+        }),
+      get_collection: () => [card(1)],
+      dev_list_missing: () => 0,
+      ...NOTHING_PLAYING,
+    });
+    render(<App />);
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+
+    await act(() => answer());
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in again" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(SPOTIFY_SAYS.expired)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sign in with Spotify" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the crate open when Spotify fails to say who you are", async () => {
+    backEnd({
+      get_session: session({ state: "signedIn", name: null }),
+      check_sign_in: () => {
+        throw SPOTIFY_SAYS.serverError;
+      },
+      get_collection: () => [card(1)],
+      dev_list_missing: () => 0,
+      ...NOTHING_PLAYING,
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(screen.getByText("Artist 1")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Deadwax couldn't start" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the crate when Spotify can't be reached to say who you are", async () => {
     backEnd({
       get_session: session({ state: "signedIn", name: null }),
+      check_sign_in: session({ state: "signedIn", name: null }),
       get_collection: () => [card(1)],
       dev_list_missing: () => 0,
       ...NOTHING_PLAYING,
@@ -219,7 +297,7 @@ describe("App", () => {
 
     it("asking what's playing", async () => {
       backEnd({
-        get_session: session({ state: "signedIn", name: "Will" }),
+        ...SIGNED_IN_AS_WILL,
         ...EMPTY_COLLECTION,
         get_playback: expired,
       });
@@ -230,7 +308,7 @@ describe("App", () => {
 
     it("searching", async () => {
       backEnd({
-        get_session: session({ state: "signedIn", name: "Will" }),
+        ...SIGNED_IN_AS_WILL,
         ...EMPTY_COLLECTION,
         search_albums: expired,
       });
@@ -246,7 +324,7 @@ describe("App", () => {
 
     it("pressing a track", async () => {
       backEnd({
-        get_session: session({ state: "signedIn", name: "Will" }),
+        ...SIGNED_IN_AS_WILL,
         get_collection: () => COLLECTION,
         dev_list_missing: () => 0,
         ...NOTHING_PLAYING,
@@ -275,7 +353,7 @@ describe("App", () => {
 
     it("keeps saying it expired when calls already on their way find no tokens", async () => {
       backEnd({
-        get_session: session({ state: "signedIn", name: "Will" }),
+        ...SIGNED_IN_AS_WILL,
         ...EMPTY_COLLECTION,
         get_playback: expired,
       });
@@ -313,7 +391,7 @@ describe("App", () => {
 
   it("changes the client ID from the menu, or cancels back", async () => {
     const calls = backEnd({
-      get_session: session({ state: "signedIn", name: "Will" }),
+      ...SIGNED_IN_AS_WILL,
       get_client_id: () => CLIENT_ID,
       ...EMPTY_COLLECTION,
     });
@@ -333,8 +411,9 @@ describe("App", () => {
     backEnd({
       get_session: () => {
         if (fail) throw "Couldn't read Deadwax's config: permission denied";
-        return { state: "signedIn", name: "Will" };
+        return { state: "signedIn", name: null };
       },
+      check_sign_in: SIGNED_IN_AS_WILL.check_sign_in,
       ...EMPTY_COLLECTION,
     });
     render(<App />);

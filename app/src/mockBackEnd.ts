@@ -47,6 +47,15 @@ export async function expired(): Promise<never> {
 }
 
 /**
+ * Signed in as Will, as Rust answers at start-up: `get_session` from the
+ * Keychain, without a name, then `check_sign_in` from Spotify's profile.
+ */
+export const SIGNED_IN_AS_WILL = {
+  get_session: () => ({ state: "signedIn", name: null }),
+  check_sign_in: () => ({ state: "signedIn", name: "Will" }),
+};
+
+/**
  * Nothing playing, no devices and none remembered. The crate always asks
  * what's playing and which device Play goes to, so most tests need these.
  */

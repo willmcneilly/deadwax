@@ -183,6 +183,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_session,
+            commands::check_sign_in,
             commands::get_client_id,
             commands::set_client_id,
             commands::sign_in,
