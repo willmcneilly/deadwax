@@ -49,8 +49,9 @@ pub enum Session {
     /// Show the sign-in screen, with `message` if there's something to say,
     /// such as the sign-in having expired.
     SignedOut { message: Option<String> },
-    /// `name` is your profile's name, or null when Spotify can't be reached
-    /// to ask: the crate works without it (RFC-002, "4. The UI").
+    /// `name` is your profile's name, or null when Spotify hasn't been asked
+    /// yet or can't be reached to ask: the crate works without it (RFC-002,
+    /// "4. The UI").
     SignedIn { name: Option<String> },
 }
 
@@ -135,16 +136,43 @@ fn client(client_id: String, signed_out: SignedOutNotice) -> Result<Arc<Client>,
     ))
 }
 
-/// Where things stand: no client ID, signed out, or signed in as you (which
-/// fetches your profile, refreshing the token if needed).
+/// Where things stand, from the config and the Keychain alone: no client ID,
+/// signed out, or signed in, without your name. It never waits for Spotify,
+/// so the crate opens from disk at once (DWX-29); `check_sign_in` asks
+/// Spotify behind it.
 #[tauri::command]
 pub async fn get_session(state: State<'_, AppState>) -> Result<Session, String> {
+    start_up_session(state.spotify().await.as_deref())
+}
+
+/// `get_session`'s answer, from the Spotify client if there's a client ID.
+fn start_up_session<C: Clock, S: TokenStore>(
+    spotify: Option<&Spotify<C, S>>,
+) -> Result<Session, String> {
+    let Some(spotify) = spotify else {
+        return Ok(Session::NeedsClientId);
+    };
+    if spotify.has_tokens().map_err(|e| e.to_string())? {
+        Ok(Session::SignedIn { name: None })
+    } else {
+        Ok(Session::SignedOut { message: None })
+    }
+}
+
+/// Asks Spotify whether the sign-in still works, and who you are: your
+/// profile, refreshing the token if needed. The UI calls it with the crate
+/// already open. An expired sign-in also tells the UI through `SIGNED_OUT`,
+/// as any command finding you signed out does.
+#[tauri::command]
+pub async fn check_sign_in(state: State<'_, AppState>) -> Result<Session, String> {
     let Some(spotify) = state.spotify().await else {
         return Ok(Session::NeedsClientId);
     };
     session(&spotify).await
 }
 
+/// Where things stand with Spotify: signed out, or signed in as you, from
+/// your profile.
 async fn session<C: Clock, S: TokenStore>(spotify: &Spotify<C, S>) -> Result<Session, String> {
     if !spotify.has_tokens().map_err(|e| e.to_string())? {
         return Ok(Session::SignedOut { message: None });
@@ -1272,6 +1300,32 @@ mod tests {
             session(&spotify).await,
             Ok(Session::SignedOut { message: None })
         );
+        assert_eq!(
+            start_up_session(Some(&spotify)),
+            Ok(Session::SignedOut { message: None })
+        );
+    }
+
+    #[test]
+    fn no_client_id_is_the_setup_screen() {
+        assert_eq!(
+            start_up_session(None::<&Spotify<SystemClock, MemoryStore>>),
+            Ok(Session::NeedsClientId)
+        );
+    }
+
+    #[tokio::test]
+    async fn the_session_at_start_up_comes_from_the_keychain_without_asking_spotify() {
+        let server = MockServer::start().await;
+        // An expired access token, which asking Spotify would refresh.
+        let spotify = signed_in_with_expired_token(&server, fresh_token()).await;
+        let before = server.received_requests().await.unwrap().len();
+
+        assert_eq!(
+            start_up_session(Some(&spotify)),
+            Ok(Session::SignedIn { name: None })
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), before);
     }
 
     /// The redirect URI you register is the one sign-in uses, and the one the

@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import {
   CHANGE_CLIENT_ID,
+  checkSignIn,
   errorMessage,
   getClientId,
   getSession,
@@ -18,12 +19,39 @@ type View =
   /** Changing the client ID from the menu, with the session to go back to. */
   | { kind: "changeClientId"; current: string | null; previous: View };
 
+/**
+ * What Spotify says, put over the crate only while it's still the crate you
+ * see: your name, or the expired card. Any other failure is left to the
+ * crate's own calls, which say it on the quiet line.
+ */
+function askSpotify(setView: (update: (previous: View) => View) => void) {
+  checkSignIn().then(
+    (checked) =>
+      setView((previous) => {
+        const crate =
+          previous.kind === "session" && previous.session.state === "signedIn";
+        if (!crate || checked.state === "needsClientId") return previous;
+        if (checked.state === "signedIn" && checked.name === null) {
+          return previous;
+        }
+        return { kind: "session", session: checked };
+      }),
+    () => {},
+  );
+}
+
 function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
 
+  // The crate opens from disk as soon as Rust has read the config and the
+  // Keychain. Spotify is asked behind it, for your name and whether the
+  // sign-in still works (DWX-29).
   const load = useCallback(() => {
     getSession().then(
-      (session) => setView({ kind: "session", session }),
+      (session) => {
+        setView({ kind: "session", session });
+        if (session.state === "signedIn") askSpotify(setView);
+      },
       (e: unknown) => setView({ kind: "error", message: errorMessage(e) }),
     );
   }, []);

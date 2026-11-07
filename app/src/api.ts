@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 export type Session =
   | { state: "needsClientId" }
   | { state: "signedOut"; message: string | null }
-  /** `name` is null when Spotify couldn't be reached to ask. */
+  /** `name` is null until Spotify has been asked, or when it can't be reached. */
   | { state: "signedIn"; name: string | null };
 
 /** The event the Spotify › Change Client ID… menu item sends. */
@@ -18,7 +18,13 @@ export const CHANGE_CLIENT_ID = "change-client-id";
  */
 export const SIGNED_OUT = "signed-out";
 
+/** Where things stand, from disk and the Keychain: it never waits for Spotify. */
 export const getSession = () => invoke<Session>("get_session");
+/**
+ * Asks Spotify whether the sign-in still works, and who you are, with the
+ * crate already open.
+ */
+export const checkSignIn = () => invoke<Session>("check_sign_in");
 export const getClientId = () => invoke<string | null>("get_client_id");
 export const setClientId = (clientId: string) =>
   invoke<Session>("set_client_id", { clientId });
