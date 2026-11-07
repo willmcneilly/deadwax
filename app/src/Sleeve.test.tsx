@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ALBUM_UPDATED, type AlbumDetails, type PlayOutcome } from "./api";
 import {
   COLLECTION,
@@ -11,6 +11,11 @@ import {
 } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
+import { LANDS_AT } from "./Sleeve";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const LIVING_ROOM = { name: "Living Room", kind: "Speaker", isActive: true, canPlay: true };
 
@@ -74,15 +79,48 @@ describe("The sleeve", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
-    // Its place shows again as it flies back, under it, before it's gone.
+    // Its place stays empty while it flies back, and shows once it's home.
     expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
-    expect(crate().querySelector("[data-front]")).not.toHaveStyle({ visibility: "hidden" });
+    expect(crate().querySelector("[data-front]")).toHaveStyle({ visibility: "hidden" });
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Turn In Rainbows over" }),
       ).not.toBeInTheDocument(),
     );
     expect(front()).toBe("Pull out In Rainbows by Radiohead");
+    expect(crate().querySelector("[data-front]")).not.toHaveStyle({ visibility: "hidden" });
+  });
+
+  it("keeps its place in the crate empty while it flies back, until it fades into it", async () => {
+    // A flight that finishes only when the test says, unlike test-setup's.
+    const flights: { onfinish: (() => void) | null }[] = [];
+    vi.spyOn(Element.prototype, "animate").mockImplementation(() => {
+      const flight = { onfinish: null as (() => void) | null, cancel() {} };
+      flights.push(flight);
+      return flight as unknown as Animation;
+    });
+    sleeveBackEnd();
+    await pullOutInRainbows();
+    const place = () => crate().querySelector("[data-front]");
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      // Partway through the flight, its place is still empty.
+      act(() => vi.advanceTimersByTime(LANDS_AT - 1));
+      expect(place()).toHaveStyle({ visibility: "hidden" });
+
+      // Over its place, it starts to fade, and the crate's copy shows under it.
+      act(() => vi.advanceTimersByTime(1));
+      expect(place()).not.toHaveStyle({ visibility: "hidden" });
+      expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
+
+      act(() => flights.at(-1)?.onfinish?.());
+      expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull();
+      expect(place()).not.toHaveStyle({ visibility: "hidden" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("pulls out with Enter, and goes back when you click the room around it", async () => {

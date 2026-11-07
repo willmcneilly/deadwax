@@ -383,6 +383,14 @@ describe("Following changes made elsewhere", () => {
       expect(within(nowLine()).getByRole("heading", { name: "Pink Moon" })).toBeInTheDocument(),
     );
     expect(document.querySelector(".sleeve-out")).toHaveClass("floating");
+    // In Rainbows went back into its place, which shows again: only Pink
+    // Moon's place is empty, while it's out.
+    const empty = [...document.querySelectorAll<HTMLElement>(".crate-slot")].filter(
+      (slot) => slot.style.visibility === "hidden",
+    );
+    expect(empty.map((slot) => slot.getAttribute("aria-label"))).toEqual([
+      "Pull out Pink Moon by Nick Drake",
+    ]);
   });
 
   it("shows paused when it's paused", async () => {

@@ -23,6 +23,7 @@ import {
   type AlbumTrack,
 } from "./api";
 import { SleeveFront } from "./Crate";
+import { reaches } from "./flight";
 import { NowLine } from "./NowLine";
 import type { Place } from "./place";
 import { playingTrack, type Live } from "./playing";
@@ -37,6 +38,13 @@ const FLY_BACK = {
   easing: "cubic-bezier(.5,0,.3,1)",
   fill: "forwards" as const,
 };
+/** Where on the flight back it's over its place, and starts to fade. */
+const LANDS = 0.8;
+/**
+ * When that is, in milliseconds after the flight back starts: its place in
+ * the crate shows from then, under the fading sleeve.
+ */
+export const LANDS_AT = reaches(FLY_BACK, LANDS);
 
 type Props = {
   album: AlbumCard;
@@ -50,6 +58,11 @@ type Props = {
   onTurn: () => void;
   /** Going back into the crate. */
   returning: boolean;
+  /**
+   * It's over its place in the crate and starts to fade into it: the place
+   * can show again, under it.
+   */
+  onLanding?: () => void;
   /** It's back in its place. */
   onReturned: () => void;
   /** It has left the collection. */
@@ -78,6 +91,7 @@ function Sleeve({
   turns,
   onTurn,
   returning,
+  onLanding,
   onReturned,
   onRemoved,
   live,
@@ -94,9 +108,11 @@ function Sleeve({
   const [ready, setReady] = useState(false);
   // The latest handlers, so new ones from the parent don't load it again.
   const failed = useRef(onFailed);
+  const landing = useRef(onLanding);
   const returned = useRef(onReturned);
   useEffect(() => {
     failed.current = onFailed;
+    landing.current = onLanding;
     returned.current = onReturned;
   });
   const back = turns % 2 === 1;
@@ -156,14 +172,16 @@ function Sleeve({
 
   useEffect(() => {
     if (!returning) return;
-    // Its place in the crate shows again under it as it flies back, and it
-    // fades over the last stretch, rather than a flat sleeve being swapped
-    // for the crate's tilted one at the end, which snapped.
+    // It fades over the last stretch, once it's over its place, rather than
+    // a flat sleeve being swapped for the crate's tilted one at the end,
+    // which snapped. Its place in the crate shows again only then, under it:
+    // shown from the start, it rose into view with the crate, behind the
+    // sleeve, a second copy of the record (DWX-35).
     const to = toCrate();
     const flight = lift.current?.animate(
       [
         { transform: "none", opacity: 1 },
-        { transform: to, opacity: 1, offset: 0.8 },
+        { transform: to, opacity: 1, offset: LANDS },
         { transform: to, opacity: 0 },
       ],
       FLY_BACK,
@@ -172,8 +190,12 @@ function Sleeve({
       returned.current();
       return;
     }
+    const landed = setTimeout(() => landing.current?.(), LANDS_AT);
     flight.onfinish = () => returned.current();
-    return () => flight.cancel();
+    return () => {
+      clearTimeout(landed);
+      flight.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- toCrate reads the fixed `from`
   }, [returning]);
 
