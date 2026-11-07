@@ -37,5 +37,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    // Vitest hands back an empty string for CSS unless told otherwise. The
+    // crate's tests read its shade rules as text (DWX-31).
+    css: { include: [/Crate\.css\?raw$/] },
   },
 });

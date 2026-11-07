@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it, vi } from "vitest";
 import { ALBUM_UPDATED, type AlbumCard } from "./api";
+import crateCss from "./Crate.css?raw";
 import {
   A_LOVE_SUPREME,
   COLLECTION,
@@ -217,5 +218,57 @@ describe("The crate", () => {
       expect(decoded).toContain(fromDisk(A_LOVE_SUPREME.id).large),
     );
     vi.restoreAllMocks();
+  });
+});
+
+/** The declarations of the rule in Crate.css with exactly this selector. */
+function rule(selector: string): Record<string, string> {
+  const at = crateCss.indexOf(`\n${selector} {`);
+  expect(at, `no rule for ${selector} in Crate.css`).toBeGreaterThan(-1);
+  const body = crateCss.slice(crateCss.indexOf("{", at) + 1, crateCss.indexOf("}", at));
+  return Object.fromEntries(
+    body
+      .split(";")
+      .map((line) => line.trim().split(/:\s*/, 2))
+      .filter(([name]) => name && !name.startsWith("/*"))
+      .map(([name, value]) => [name, value.trim()]),
+  );
+}
+
+const divider = (name: string) =>
+  within(crate()).getByRole("button", { name: `Flip to ${name}` });
+const shadeOf = (slot: HTMLElement) => Number(slot.style.getPropertyValue("--shade"));
+
+describe("A divider's shade", () => {
+  it("shades the card and the tab in their own shapes, not as one rectangle over both", async () => {
+    // The card's part is the card: the shade isn't raised or widened past it.
+    expect(rule(".crate-shade").inset).toBe("0");
+    expect(rule(".crate-slot.divider .crate-shade")).not.toHaveProperty("inset");
+    // The tab's part is drawn where the tab is, the tab's size and shape.
+    const tab = rule(".divider-tab");
+    const tabShade = rule(".crate-slot.divider .crate-shade::after");
+    for (const p of ["position", "left", "bottom", "width", "height", "border-radius"]) {
+      expect(tabShade[p], p).toBe(tab[p]);
+    }
+    expect(tab.left).toBe("var(--tab)");
+
+    // Both read the divider's own tab place, set on its slot.
+    await openCrate();
+    const jazz = divider("Jazz");
+    expect(jazz.style.getPropertyValue("--tab")).toMatch(/^\d+%$/);
+    expect(jazz.querySelector(".divider-tab")).not.toBeNull();
+    expect(jazz.querySelector(".crate-shade")).not.toBeNull();
+    expect(slot("In Rainbows").style.getPropertyValue("--tab")).toBe("");
+  });
+
+  it("darkens the dividers further back, as it does the records", async () => {
+    await openCrate();
+    // In Rainbows in front, then Jazz, two records, and Unsorted.
+    const jazz = shadeOf(divider("Jazz"));
+    const unsorted = shadeOf(divider("Unsorted"));
+    expect(jazz).toBeGreaterThan(0);
+    expect(unsorted).toBeGreaterThan(jazz);
+    expect(unsorted).toBeGreaterThan(shadeOf(slot("Kind of Blue")));
+    expect(shadeOf(slot("In Rainbows"))).toBe(0);
   });
 });
