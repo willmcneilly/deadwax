@@ -120,6 +120,9 @@ const Crate = memo(function Crate({
           visibility: item.key === hiddenKey ? "hidden" : undefined,
           ["--shade" as string]:
             d > 0 ? Math.min(0.08 + d * 0.055, 0.75) : d < 0 ? 0.55 : 0,
+          // Where a divider's tab sits: read by the tab and by its shade.
+          ["--tab" as string]:
+            item.kind === "divider" ? `${6 + item.tab * 35}%` : undefined,
         }}
       >
         {item.kind === "album" ? (
@@ -128,10 +131,7 @@ const Crate = memo(function Crate({
             <div className="sleeve-rear" />
           </>
         ) : (
-          <div
-            className="divider-card"
-            style={{ ["--tab" as string]: `${6 + item.tab * 35}%` }}
-          >
+          <div className="divider-card">
             <div className="divider-tab">{item.label}</div>
             <div className="divider-body">
               <span className="divider-big">{item.label}</span>
