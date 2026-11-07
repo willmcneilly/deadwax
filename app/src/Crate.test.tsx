@@ -251,6 +251,10 @@ describe("A divider's shade", () => {
       expect(tabShade[p], p).toBe(tab[p]);
     }
     expect(tab.left).toBe("var(--tab)");
+    // And it's painted, in the shade's own colour, so it darkens with the card.
+    expect(tabShade.content).toBe('""');
+    expect(tabShade.background).toBe("inherit");
+    expect(rule(".crate-shade").background).toBe("var(--room-dark)");
 
     // Both read the divider's own tab place, set on its slot.
     await openCrate();
