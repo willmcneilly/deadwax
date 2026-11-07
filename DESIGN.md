@@ -27,6 +27,7 @@ The variables come in groups, each with a comment in `theme.css` saying what it'
 | `--room`, `--room-light`, `--room-dark`, `--room-ink` | The dark room the crate is in, and text and controls in it |
 | `--divider*`, `--sleeve-rear`, `--shadow*` | The dividers' paper and ink, the sleeves' reverse, and their shadows |
 | `--chip`, `--overlay`, `--sheet`, `--line*`, `--field*` | What sits over the room: the playing chip, the search wall, the device list and the account cards |
+| `--clear` | Fully transparent: the far end of a gradient or a colour mix, such as the glow's pools |
 | `--sleeve-ground`, `--sleeve-ink`, `--sleeve-muted`, `--sleeve-accent` | A sleeve's printed colours until its palette is worked out |
 | `--glow-plain-*`, `--plain-sleeve*` | A stranger's record: its plain glow and plain paper sleeve |
 | `--notes-*` | The gatefold's own papers, for its Liner notes, Magazine and Archive styles, and its folds |
@@ -381,7 +382,7 @@ Setting up the client ID, signing in, waiting for the browser, signed out and ex
 - **Do** write a new colour as a variable in `theme.css`, with a comment saying what it's for, and use it everywhere else.
 - **Do** put an album's colours on the page only through `AlbumColours`, and read them with a fallback to the `--sleeve-*` colours.
 - **Don't** draw over one of Spotify's covers, or change it in any way.
-- **Don't** fetch type or anything else from the web: the app works offline.
+- **Don't** fetch type, or anything else the crate needs, from the web: the crate works offline. Only a stranger's sleeve and the search wall show Spotify's covers from Spotify.
 
 ## Design decisions
 

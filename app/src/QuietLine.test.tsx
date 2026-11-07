@@ -158,14 +158,16 @@ describe("The quiet line", () => {
   ])(
     "says what Spotify said, for %s, when a pause, a skip, a play, a search or an add fails",
     async (_, sentence) => {
-      /** Fails the next call to Spotify, then works again. */
+      /** Fails the next call to Spotify, then works again, noting which call it failed. */
       let failNext = false;
-      const once = <T,>(reply: () => T) => () => {
+      let failed: string | null = null;
+      const once = <T,>(cmd: string, reply: () => T) => () => {
         if (!failNext) return reply();
         failNext = false;
+        failed = cmd;
         throw sentence;
       };
-      const calls = crate({
+      crate({
         get_playback: () => ({
           isPlaying: true,
           device: "Living Room",
@@ -183,10 +185,10 @@ describe("The quiet line", () => {
             coverUrl: null,
           },
         }),
-        pause_playback: once(() => null),
-        next_track: once(() => null),
-        play_album: once(() => ({ state: "playing", devices: [] })),
-        search_albums: once(() => ({
+        pause_playback: once("pause_playback", () => null),
+        next_track: once("next_track", () => null),
+        play_album: once("play_album", () => ({ state: "playing", devices: [] })),
+        search_albums: once("search_albums", () => ({
           results: [
             {
               album: {
@@ -201,22 +203,28 @@ describe("The quiet line", () => {
           ],
           nextOffset: null,
         })),
-        add_album: once(() => null),
+        add_album: once("add_album", () => null),
       });
       render(<Library name="Will" />);
       // What's playing comes out of the crate, floating, so ← → skip.
       fireEvent.click(await screen.findByRole("button", { name: "Bring out In Rainbows" }));
       await screen.findByRole("region", { name: "Now playing" });
 
-      /** Does `act` with the next call failing, and waits for the line to say so and fade. */
+      /**
+       * Does `act` with the next call failing, and waits for the line to come
+       * on with the sentence, then fade. A faded line keeps its words, so
+       * only coming on again shows that this failure was said.
+       */
       async function fails(cmd: string, act: () => void | Promise<void>) {
+        expect(line()?.classList.contains("on") ?? false).toBe(false);
         failNext = true;
         await act();
-        await waitFor(() => expect(calls.map((c) => c.cmd)).toContain(cmd));
-        await waitFor(() => expect(line()).toHaveTextContent(sentence));
-        expect(failNext).toBe(false);
+        await waitFor(() => expect(failed).toBe(cmd));
+        await waitFor(() => expect(line()).toHaveClass("on"));
+        expect(line()).toHaveTextContent(sentence);
         await wait(QUIET_MS + 500);
         expect(line()?.classList.contains("on") ?? false).toBe(false);
+        failed = null;
       }
 
       await fails("pause_playback", () => {
