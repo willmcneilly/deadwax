@@ -9,11 +9,13 @@ The foundations are in RFC-001 (`docs/rfcs/rfc-001-foundations.md`): a rough end
 ```
 Cargo.toml              workspace (Rust 2024 edition), release profile
 rust-toolchain.toml     the pinned Rust version, with rustfmt and clippy
+DESIGN.md               the design: principles, colour, type, the frame budget, the patterns
 crates/deadwax-core     the collection, the database, covers on disk, their palettes, liner notes and the dev list. No network.
 crates/deadwax-sources  the web clients: Spotify (sign-in, rate limits), iTunes, Deezer, MusicBrainz
 app/                    Tauri app: React + TypeScript, Vite, npm
 app/src                 the UI. `theme.css` holds the CSS variables
 app/src-tauri           the app's Rust side (the `deadwax-app` crate)
+app/src-tauri/sample-notes  five liner-notes essays the Develop menu imports
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
 scripts                 the repository's own tools (`check`, `warm`, `ticket`, `dev-app`; for reviewers `review-setup`, `ci-wait`, `mutate`; each with `--help`, their logic in app/scripts) and CI's release check
@@ -92,10 +94,10 @@ These aren't negotiable. The repo is public, and Deadwax runs on Will's own Spot
 
 ## Design
 
-- **Project 1 has no `DESIGN.md`** (RFC-001, open question 2). The whole UI is provisional: project 2 starts `DESIGN.md` from what we learn.
+- **`DESIGN.md` is the design.** Read it before any UI work: its principles (in Overview), colour, type, the frame budget and the rules that came out of measuring, the patterns, and Do's and Don'ts. A change to the crate, the sleeve or the glow is measured again with `scripts/crate-spike`, with the numbers in its PR.
 - Styling is plain CSS. Colours live only in the CSS variables in `app/src/theme.css`, never in other CSS or an inline `style`. `npm run lint` fails on a colour written in any other CSS file, and on a hex or colour-function value in a `style` prop (it can't catch named colours there, so don't write them).
-- **One exception: an album's colours.** They come from its cover, so they're data, not tokens (RFC-002, "6. `DESIGN.md` starts here"). Only `AlbumColours` (`app/src/AlbumColours.tsx`) puts them on the page, as `--album-*` custom properties; other CSS reads those and `theme.css`. The lint allows colours in a `style` prop in that file only, and fails on `--album-*` set anywhere else (`app/scripts/colourLint.test.ts` proves it).
-- No design decisions are logged in project 1, so skip the `work-ticket` skill's steps on design tokens and provisional design decisions (`provisional: D-n`).
+- **One exception: an album's colours.** They come from its cover, so they're data, not tokens (`DESIGN.md`, "Album colours"). Only `AlbumColours` (`app/src/AlbumColours.tsx`) puts them on the page, as `--album-*` custom properties; other CSS reads those and `theme.css`. The lint allows colours in a `style` prop in that file only, and fails on `--album-*` set anywhere else (`app/scripts/colourLint.test.ts` proves it).
+- **Something `DESIGN.md` doesn't cover** (a new component, a layout pattern, a new variable, or bending a rule) is a provisional design decision, logged in Notion and marked `provisional: D-n` in the code. The `work-ticket` skill has the steps. Will decides each one between projects, and only an adopted one goes into `DESIGN.md`.
 
 ## Working on tickets
 

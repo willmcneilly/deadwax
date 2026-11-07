@@ -2,9 +2,64 @@
 
 ## Overview
 
-Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter. **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still.
+Deadwax is a crate of records you flip through, pull out and play. It should feel like handling the real thing: the sleeves move as soon as you touch them, the artwork is sharp the moment a record is out, and the glow behind a playing record drifts without a stutter.
 
-This document starts with the frame budget and what measuring the crate taught us (DWX-20, RFC-002 "4. The UI" and "6. `DESIGN.md` starts here"). The colour rules, the type and the interaction patterns come in with the tickets that build them (DWX-21 to DWX-26), and DWX-27 makes it one document. The crate and the sleeve (DWX-21), the needle drop, now playing and a stranger's sleeve (DWX-22), the gatefold (DWX-26), the search wall (DWX-24), and the quiet line and the account cards (DWX-25), are under "Patterns".
+The principles every design in here comes back to:
+
+- **Performance comes first.** An effect that costs frames doesn't ship, however good it looks in a still. "The frame budget" says what that means, and "Rules" what measuring taught us.
+- **It's the real thing, in a dark room.** Records have sleeves with wear, a back printed in their own colours and a tracklist in sides; the crate has handwritten dividers; a playing record floats in a glow of its colours. The room is dark whatever the system's mode, so the covers are the brightest thing on screen.
+- **The covers do the talking.** No CSS filter touches a cover (rule 3), controls go beside or under one rather than over it, and Spotify's covers are shown exactly as they are: no wear, no tint, nothing over them (RFC-002, resolved open question 1).
+- **Quiet until it's needed.** The device stays out of sight while it works, an error is one line that fades, and the search icon, the sort buttons and the Liner notes button are faint or quiet beside the records.
+- **The crate keeps working.** The collection, its covers, the tracklists and the liner notes are on disk, so everything but playing, searching and adding works without Spotify.
+
+The sections: colour and type; the frame budget, how it's measured, what was measured and the rules that came out of it; the patterns each part of the app follows; and Do's and Don'ts. It was started by the DWX-20 spike and grown by each UI ticket of RFC-002 (DWX-21 to DWX-26).
+
+## Colour
+
+**Colours live only in CSS variables in `app/src/theme.css`.** No other CSS file, and no `style` prop, writes a colour: `npm run lint` fails on a hex value, a named colour or a colour function anywhere else (Stylelint for CSS files, ESLint for a `style` prop, which can't catch named colours there, so don't write them). A colour that has to stay in place needs an escape that says why.
+
+**The room is dark in light and dark mode alike** (`--room`, `--room-ink` and the rest of the crate's block in `theme.css`): the crate, the sleeves' backs, the dividers, the chip, the device list and the account cards are drawn in it. Only the Develop menu's panels follow the system's mode (`--background`, `--surface`, `--ink`, `--ink-muted` and `--accent`, with their dark values under `prefers-color-scheme`).
+
+The variables come in groups, each with a comment in `theme.css` saying what it's for:
+
+| Group | What it colours |
+|---|---|
+| `--room`, `--room-light`, `--room-dark`, `--room-ink` | The dark room the crate is in, and text and controls in it |
+| `--divider*`, `--sleeve-rear`, `--shadow*` | The dividers' paper and ink, the sleeves' reverse, and their shadows |
+| `--chip`, `--overlay`, `--sheet`, `--line*`, `--field*` | What sits over the room: the playing chip, the search wall, the device list and the account cards |
+| `--sleeve-ground`, `--sleeve-ink`, `--sleeve-muted`, `--sleeve-accent` | A sleeve's printed colours until its palette is worked out |
+| `--glow-plain-*`, `--plain-sleeve*` | A stranger's record: its plain glow and plain paper sleeve |
+| `--notes-*` | The gatefold's own papers, for its Liner notes, Magazine and Archive styles, and its folds |
+| `--background` to `--accent` | The Develop menu's panels |
+
+### Album colours
+
+A sleeve's printed colours come from its cover, so they're data, not tokens. Rust works them out (the album job queue's palette step, with ink at least 7:1 on the paper and the accent and secondary text at least 4.5:1). `AlbumColours` is the one component that puts them on the page, as custom properties on the element it draws:
+
+| Property | What it is |
+|---|---|
+| `--album-ground` | The paper: the back of the sleeve |
+| `--album-rear` | The paper's reverse |
+| `--album-ink` | Body text |
+| `--album-muted` | Secondary text |
+| `--album-accent` | The album's colour: the artist, the side headings, Open in Spotify |
+| `--album-deep` | The room behind the glow |
+| `--album-glow-1` to `--album-glow-5` | The glow's colours, the key colours repeated if there are fewer |
+
+Other CSS reads them with a fallback to `theme.css`'s `--sleeve-*` colours, for an album whose palette isn't worked out yet: `var(--album-ink, var(--sleeve-ink))`. The lint allows colours in a `style` prop only in `AlbumColours.tsx`, and refuses `--album-*` set anywhere else.
+
+## Type
+
+Everything but the gatefold is set in faces macOS already has, so nothing is fetched or bundled for it (the variables are in `theme.css`):
+
+| Variable | Face | Where |
+|---|---|---|
+| `--font-record` | Georgia | The record's own type: the sleeve's back, the caption's title, now playing's title and album, the search wall's field and titles, the devices' names, and the account cards' headings |
+| `--font-label` | The system's monospace (SF Mono) | Small print: the artist, sides and lengths on the back, the caption's artist, now playing's side and links, the playing chip, the buttons, the quiet line and the search wall's status |
+| `--font-hand` | Bradley Hand | Handwriting: the dividers, the caption's section, and the empty crate's line |
+| `--font-body` | The system's sans (San Francisco) | The Develop menu's panels, and the track on the playing chip |
+
+The gatefold's essays have type of their own (`--font-notes-*`): Fraunces with JetBrains Mono (Serif) or IBM Plex Sans with Plex Mono (Grotesk), and Newsreader with Instrument Serif for Magazine. They're bundled with the app from Fontsource (`app/src/fonts.css`), under the SIL Open Font License, and load only when the gatefold first sets type in them ("The gatefold", below).
 
 ## The frame budget
 
@@ -20,7 +75,7 @@ These are a starting point (Will's call in RFC-002). We tighten them if they tur
 
 Measure in WebKit, not Chrome: Deadwax runs in WKWebView, which composites differently, and the prototype that felt sluggish in Chrome had never been measured in it.
 
-**The crate spike** (Develop › Crate spike, in development builds) is the prototype's crate, pulled-out sleeve and glow, drawn from the real collection's artwork on disk (`cover://`) and palettes. A panel at the top left turns each effect up, down or off. Its code is in `app/src/crate-spike`.
+**The crate spike** (Develop › Crate spike, in development builds) is a copy of the prototype's crate, pulled-out sleeve and glow (PR #9), drawn from the real collection's artwork on disk (`cover://`) and palettes. A panel at the top left turns each effect up, down or off. Its code is in `app/src/crate-spike`.
 
 **`scripts/crate-spike`** measures it in this checkout's running dev app (`scripts/dev-app start`), without anyone at the keyboard. It sends each run to the app through Vite's dev server, and the app holds its window in front, filling the screen, while it measures. `scripts/crate-spike --list` shows the runs, and `--only <text>` picks some. Each run reports:
 - **Frames,** from `requestAnimationFrame`, which WebKit drives from the display and holds back while the page's rendering is late: frames per second, frames dropped against the 60 fps clock, late frames (a gap over 25 ms, the hitch you see), and the longest gap.
@@ -141,6 +196,55 @@ What `scripts/crate-spike` calls `final`: the prototype with only the changes th
 The few dropped frames left in flipping come mostly from the first of the three runs, while WebKit warms up.
 
 **What's left over budget:** about 1 pull in 15 still takes longer than 100 ms (118 to 147 ms at worst), always in the sleeve's own first frame, not the image. The cuts that would take the rest are bigger changes than a spike should make: building the pulled-out sleeve before it's pulled (it's the record in front, so it's known), or a simpler sleeve for the flight. **Decided (Will, 2026-10-18):** "within 100 ms on 42 of 45 pulls" is good enough for now, so DWX-21 doesn't build the sleeve ahead. If the large cover ever feels slow, building it ahead is the next thing to try.
+
+### In the app
+
+The tickets that built the crate for real measured it again with `scripts/crate-spike --crate`, which runs the same scenarios on the app's own crate, glow and search wall instead of the spike's.
+
+#### The real crate, measured
+
+`scripts/crate-spike --crate` runs the spike's flip and pull scenarios on the app's own crate (sign in first; `CrateMeter`, in development builds only). Measured on 2026-10-18 on the same MacBook Pro, the window filling the screen, three runs each:
+
+| Against the budget | The spike's final cuts (DWX-20) | The real crate | Met? |
+|---|---|---|---|
+| Flipping the real crate, every 100 ms | 58.9–60 fps, 0–5 dropped | 60 fps, 0 dropped, longest gap 21–23 ms | Yes |
+| Flipping the real crate, every 40 ms | 59–59.9 fps, 0–2 dropped | 60 fps, 0 dropped, longest gap 18–20 ms | Yes |
+| Flipping 400 records, every 100 ms | 59.5–60 fps, 0–5 dropped | 60 fps, 0 dropped, longest gap 22–25 ms | Yes |
+| Flipping 400 records, every 40 ms | 59.5–60 fps, 0–2 dropped | 60 fps, 0 dropped, longest gap 19–25 ms | Yes |
+| The large cover, real crate | 57 ms median, 19 of 21 within 100 ms, worst 147 ms | 31 ms median, 21 of 21 within 100 ms, worst 50 ms | Yes |
+| The large cover, 400 records | 54 ms median, 23 of 24 within 100 ms, worst 118 ms | 31 ms median, 24 of 24 within 100 ms, worst 42 ms | Yes |
+| The large cover, cold (never seen), real crate | 199 ms median (the prototype) | 48 ms median, 21 of 21 within 100 ms, worst 69 ms | Yes |
+| The large cover, cold, 400 records | 250 ms median (the prototype) | 49 ms median, 24 of 24 within 100 ms, worst 67 ms | Yes |
+
+Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. Search is measured below ("The search wall, measured"). The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
+
+#### The glow, measured
+
+`scripts/crate-spike --crate` also runs `crate: glow real` and `crate: glow 400`: a record pulled out of the app's own crate and floating in its glow, as if Spotify were playing it (a pretend answer, in development builds only, so nothing plays), measured for 10 seconds once the glow has come up. `crate: idle` measures the crate at rest for the same 10 seconds, with only the grain moving, to compare. Measured on 2026-10-18 on the same MacBook Pro, but in a window filling an external display (2560 × 1387 points at 1x) and with other apps open. Three runs of the crate at rest; six of the glow on the real crate and nine on 400 records, in batches of three:
+
+| | Frames | Longest gap | React's longest commit | GPU process | Page |
+|---|---|---|---|---|---|
+| The glow, real crate | 59.9–60 fps, 0–1 dropped | 20–34 ms | 0 ms | 3–4% | 10–17% |
+| The glow, 400 records | 59.7–60 fps, 0–3 dropped | 19–49 ms | 0 ms | 2–4% | 9–18% |
+| The crate at rest, real crate | 59.8–59.9 fps, 1–2 dropped | 26–40 ms | – | 2% | 8–9% |
+| The crate at rest, 400 records | 59.9–60 fps, 0–1 dropped | 21–22 ms | – | 2–3% | 9–13% |
+
+The glow drops no more frames than the crate does at rest: the one or two a run come from the machine, not the drift. React committed nothing during the runs, while Spotify was asked every 2 seconds. As in DWX-20, the page can't see a frame Core Animation drops in the drift itself ("What this can't see", above), so the drift still needs an eye on it.
+
+#### The search wall, measured
+
+`scripts/crate-spike --crate` runs `crate: search real` and `crate: search 400`: the search wall opened over the app's own crate with a tile for each record in it (a pretend wall from the crate's own covers, in development builds only, so nothing asks Spotify), measured over the 1.2 seconds it takes to open, then scrolling it down and up for 3 seconds. Measured on 2026-10-24 on the same MacBook Pro, the window filling the screen (1512 × 916 points at 2x), three runs each, on a 10-record crate:
+
+| | Opening | Scrolling | GPU process | Page |
+|---|---|---|---|---|
+| The spike's search over 400 records, the prototype (DWX-20) | 52–58 fps, 3–9 dropped | 60 fps, 0 dropped | – | – |
+| The spike's search over 400 records, the final cuts (DWX-20) | 56–60 fps, 1–5 dropped | 60 fps, 0 dropped | – | – |
+| The wall, 10 tiles | 57–58 fps, 2–3 dropped, longest gap 50–72 ms | 60 fps, 0 dropped | 5% | 12–13% |
+| The wall, 400 tiles | 53–55 fps, 6–8 dropped, longest gap 71–90 ms | 60 fps, 0 dropped | 5–6% | 21% |
+| 400 tiles, each rising in on its own | 49–53 fps, 8–13 dropped | 60 fps, 0 dropped | 5–7% | 25–27% |
+| 400 tiles, each rising in, with `content-visibility: auto` | 51–55 fps, 6–10 dropped | 60 fps, 1 dropped | 6% | 23% |
+
+So each search's wall rises in as one, not tile by tile as in the prototype, and tiles have no `content-visibility`, which cost scrolling a frame. With 400 tiles the wall opens a little worse than the spike's final cuts did (6–8 dropped against 1–5), and about as the prototype's did; the spike's search was plain 320s, where the wall draws the 640s with the title, artist and Add under each. Opening a search isn't in the frame budget: as in DWX-20, its few dropped frames are mounting the covers. A real search shows 10 at a time, and each **More** adds 10.
 
 ## Verdicts on PR #16's suspects
 
@@ -268,70 +372,17 @@ Setting up the client ID, signing in, waiting for the browser, signed out and ex
 - **An expired sign-in found anywhere** brings up the expired card: the poll, a play, a search, a Develop menu restore. Rust tells the UI (`SIGNED_OUT`) whichever command found it, so the crate never shows an error for it.
 - **Deadwax couldn't start** is the one card for a failure before any of these, such as the Keychain refusing: it says why, with **Try again**. Spotify being out of reach never gets here.
 
-### Album colours
-
-A sleeve's printed colours come from its cover, so they're data, not tokens. Rust works them out (the album job queue's palette step, with ink at least 7:1 on the paper and the accent and secondary text at least 4.5:1). `AlbumColours` is the one component that puts them on the page, as custom properties on the element it draws:
-
-| Property | What it is |
-|---|---|
-| `--album-ground` | The paper: the back of the sleeve |
-| `--album-rear` | The paper's reverse |
-| `--album-ink` | Body text |
-| `--album-muted` | Secondary text |
-| `--album-accent` | The album's colour: the artist, the side headings, Open in Spotify |
-| `--album-deep` | The room behind the glow |
-| `--album-glow-1` to `--album-glow-5` | The glow's colours, the key colours repeated if there are fewer |
-
-Other CSS reads them with a fallback to `theme.css`'s `--sleeve-*` colours, for an album whose palette isn't worked out yet: `var(--album-ink, var(--sleeve-ink))`. The lint allows colours in a `style` prop only in `AlbumColours.tsx`, and refuses `--album-*` set anywhere else.
-
-### The real crate, measured
-
-`scripts/crate-spike --crate` runs the spike's flip and pull scenarios on the app's own crate (sign in first; `CrateMeter`, in development builds only). Measured on 2026-10-18 on the same MacBook Pro, the window filling the screen, three runs each:
-
-| Against the budget | The spike's final cuts (DWX-20) | The real crate | Met? |
-|---|---|---|---|
-| Flipping the real crate, every 100 ms | 58.9–60 fps, 0–5 dropped | 60 fps, 0 dropped, longest gap 21–23 ms | Yes |
-| Flipping the real crate, every 40 ms | 59–59.9 fps, 0–2 dropped | 60 fps, 0 dropped, longest gap 18–20 ms | Yes |
-| Flipping 400 records, every 100 ms | 59.5–60 fps, 0–5 dropped | 60 fps, 0 dropped, longest gap 22–25 ms | Yes |
-| Flipping 400 records, every 40 ms | 59.5–60 fps, 0–2 dropped | 60 fps, 0 dropped, longest gap 19–25 ms | Yes |
-| The large cover, real crate | 57 ms median, 19 of 21 within 100 ms, worst 147 ms | 31 ms median, 21 of 21 within 100 ms, worst 50 ms | Yes |
-| The large cover, 400 records | 54 ms median, 23 of 24 within 100 ms, worst 118 ms | 31 ms median, 24 of 24 within 100 ms, worst 42 ms | Yes |
-| The large cover, cold (never seen), real crate | 199 ms median (the prototype) | 48 ms median, 21 of 21 within 100 ms, worst 69 ms | Yes |
-| The large cover, cold, 400 records | 250 ms median (the prototype) | 49 ms median, 24 of 24 within 100 ms, worst 67 ms | Yes |
-
-Each flip's own work in the page (React, then the style and layout it causes) was 1 to 5 ms at the median, React's share 1 to 3 ms. The pulled-out sleeve's flight dropped 0 or 1 frames a run. CPU over the flips: WebKit's GPU process 7–12% of a core, and the page 10–13% on the real crate and 28–35% on 400 records. The sleeve's own first frame is on screen 16 to 49 ms after the pull, 26 to 37 ms in most, against the spike's 60 to 80 ms; these runs don't show why. Search is measured below ("The search wall, measured"). The raw rows are in `.dev-data/crate-spike/results.jsonl`, as DWX-20's are.
-
-### The glow, measured
-
-`scripts/crate-spike --crate` also runs `crate: glow real` and `crate: glow 400`: a record pulled out of the app's own crate and floating in its glow, as if Spotify were playing it (a pretend answer, in development builds only, so nothing plays), measured for 10 seconds once the glow has come up. `crate: idle` measures the crate at rest for the same 10 seconds, with only the grain moving, to compare. Measured on 2026-10-18 on the same MacBook Pro, but in a window filling an external display (2560 × 1387 points at 1x) and with other apps open. Three runs of the crate at rest; six of the glow on the real crate and nine on 400 records, in batches of three:
-
-| | Frames | Longest gap | React's longest commit | GPU process | Page |
-|---|---|---|---|---|---|
-| The glow, real crate | 59.9–60 fps, 0–1 dropped | 20–34 ms | 0 ms | 3–4% | 10–17% |
-| The glow, 400 records | 59.7–60 fps, 0–3 dropped | 19–49 ms | 0 ms | 2–4% | 9–18% |
-| The crate at rest, real crate | 59.8–59.9 fps, 1–2 dropped | 26–40 ms | – | 2% | 8–9% |
-| The crate at rest, 400 records | 59.9–60 fps, 0–1 dropped | 21–22 ms | – | 2–3% | 9–13% |
-
-The glow drops no more frames than the crate does at rest: the one or two a run come from the machine, not the drift. React committed nothing during the runs, while Spotify was asked every 2 seconds. As in DWX-20, the page can't see a frame Core Animation drops in the drift itself ("What this can't see", above), so the drift still needs an eye on it.
-
-### The search wall, measured
-
-`scripts/crate-spike --crate` runs `crate: search real` and `crate: search 400`: the search wall opened over the app's own crate with a tile for each record in it (a pretend wall from the crate's own covers, in development builds only, so nothing asks Spotify), measured over the 1.2 seconds it takes to open, then scrolling it down and up for 3 seconds. Measured on 2026-10-24 on the same MacBook Pro, the window filling the screen (1512 × 916 points at 2x), three runs each, on a 10-record crate:
-
-| | Opening | Scrolling | GPU process | Page |
-|---|---|---|---|---|
-| The spike's search over 400 records, the prototype (DWX-20) | 52–58 fps, 3–9 dropped | 60 fps, 0 dropped | – | – |
-| The spike's search over 400 records, the final cuts (DWX-20) | 56–60 fps, 1–5 dropped | 60 fps, 0 dropped | – | – |
-| The wall, 10 tiles | 57–58 fps, 2–3 dropped, longest gap 50–72 ms | 60 fps, 0 dropped | 5% | 12–13% |
-| The wall, 400 tiles | 53–55 fps, 6–8 dropped, longest gap 71–90 ms | 60 fps, 0 dropped | 5–6% | 21% |
-| 400 tiles, each rising in on its own | 49–53 fps, 8–13 dropped | 60 fps, 0 dropped | 5–7% | 25–27% |
-| 400 tiles, each rising in, with `content-visibility: auto` | 51–55 fps, 6–10 dropped | 60 fps, 1 dropped | 6% | 23% |
-
-So each search's wall rises in as one, not tile by tile as in the prototype, and tiles have no `content-visibility`, which cost scrolling a frame. With 400 tiles the wall opens a little worse than the spike's final cuts did (6–8 dropped against 1–5), and about as the prototype's did; the spike's search was plain 320s, where the wall draws the 640s with the title, artist and Add under each. Opening a search isn't in the frame budget: as in DWX-20, its few dropped frames are mounting the covers. A real search shows 10 at a time, and each **More** adds 10.
-
 ## Do's and Don'ts
 
 - **Do** measure in the app, in WebKit, with `scripts/crate-spike`, before and after an effect. Chrome's numbers don't carry over.
 - **Do** compare runs on the same machine, with the window filling the screen and nothing else busy.
 - **Don't** trust a still. The prototype looked right and flipped at 35 fps on 400 records.
 - **Don't** add an effect to the crate or the sleeve without a row in a table like the ones above.
+- **Do** write a new colour as a variable in `theme.css`, with a comment saying what it's for, and use it everywhere else.
+- **Do** put an album's colours on the page only through `AlbumColours`, and read them with a fallback to the `--sleeve-*` colours.
+- **Don't** draw over one of Spotify's covers, or change it in any way.
+- **Don't** fetch type or anything else from the web: the app works offline.
+
+## Design decisions
+
+From DWX-27 on, a UI ticket that needs something this document doesn't cover (a new component, a layout pattern, a new variable, or bending one of its rules) builds the best version it can from the principles above and logs it as a provisional design decision (`D-n`, in the Design decisions database in Notion), marked `provisional: D-n` in the code. Will decides each one between projects. Only an adopted decision comes into this document.
