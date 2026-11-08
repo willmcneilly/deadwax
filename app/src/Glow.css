@@ -29,7 +29,7 @@
  * sleeve's flight, 0.95s.
  */
 .glow.out {
-  opacity: 0.18;
+  opacity: 0.3;
   transition: opacity 0.95s ease-out;
 }
 
