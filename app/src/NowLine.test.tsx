@@ -552,6 +552,7 @@ describe("A record out, not playing", () => {
     "previous_track",
     "get_devices",
     "choose_device",
+    "transfer_playback",
     "refresh_album",
   ];
 
