@@ -91,8 +91,22 @@
   pointer-events: auto;
 }
 
+/*
+ * A sleeve flipped past fades out, then isn't drawn at all. Opacity alone
+ * isn't enough in WebKit: a slot that has been past, come back and gone past
+ * again keeps being drawn at the bottom of the room with opacity 0 (DWX-30).
+ * Visibility goes with the fade, so it's hidden once the fade has finished.
+ * Only going past waits for it: a transition is taken from the state a slot
+ * is going to, so one coming back is shown at once, and every other change of
+ * visibility (the pulled-out record's empty place, search) is at once too.
+ */
 .crate-slot.past {
+  visibility: hidden;
   pointer-events: none;
+  transition:
+    transform 230ms cubic-bezier(.2, .7, .25, 1),
+    opacity 230ms,
+    visibility 230ms;
 }
 
 /* The sleeves further back are in shadow. */
