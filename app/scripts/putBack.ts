@@ -22,8 +22,8 @@ export type PutBackRun = {
   putBacks?: { pulledAt: number; at: number; floating: boolean }[];
   /** The record in front, in the page's pixels, once it's back. */
   place?: { left: number; top: number; width: number; height: number } | null;
-  /** The screen in points, and the window's place on it. */
-  screen?: { width: number; height: number; x: number; y: number; chrome: number };
+  /** The screen's width in points, and where the page's top left is on it. */
+  screen?: { width: number; left: number; top: number };
 };
 
 export type Region = { x: number; y: number; width: number; height: number };
@@ -40,8 +40,8 @@ export function region(run: PutBackRun, videoWidth: number): Region {
   const inset = (n: number) => n * 0.2;
   const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
   return {
-    x: even((screen.x + place.left + inset(place.width)) * scale),
-    y: even((screen.y + screen.chrome + place.top + inset(place.height)) * scale),
+    x: even((screen.left + place.left + inset(place.width)) * scale),
+    y: even((screen.top + place.top + inset(place.height)) * scale),
     width: even(place.width * 0.6 * scale),
     height: even(place.height * 0.6 * scale),
   };

@@ -15,6 +15,7 @@ import { FADE, FLY_BACK, LANDS } from "./flight";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const LIVING_ROOM = { name: "Living Room", kind: "Speaker", isActive: true, canPlay: true };
@@ -114,6 +115,28 @@ describe("The sleeve", () => {
       });
       return flight as unknown as Animation;
     });
+    // jsdom has no layout and no DOMMatrix, so the sleeve's target in the
+    // crate would be "none": give it a size, a parent and a stand-in matrix,
+    // so its target is a real transform the test can tell from "none".
+    vi.stubGlobal(
+      "DOMMatrix",
+      class {
+        translate() {
+          return this;
+        }
+        multiply() {
+          return this;
+        }
+        scale() {
+          return this;
+        }
+        toString() {
+          return "matrix3d(over its place)";
+        }
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
     sleeveBackEnd();
     await pullOutInRainbows();
     const place = () => crate().querySelector("[data-front]") as HTMLElement;
@@ -144,8 +167,8 @@ describe("The sleeve", () => {
     // empty until LANDS, then shows under it, with no in-between. The sleeve
     // fades only after it has sat there opaque (FADE starts after HOLD,
     // flight.test.ts), so a place shown a frame or two late can't be seen.
-    expect(flight?.keyframes[1]).toMatchObject({ offset: LANDS });
-    expect(flight?.keyframes[1].transform).toBe(flight?.keyframes[2].transform);
+    expect(flight?.keyframes[1]).toMatchObject({ offset: LANDS, transform: "matrix3d(over its place)" });
+    expect(flight?.keyframes[2].transform).toBe("matrix3d(over its place)");
     expect(fade?.timing).toEqual(FADE);
     expect(fade?.keyframes).toEqual([{ opacity: 1 }, { opacity: 0 }]);
     expect(showing?.keyframes).toEqual([

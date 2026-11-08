@@ -15,7 +15,7 @@ describe("The put-back check", () => {
     const r = region(
       {
         place: { left: 400, top: 200, width: 500, height: 600 },
-        screen: { width: 1500, height: 1000, x: 0, y: 30, chrome: 30 },
+        screen: { width: 1500, left: 0, top: 60 },
       },
       3000,
     );

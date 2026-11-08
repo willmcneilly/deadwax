@@ -111,12 +111,13 @@ async function putBacks(crate: CrateHandle, times: number) {
   return {
     putBacks: done,
     place: crate.place(),
+    // While it's measured, the window fills the screen (crate_spike_keep_in_front),
+    // so the page's bottom is the screen's. WebKit's outerHeight and screenY
+    // aren't the window's, so they're no help.
     screen: {
       width: screen.width,
-      height: screen.height,
-      x: screenX,
-      y: screenY,
-      chrome: outerHeight - innerHeight,
+      left: screenX,
+      top: screen.height - innerHeight,
     },
   };
 }

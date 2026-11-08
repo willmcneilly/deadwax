@@ -49,6 +49,8 @@ export const LANDS_AT = reaches(FLY_BACK, LANDS);
  * is the page's work, and a busy page can do it a frame or two late; under
  * an opaque sleeve that can't be seen, where under a fading one what was
  * behind the place showed through (DWX-35). Seven frames at 60 fps.
+ * DESIGN.md has the sleeve fade over the last fifth of the flight, with no
+ * hold: provisional: D-2.
  */
 export const HOLD = 120;
 /** The sleeve's fade into the crate's copy of it, once it has sat there. */
