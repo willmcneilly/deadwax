@@ -146,6 +146,10 @@ describe("The sleeve", () => {
     const before = started.length;
 
     fireEvent.keyDown(window, { key: "Escape" });
+    // Neither Enter nor a click turns it over on its way back.
+    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
+    expect(document.querySelector(".sleeve-side.back")).toBeEmptyDOMElement();
     // The crate rises sooner under it, to be at rest when its place shows.
     expect(crate()).toHaveClass("rising");
     expect(crate()).not.toHaveClass("dim");

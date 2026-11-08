@@ -384,9 +384,12 @@ function Library({ name }: Props) {
 
   /**
    * Turns the record out over. Turned to its front while it's what's
-   * playing, it floats again; turned to its back, it's for browsing.
+   * playing, it floats again; turned to its back, it's for browsing. Not
+   * one going back: turned over on its way in, it looked wrong (DWX-35).
+   * Bringing it back out from there is a ticket of its own.
    */
   const turn = () => {
+    if (out?.returning) return;
     const front = (turns + 1) % 2 === 0;
     setTurns(turns + 1);
     setPulled((o) => o && { ...o, nowPlaying: front && liveOut });
