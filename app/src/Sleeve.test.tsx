@@ -11,7 +11,7 @@ import {
 } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
-import { LANDS_AT } from "./flight";
+import { FLY_BACK, LANDS } from "./flight";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -79,9 +79,9 @@ describe("The sleeve", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
-    // Its place stays empty while it flies back, and shows once it's home.
+    // It flies back (its place shows only as it lands: the next test), and
+    // its place is back once it's home.
     expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
-    expect(crate().querySelector("[data-front]")).toHaveStyle({ visibility: "hidden" });
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Turn In Rainbows over" }),
@@ -92,42 +92,69 @@ describe("The sleeve", () => {
   });
 
   it("keeps its place in the crate empty while it flies back, until it fades into it", async () => {
-    // A flight that finishes only when the test says, unlike test-setup's.
-    const flights: { onfinish: (() => void) | null }[] = [];
-    vi.spyOn(Element.prototype, "animate").mockImplementation(() => {
-      const flight = { onfinish: null as (() => void) | null, cancel() {} };
-      flights.push(flight);
+    // Every animation, and flights that finish only when the test says,
+    // unlike test-setup's.
+    const started: {
+      on: Element;
+      keyframes: Keyframe[];
+      timing: KeyframeAnimationOptions;
+      flight: { onfinish: (() => void) | null; cancel: () => void };
+    }[] = [];
+    vi.spyOn(Element.prototype, "animate").mockImplementation(function (
+      this: Element,
+      keyframes,
+      timing,
+    ) {
+      const flight = { onfinish: null as (() => void) | null, cancel: vi.fn() };
+      started.push({
+        on: this,
+        keyframes: keyframes as Keyframe[],
+        timing: timing as KeyframeAnimationOptions,
+        flight,
+      });
       return flight as unknown as Animation;
     });
     sleeveBackEnd();
     await pullOutInRainbows();
-    const place = () => crate().querySelector("[data-front]");
+    const place = () => crate().querySelector("[data-front]") as HTMLElement;
     // Out, the crate dims at its usual pace: only the rise back is sooner.
     expect(crate()).toHaveClass("dim");
     expect(crate()).not.toHaveClass("rising");
-    vi.useFakeTimers();
-    try {
-      fireEvent.keyDown(window, { key: "Escape" });
-      // The crate rises sooner under it, to be at rest when its place shows.
-      expect(crate()).toHaveClass("rising");
-      expect(crate()).not.toHaveClass("dim");
+    const before = started.length;
 
-      // Partway through the flight, its place is still empty.
-      act(() => vi.advanceTimersByTime(LANDS_AT - 1));
-      expect(place()).toHaveStyle({ visibility: "hidden" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    // The crate rises sooner under it, to be at rest when its place shows.
+    expect(crate()).toHaveClass("rising");
+    expect(crate()).not.toHaveClass("dim");
 
-      // Over its place, it starts to fade, and the crate's copy shows under it.
-      act(() => vi.advanceTimersByTime(1));
-      expect(place()).not.toHaveStyle({ visibility: "hidden" });
-      expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
+    // In the same commit, the sleeve flies back and its place gets an
+    // animation with the flight's own timing, so both run on one clock.
+    const now = started.slice(before);
+    const flight = now.find((a) => a.on.classList.contains("sleeve-lift"));
+    const showing = now.find((a) => a.on === place());
+    expect(flight).toBeDefined();
+    expect(showing).toBeDefined();
+    const { duration, delay, easing } = FLY_BACK;
+    expect(flight?.timing).toMatchObject({ duration, delay, easing });
+    expect(showing?.timing).toMatchObject({ duration, delay, easing, fill: "backwards" });
+    // The sleeve is over its place at LANDS and fades from there; its place
+    // is empty until LANDS, then shows under it, with no in-between.
+    expect(flight?.keyframes[1]).toMatchObject({ opacity: 1, offset: LANDS });
+    expect(flight?.keyframes.at(-1)).toMatchObject({ opacity: 0 });
+    expect(showing?.keyframes).toEqual([
+      { opacity: 0 },
+      { opacity: 0, offset: LANDS },
+      { opacity: 1, offset: LANDS },
+      { opacity: 1 },
+    ]);
+    // Nothing else hides it, so the animation alone decides.
+    expect(place()).not.toHaveStyle({ visibility: "hidden" });
 
-      act(() => flights.at(-1)?.onfinish?.());
-      expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull();
-      expect(place()).not.toHaveStyle({ visibility: "hidden" });
-      expect(crate()).not.toHaveClass("rising");
-    } finally {
-      vi.useRealTimers();
-    }
+    act(() => flight?.flight.onfinish?.());
+    expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull();
+    expect(showing?.flight.cancel).toHaveBeenCalled();
+    expect(place()).not.toHaveStyle({ visibility: "hidden" });
+    expect(crate()).not.toHaveClass("rising");
   });
 
   it("pulls out with Enter, and goes back when you click the room around it", async () => {

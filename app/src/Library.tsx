@@ -78,11 +78,6 @@ type Out = {
   from: Place | null;
   returning: boolean;
   /**
-   * Going back, it's over its place in the crate and fading into it, so the
-   * place shows again under it. Until then the place stays empty.
-   */
-  landing?: boolean;
-  /**
    * It's out for what's playing: you dropped the needle on it, or brought
    * it out to see. It floats, front up, while it plays.
    */
@@ -817,7 +812,8 @@ function Library({ name }: Props) {
           <Crate
             items={items}
             focus={index}
-            hiddenKey={out && !out.landing ? out.key : null}
+            hiddenKey={out && !out.returning ? out.key : null}
+            returningKey={out?.returning ? out.key : null}
             dim={pulledOut || searching}
             rising={!!out?.returning}
             hidden={searching}
@@ -840,9 +836,6 @@ function Library({ name }: Props) {
                 turns={turns}
                 onTurn={turn}
                 returning={out.returning}
-                onLanding={() =>
-                  setPulled((o) => (o?.key === out.key ? { ...o, landing: true } : o))
-                }
                 onReturned={() => {
                   setPulled(null);
                   gone();

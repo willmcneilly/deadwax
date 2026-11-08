@@ -5,9 +5,10 @@
 // are drawn, the front two draw the 640 and the rest the 320, and nothing in
 // the 3D scene has a CSS filter.
 
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { AlbumCard } from "./api";
 import type { CrateItem } from "./crateOrder";
+import { FLY_BACK, LANDS } from "./flight";
 import { hash, wearStyle } from "./textures";
 import "./fonts.css";
 import "./Crate.css";
@@ -72,6 +73,11 @@ type Props = {
   focus: number;
   /** The record pulled out, whose place in the crate stays empty. */
   hiddenKey: string | null;
+  /**
+   * The record flying back into its place: the place shows only once the
+   * sleeve is over it and fading into it (DWX-35).
+   */
+  returningKey?: string | null;
   /** Dimmed and out of reach while a sleeve is out or search is open. */
   dim: boolean;
   /**
@@ -101,11 +107,35 @@ const Crate = memo(function Crate({
   items,
   focus,
   hiddenKey,
+  returningKey = null,
   dim,
   rising = false,
   hidden,
   onPick,
 }: Props) {
+  const slotEls = useRef(new Map<string, HTMLElement>());
+
+  // The place of a record flying back stays empty until the sleeve is over
+  // it and starts to fade (LANDS), then shows under it. It's timed by an
+  // animation with the flight's own timing, started in the same commit as
+  // the flight (Sleeve's layout effect), so both run on one clock: a timer
+  // on the main thread could fire late, and the fading sleeve showed what
+  // was behind its place. It holds before its delay (fill: backwards) and
+  // lets go once the sleeve has gone.
+  useLayoutEffect(() => {
+    const slot = returningKey ? slotEls.current.get(returningKey) : undefined;
+    const showing = slot?.animate(
+      [
+        { opacity: 0 },
+        { opacity: 0, offset: LANDS },
+        { opacity: 1, offset: LANDS },
+        { opacity: 1 },
+      ],
+      { ...FLY_BACK, fill: "backwards" },
+    );
+    return () => showing?.cancel();
+  }, [returningKey]);
+
   const slots = [];
   const last = Math.min(items.length - 1, focus + BEHIND);
   for (let i = Math.max(0, focus - AHEAD); i <= last; i++) {
@@ -115,6 +145,10 @@ const Crate = memo(function Crate({
     slots.push(
       <div
         key={item.key}
+        ref={(el) => {
+          if (el) slotEls.current.set(item.key, el);
+          else slotEls.current.delete(item.key);
+        }}
         role="button"
         aria-label={label(item, d === 0)}
         aria-hidden={d < 0 || d > BEHIND - 1 || undefined}

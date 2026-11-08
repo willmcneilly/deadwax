@@ -23,7 +23,7 @@ import {
   type AlbumTrack,
 } from "./api";
 import { SleeveFront } from "./Crate";
-import { FLY_BACK, LANDS, LANDS_AT } from "./flight";
+import { FLY_BACK, LANDS } from "./flight";
 import { NowLine } from "./NowLine";
 import type { Place } from "./place";
 import { playingTrack, type Live } from "./playing";
@@ -45,11 +45,6 @@ type Props = {
   onTurn: () => void;
   /** Going back into the crate. */
   returning: boolean;
-  /**
-   * It's over its place in the crate and starts to fade into it: the place
-   * can show again, under it.
-   */
-  onLanding?: () => void;
   /** It's back in its place. */
   onReturned: () => void;
   /** It has left the collection. */
@@ -78,7 +73,6 @@ function Sleeve({
   turns,
   onTurn,
   returning,
-  onLanding,
   onReturned,
   onRemoved,
   live,
@@ -95,11 +89,9 @@ function Sleeve({
   const [ready, setReady] = useState(false);
   // The latest handlers, so new ones from the parent don't load it again.
   const failed = useRef(onFailed);
-  const landing = useRef(onLanding);
   const returned = useRef(onReturned);
   useEffect(() => {
     failed.current = onFailed;
-    landing.current = onLanding;
     returned.current = onReturned;
   });
   const back = turns % 2 === 1;
@@ -157,7 +149,9 @@ function Sleeve({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- from is where it came from, fixed while it's out
   }, []);
 
-  useEffect(() => {
+  // A layout effect, so the flight starts in the same commit and frame as
+  // the crate's animation that shows its place under it (Crate.tsx).
+  useLayoutEffect(() => {
     if (!returning) return;
     // It fades over the last stretch, once it's over its place, rather than
     // a flat sleeve being swapped for the crate's tilted one at the end,
@@ -177,12 +171,8 @@ function Sleeve({
       returned.current();
       return;
     }
-    const landed = setTimeout(() => landing.current?.(), LANDS_AT);
     flight.onfinish = () => returned.current();
-    return () => {
-      clearTimeout(landed);
-      flight.cancel();
-    };
+    return () => flight.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- toCrate reads the fixed `from`
   }, [returning]);
 
