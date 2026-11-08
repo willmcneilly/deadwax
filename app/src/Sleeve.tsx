@@ -23,7 +23,7 @@ import {
   type AlbumTrack,
 } from "./api";
 import { SleeveFront } from "./Crate";
-import { FLY_BACK, LANDS } from "./flight";
+import { FADE, FLY_BACK, LANDS } from "./flight";
 import { NowLine } from "./NowLine";
 import type { Place } from "./place";
 import { playingTrack, type Live } from "./playing";
@@ -153,26 +153,29 @@ function Sleeve({
   // the crate's animation that shows its place under it (Crate.tsx).
   useLayoutEffect(() => {
     if (!returning) return;
-    // It fades over the last stretch, once it's over its place, rather than
-    // a flat sleeve being swapped for the crate's tilted one at the end,
-    // which snapped. Its place in the crate shows again only then, under it:
-    // shown from the start, it rose into view with the crate, behind the
-    // sleeve, a second copy of the record (DWX-35).
-    const to = toCrate();
-    const flight = lift.current?.animate(
-      [
-        { transform: "none", opacity: 1 },
-        { transform: to, opacity: 1, offset: LANDS },
-        { transform: to, opacity: 0 },
-      ],
-      FLY_BACK,
-    );
-    if (!flight) {
+    // It fades into its place once it's over it, rather than a flat sleeve
+    // being swapped for the crate's tilted one at the end, which snapped. Its
+    // place in the crate shows again only once it's there, under it: shown
+    // from the start, it rose into view with the crate, behind the sleeve, a
+    // second copy of the record. It sits there opaque for a moment (HOLD)
+    // before it fades, so the place can show a little late unseen (DWX-35).
+    // The two start together, so they keep to one clock.
+    const el = lift.current;
+    if (!el) {
       returned.current();
       return;
     }
-    flight.onfinish = () => returned.current();
-    return () => flight.cancel();
+    const to = toCrate();
+    const flight = el.animate(
+      [{ transform: "none" }, { transform: to, offset: LANDS }, { transform: to }],
+      FLY_BACK,
+    );
+    const fade = el.animate([{ opacity: 1 }, { opacity: 0 }], FADE);
+    fade.onfinish = () => returned.current();
+    return () => {
+      flight.cancel();
+      fade.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- toCrate reads the fixed `from`
   }, [returning]);
 

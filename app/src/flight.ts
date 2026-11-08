@@ -36,10 +36,25 @@ export const FLY_BACK = {
   easing: "cubic-bezier(.5,0,.3,1)",
   fill: "forwards" as const,
 };
-/** Where on the flight back it's over its place, and starts to fade. */
+/** Where on the flight back it's over its place. */
 export const LANDS = 0.8;
 /**
  * When that is, in milliseconds after the flight back starts: its place in
- * the crate shows from then, under the fading sleeve.
+ * the crate shows from then, under the sleeve.
  */
 export const LANDS_AT = reaches(FLY_BACK, LANDS);
+/**
+ * How long the sleeve sits over its place, opaque, before it fades into it:
+ * the handover's slack. The place shows at the start of it, but showing it
+ * is the page's work, and a busy page can do it a frame or two late; under
+ * an opaque sleeve that can't be seen, where under a fading one what was
+ * behind the place showed through (DWX-35). Seven frames at 60 fps.
+ */
+export const HOLD = 120;
+/** The sleeve's fade into the crate's copy of it, once it has sat there. */
+export const FADE = {
+  delay: LANDS_AT + HOLD,
+  duration: 260,
+  easing: "cubic-bezier(.2,.6,.3,1)",
+  fill: "forwards" as const,
+};

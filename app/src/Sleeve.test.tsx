@@ -11,7 +11,7 @@ import {
 } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
-import { FLY_BACK, LANDS } from "./flight";
+import { FADE, FLY_BACK, LANDS } from "./flight";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -127,20 +127,27 @@ describe("The sleeve", () => {
     expect(crate()).toHaveClass("rising");
     expect(crate()).not.toHaveClass("dim");
 
-    // In the same commit, the sleeve flies back and its place gets an
-    // animation with the flight's own timing, so both run on one clock.
+    // In the same commit, the sleeve flies back and fades, and its place
+    // gets an animation with the flight's own timing, so all keep one clock.
     const now = started.slice(before);
-    const flight = now.find((a) => a.on.classList.contains("sleeve-lift"));
+    const sleeve = now.filter((a) => a.on.classList.contains("sleeve-lift"));
+    const flight = sleeve.find((a) => "transform" in a.keyframes[0]);
+    const fade = sleeve.find((a) => "opacity" in a.keyframes[0]);
     const showing = now.find((a) => a.on === place());
     expect(flight).toBeDefined();
+    expect(fade).toBeDefined();
     expect(showing).toBeDefined();
     const { duration, delay, easing } = FLY_BACK;
     expect(flight?.timing).toMatchObject({ duration, delay, easing });
     expect(showing?.timing).toMatchObject({ duration, delay, easing, fill: "backwards" });
-    // The sleeve is over its place at LANDS and fades from there; its place
-    // is empty until LANDS, then shows under it, with no in-between.
-    expect(flight?.keyframes[1]).toMatchObject({ opacity: 1, offset: LANDS });
-    expect(flight?.keyframes.at(-1)).toMatchObject({ opacity: 0 });
+    // The sleeve is over its place at LANDS and stays there; its place is
+    // empty until LANDS, then shows under it, with no in-between. The sleeve
+    // fades only after it has sat there opaque (FADE starts after HOLD,
+    // flight.test.ts), so a place shown a frame or two late can't be seen.
+    expect(flight?.keyframes[1]).toMatchObject({ offset: LANDS });
+    expect(flight?.keyframes[1].transform).toBe(flight?.keyframes[2].transform);
+    expect(fade?.timing).toEqual(FADE);
+    expect(fade?.keyframes).toEqual([{ opacity: 1 }, { opacity: 0 }]);
     expect(showing?.keyframes).toEqual([
       { visibility: "hidden" },
       { visibility: "hidden", offset: LANDS },
@@ -150,9 +157,11 @@ describe("The sleeve", () => {
     // Nothing else hides it, so the animation alone decides.
     expect(place()).not.toHaveStyle({ visibility: "hidden" });
 
-    act(() => flight?.flight.onfinish?.());
+    // It's gone once it has faded.
+    act(() => fade?.flight.onfinish?.());
     expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull();
     expect(showing?.flight.cancel).toHaveBeenCalled();
+    expect(flight?.flight.cancel).toHaveBeenCalled();
     expect(place()).not.toHaveStyle({ visibility: "hidden" });
     expect(crate()).not.toHaveClass("rising");
   });

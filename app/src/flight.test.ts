@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FLY_BACK, LANDS_AT, reaches } from "./flight";
+import { FADE, FLY_BACK, HOLD, LANDS_AT, reaches } from "./flight";
 
 describe("When a flight reaches a keyframe", () => {
   it("is the offset's share of the duration when the easing is linear", () => {
@@ -22,3 +22,13 @@ describe("When a flight reaches a keyframe", () => {
     );
   });
 });
+
+describe("The sleeve's fade into its place", () => {
+  it("waits, opaque over its place, for some frames after its place shows", () => {
+    // The place shows at LANDS_AT; a busy page can show it a frame or two
+    // late, which an opaque sleeve hides and a fading one didn't (DWX-35).
+    expect(FADE.delay).toBe(LANDS_AT + HOLD);
+    expect(HOLD).toBeGreaterThanOrEqual(100);
+  });
+});
+
