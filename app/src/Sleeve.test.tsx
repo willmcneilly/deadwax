@@ -102,6 +102,9 @@ describe("The sleeve", () => {
     sleeveBackEnd();
     await pullOutInRainbows();
     const place = () => crate().querySelector("[data-front]");
+    // Out, the crate dims at its usual pace: only the rise back is sooner.
+    expect(crate()).toHaveClass("dim");
+    expect(crate()).not.toHaveClass("rising");
     vi.useFakeTimers();
     try {
       fireEvent.keyDown(window, { key: "Escape" });
