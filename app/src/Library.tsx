@@ -819,6 +819,7 @@ function Library({ name }: Props) {
             focus={index}
             hiddenKey={out && !out.landing ? out.key : null}
             dim={pulledOut || searching}
+            rising={!!out?.returning}
             hidden={searching}
             onPick={pick}
           />

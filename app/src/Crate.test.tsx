@@ -3,6 +3,7 @@ import { emit } from "@tauri-apps/api/event";
 import { describe, expect, it, vi } from "vitest";
 import { ALBUM_UPDATED, type AlbumCard } from "./api";
 import crateCss from "./Crate.css?raw";
+import { LANDS_AT } from "./flight";
 import {
   A_LOVE_SUPREME,
   COLLECTION,
@@ -312,5 +313,17 @@ describe("A sleeve flipped past", () => {
     // The pulled-out record's place is hidden inline (DESIGN.md: its place
     // "stays empty"), and search hides the whole crate: neither waits.
     expect(rule(".crate-slot").transition).not.toContain("visibility");
+  });
+});
+
+describe("The crate under a record flying back", () => {
+  it("is at rest before the record's place shows again", () => {
+    // Still rising then, its copy settled under the fading sleeve (DWX-35).
+    const { transition } = rule(".crate.rising");
+    const durations = [...transition.matchAll(/(\d*\.?\d+)(m?s)\b/g)].map(([, n, unit]) =>
+      unit === "s" ? Number(n) * 1000 : Number(n),
+    );
+    expect(durations).toEqual([600, 600]);
+    expect(Math.max(...durations)).toBeLessThan(LANDS_AT);
   });
 });

@@ -105,6 +105,9 @@ describe("The sleeve", () => {
     vi.useFakeTimers();
     try {
       fireEvent.keyDown(window, { key: "Escape" });
+      // The crate rises sooner under it, to be at rest when its place shows.
+      expect(crate()).toHaveClass("rising");
+      expect(crate()).not.toHaveClass("dim");
 
       // Partway through the flight, its place is still empty.
       act(() => vi.advanceTimersByTime(LANDS_AT - 1));
@@ -118,6 +121,7 @@ describe("The sleeve", () => {
       act(() => flights.at(-1)?.onfinish?.());
       expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull();
       expect(place()).not.toHaveStyle({ visibility: "hidden" });
+      expect(crate()).not.toHaveClass("rising");
     } finally {
       vi.useRealTimers();
     }

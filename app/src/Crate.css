@@ -56,6 +56,17 @@
 }
 
 /*
+ * Under a record flying back, it rises sooner, and is at rest before the
+ * record's place shows (LANDS_AT in flight.ts, 621 ms in): rising over the
+ * usual 0.9s, it was still a few pixels low then, and the place settled
+ * under the fading sleeve, a doubled cover (DWX-35). Crate.test.tsx keeps
+ * this under LANDS_AT.
+ */
+.crate.rising {
+  transition: transform 0.6s cubic-bezier(.3, .7, .2, 1), opacity 0.6s;
+}
+
+/*
  * Under search, it isn't drawn once it has dimmed, and shows again at once
  * when search closes (DESIGN.md, "Search over the crate").
  */

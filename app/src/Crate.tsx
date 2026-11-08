@@ -75,6 +75,11 @@ type Props = {
   /** Dimmed and out of reach while a sleeve is out or search is open. */
   dim: boolean;
   /**
+   * Rising back sooner, under a record flying back into it, so it's at rest
+   * by the time the record's place shows under it (DWX-35).
+   */
+  rising?: boolean;
+  /**
    * Not drawn at all once it has dimmed, while search covers it (DESIGN.md,
    * "Search over the crate").
    */
@@ -97,6 +102,7 @@ const Crate = memo(function Crate({
   focus,
   hiddenKey,
   dim,
+  rising = false,
   hidden,
   onPick,
 }: Props) {
@@ -148,7 +154,7 @@ const Crate = memo(function Crate({
   }
   return (
     <div
-      className={`crate ${dim ? "dim" : ""} ${hidden ? "away" : ""}`}
+      className={`crate ${dim ? "dim" : ""} ${rising ? "rising" : ""} ${hidden ? "away" : ""}`}
       role="region"
       aria-label="Your crate"
     >
