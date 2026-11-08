@@ -25,6 +25,10 @@ export type CrateHandle = {
   pull: (cold: boolean) => void;
   /** Puts it straight back, without the flight. */
   putBack: () => void;
+  /** Puts it back as Escape does: it flies back into its place. */
+  flyBack: () => void;
+  /** Where the record in front is drawn, in the page's pixels. */
+  place: () => { left: number; top: number; width: number; height: number } | null;
   /** Pretends Spotify is playing the record out, or stops pretending. */
   setPlaying: (on: boolean) => void;
   /** Opens the search wall over the crate with a tile for each record, or closes it. */
@@ -78,6 +82,45 @@ function controller(crate: CrateHandle): Controller {
   };
 }
 
+/**
+ * Pulls the record in front out and flies it back, `times` times, every
+ * other time floating while it pretends to play (DWX-35). It only moves the
+ * record: `scripts/crate-spike --put-back` records the screen meanwhile, and
+ * looks at each landing (app/scripts/putBack.ts).
+ */
+async function putBacks(crate: CrateHandle, times: number) {
+  const done: { pulledAt: number; at: number; floating: boolean }[] = [];
+  crate.setFocus(crate.albumAt(0));
+  await wait(800);
+  for (let i = 0; i < times; i++) {
+    const floating = i % 2 === 1;
+    const pulledAt = Date.now();
+    crate.pull(false);
+    await wait(1400);
+    if (floating) {
+      crate.setPlaying(true);
+      await wait(900);
+    }
+    done.push({ pulledAt, at: Date.now(), floating });
+    crate.flyBack();
+    await wait(1700);
+    if (floating) crate.setPlaying(false);
+    await wait(700);
+  }
+  await wait(1000);
+  return {
+    putBacks: done,
+    place: crate.place(),
+    screen: {
+      width: screen.width,
+      height: screen.height,
+      x: screenX,
+      y: screenY,
+      chrome: outerHeight - innerHeight,
+    },
+  };
+}
+
 export default function CrateMeter({
   crate,
 }: {
@@ -96,7 +139,11 @@ export default function CrateMeter({
           // WebKit stops drawing a covered window, so keep it in front.
           await invoke("crate_spike_keep_in_front", { on: true });
           await wait(1500);
-          const result = await runScenario(controller(handle), run).catch(
+          const result = await (
+            run.scenario === "putback"
+              ? putBacks(handle, run.times ?? 20)
+              : runScenario(controller(handle), run)
+          ).catch(
             (e: unknown) => ({ error: String(e) }),
           );
           const records = handle.records();

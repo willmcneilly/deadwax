@@ -772,6 +772,11 @@ function Library({ name }: Props) {
       },
       pull: (cold) => pull({ bust: cold ? performance.now() : undefined }),
       putBack: () => setPulled(null),
+      flyBack: putBack,
+      place: () => {
+        const r = room.current?.querySelector(".crate-slot[data-front]")?.getBoundingClientRect();
+        return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+      },
       setPlaying: (on) => {
         const item = itemsRef.current[indexRef.current];
         if (!on || item?.kind !== "album") {
@@ -795,7 +800,7 @@ function Library({ name }: Props) {
         return Math.round(ms * 10) / 10;
       },
     };
-  }, [flipTo, pull]);
+  }, [flipTo, pull, putBack]);
 
   const empty = albums?.length === 0;
   const pulledOut = (!!out && !out.returning) || strangerUp;

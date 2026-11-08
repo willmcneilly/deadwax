@@ -11,7 +11,7 @@ export type Plan = {
   label: string;
   /** The spike, or the app's own crate (DWX-21), which ignores `effects`. */
   target?: "spike" | "crate";
-  scenario: "idle" | "flip" | "pull" | "glow" | "search";
+  scenario: "idle" | "flip" | "pull" | "glow" | "search" | "putback";
   many: boolean;
   effects: Effects;
   cold?: boolean;
@@ -225,6 +225,8 @@ function describe(plan: Plan, results: Result[], each: (f: (r: Result) => string
       return `| ${plan.label} | dropped ${each((r) => String(r.frames?.dropped))} | late ${each((r) => String(r.frames?.late))} | longest ${each((r) => `${r.frames?.longestMs}`)} ms | ${each((r) => `${r.frames?.fps}`)} fps | commit ${each((r) => `${r.longestCommitMs ?? "-"}`)} ms |`;
     case "pull":
       return `| ${plan.label} | large worst ${each((r) => `${r.largeWorstMs}`)} ms | all ${results.map((r) => r.largeMs?.join("/")).join(" · ")} | first frame ${results.map((r) => r.largeSteps?.map((t) => t.first).join("/")).join(" · ")} ms | flight dropped ${each((r) => `${r.flightDropped}`)} |`;
+    case "putback":
+      return `| ${plan.label} |`;
     case "search":
       return `| ${plan.label} | opening ${each((r) => frames(r.opening))} | scrolling ${each((r) => frames(r.scrolling))} |`;
   }
