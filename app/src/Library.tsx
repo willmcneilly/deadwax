@@ -384,9 +384,12 @@ function Library({ name }: Props) {
 
   /**
    * Turns the record out over. Turned to its front while it's what's
-   * playing, it floats again; turned to its back, it's for browsing.
+   * playing, it floats again; turned to its back, it's for browsing. Not
+   * one going back: turned over on its way in, it looked wrong (DWX-35).
+   * Bringing it back out from there is a ticket of its own.
    */
   const turn = () => {
+    if (out?.returning) return;
     const front = (turns + 1) % 2 === 0;
     setTurns(turns + 1);
     setPulled((o) => o && { ...o, nowPlaying: front && liveOut });
@@ -772,6 +775,11 @@ function Library({ name }: Props) {
       },
       pull: (cold) => pull({ bust: cold ? performance.now() : undefined }),
       putBack: () => setPulled(null),
+      flyBack: putBack,
+      place: () => {
+        const r = room.current?.querySelector(".crate-slot[data-front]")?.getBoundingClientRect();
+        return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+      },
       setPlaying: (on) => {
         const item = itemsRef.current[indexRef.current];
         if (!on || item?.kind !== "album") {
@@ -795,7 +803,7 @@ function Library({ name }: Props) {
         return Math.round(ms * 10) / 10;
       },
     };
-  }, [flipTo, pull]);
+  }, [flipTo, pull, putBack]);
 
   const empty = albums?.length === 0;
   const pulledOut = (!!out && !out.returning) || strangerUp;
@@ -813,7 +821,9 @@ function Library({ name }: Props) {
             items={items}
             focus={index}
             hiddenKey={out && !out.returning ? out.key : null}
+            returningKey={out?.returning ? out.key : null}
             dim={pulledOut || searching}
+            rising={!!out?.returning}
             hidden={searching}
             onPick={pick}
           />

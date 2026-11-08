@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ALBUM_UPDATED, type AlbumDetails, type PlayOutcome } from "./api";
 import {
   COLLECTION,
@@ -11,6 +11,12 @@ import {
 } from "./crateFixtures";
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
+import { FADE, FLY_BACK, LANDS } from "./flight";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const LIVING_ROOM = { name: "Living Room", kind: "Speaker", isActive: true, canPlay: true };
 
@@ -74,15 +80,117 @@ describe("The sleeve", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
-    // Its place shows again as it flies back, under it, before it's gone.
+    // It flies back (its place shows only as it lands: the next test), and
+    // its place is back once it's home.
     expect(screen.getByRole("button", { name: "Turn In Rainbows over" })).toBeInTheDocument();
-    expect(crate().querySelector("[data-front]")).not.toHaveStyle({ visibility: "hidden" });
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Turn In Rainbows over" }),
       ).not.toBeInTheDocument(),
     );
     expect(front()).toBe("Pull out In Rainbows by Radiohead");
+    expect(crate().querySelector("[data-front]")).not.toHaveStyle({ visibility: "hidden" });
+  });
+
+  it("keeps its place in the crate empty while it flies back, until it fades into it", async () => {
+    // Every animation, and flights that finish only when the test says,
+    // unlike test-setup's.
+    const started: {
+      on: Element;
+      keyframes: Keyframe[];
+      timing: KeyframeAnimationOptions;
+      flight: { onfinish: (() => void) | null; cancel: () => void };
+    }[] = [];
+    vi.spyOn(Element.prototype, "animate").mockImplementation(function (
+      this: Element,
+      keyframes,
+      timing,
+    ) {
+      const flight = { onfinish: null as (() => void) | null, cancel: vi.fn() };
+      started.push({
+        on: this,
+        keyframes: keyframes as Keyframe[],
+        timing: timing as KeyframeAnimationOptions,
+        flight,
+      });
+      return flight as unknown as Animation;
+    });
+    // jsdom has no layout and no DOMMatrix, so the sleeve's target in the
+    // crate would be "none": give it a size, a parent and a stand-in matrix,
+    // so its target is a real transform the test can tell from "none".
+    vi.stubGlobal(
+      "DOMMatrix",
+      class {
+        translate() {
+          return this;
+        }
+        multiply() {
+          return this;
+        }
+        scale() {
+          return this;
+        }
+        toString() {
+          return "matrix3d(over its place)";
+        }
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
+    sleeveBackEnd();
+    await pullOutInRainbows();
+    const place = () => crate().querySelector("[data-front]") as HTMLElement;
+    // Out, the crate dims at its usual pace: only the rise back is sooner.
+    expect(crate()).toHaveClass("dim");
+    expect(crate()).not.toHaveClass("rising");
+    const before = started.length;
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    // Neither Enter nor a click turns it over on its way back.
+    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
+    expect(document.querySelector(".sleeve-side.back")).toBeEmptyDOMElement();
+    // The crate rises sooner under it, to be at rest when its place shows.
+    expect(crate()).toHaveClass("rising");
+    expect(crate()).not.toHaveClass("dim");
+
+    // In the same commit, the sleeve flies back and fades, and its place
+    // gets an animation with the flight's own timing, so all keep one clock.
+    const now = started.slice(before);
+    const sleeve = now.filter((a) => a.on.classList.contains("sleeve-lift"));
+    const flight = sleeve.find((a) => "transform" in a.keyframes[0]);
+    const fade = sleeve.find((a) => "opacity" in a.keyframes[0]);
+    const showing = now.find((a) => a.on === place());
+    expect(flight).toBeDefined();
+    expect(fade).toBeDefined();
+    expect(showing).toBeDefined();
+    const { duration, delay, easing } = FLY_BACK;
+    expect(flight?.timing).toMatchObject({ duration, delay, easing });
+    expect(showing?.timing).toMatchObject({ duration, delay, easing, fill: "backwards" });
+    // The sleeve is over its place at LANDS and stays there; its place is
+    // empty until LANDS, then shows under it, with no in-between. The sleeve
+    // fades only after it has sat there opaque (FADE starts after HOLD,
+    // flight.test.ts), so a place shown a frame or two late can't be seen.
+    expect(flight?.keyframes[1]).toMatchObject({ offset: LANDS, transform: "matrix3d(over its place)" });
+    expect(flight?.keyframes[2].transform).toBe("matrix3d(over its place)");
+    expect(fade?.timing).toEqual(FADE);
+    expect(fade?.keyframes).toEqual([{ opacity: 1 }, { opacity: 0 }]);
+    expect(showing?.keyframes).toEqual([
+      { visibility: "hidden" },
+      { visibility: "hidden", offset: LANDS },
+      { visibility: "visible", offset: LANDS },
+      { visibility: "visible" },
+    ]);
+    // Nothing else hides it, so the animation alone decides.
+    expect(place()).not.toHaveStyle({ visibility: "hidden" });
+
+    // It's gone once it has faded.
+    act(() => fade?.flight.onfinish?.());
+    expect(screen.queryByRole("button", { name: "Turn In Rainbows over" })).toBeNull();
+    expect(showing?.flight.cancel).toHaveBeenCalled();
+    expect(flight?.flight.cancel).toHaveBeenCalled();
+    expect(place()).not.toHaveStyle({ visibility: "hidden" });
+    expect(crate()).not.toHaveClass("rising");
   });
 
   it("pulls out with Enter, and goes back when you click the room around it", async () => {

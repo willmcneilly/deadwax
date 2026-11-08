@@ -5,9 +5,10 @@
 // are drawn, the front two draw the 640 and the rest the 320, and nothing in
 // the 3D scene has a CSS filter.
 
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { AlbumCard } from "./api";
 import type { CrateItem } from "./crateOrder";
+import { FLY_BACK, LANDS } from "./flight";
 import { hash, wearStyle } from "./textures";
 import "./fonts.css";
 import "./Crate.css";
@@ -72,8 +73,18 @@ type Props = {
   focus: number;
   /** The record pulled out, whose place in the crate stays empty. */
   hiddenKey: string | null;
+  /**
+   * The record flying back into its place: the place shows only once the
+   * sleeve is over it and fading into it (DWX-35).
+   */
+  returningKey?: string | null;
   /** Dimmed and out of reach while a sleeve is out or search is open. */
   dim: boolean;
+  /**
+   * Rising back sooner, under a record flying back into it, so it's at rest
+   * by the time the record's place shows under it (DWX-35).
+   */
+  rising?: boolean;
   /**
    * Not drawn at all once it has dimmed, while search covers it (DESIGN.md,
    * "Search over the crate").
@@ -96,10 +107,41 @@ const Crate = memo(function Crate({
   items,
   focus,
   hiddenKey,
+  returningKey = null,
   dim,
+  rising = false,
   hidden,
   onPick,
 }: Props) {
+  const region = useRef<HTMLDivElement>(null);
+
+  // The place of a record flying back stays empty until the sleeve is over
+  // it and starts to fade (LANDS), then shows under it. It's timed by an
+  // animation with the flight's own timing, started in the same commit as
+  // the flight (Sleeve's layout effect), so both run on one clock: a timer
+  // that set React state could land late, and the fading sleeve showed what
+  // was behind its place. It animates visibility, not opacity: WebKit kept
+  // drawing the slot's 3D content under an opacity of 0, a copy rising
+  // behind the sleeve (as DWX-30 found, Crate.css). It holds before its
+  // delay (fill: backwards) and lets go once the sleeve has gone.
+  useLayoutEffect(() => {
+    const slot = returningKey
+      ? [...(region.current?.querySelectorAll<HTMLElement>(".crate-slot") ?? [])].find(
+          (el) => el.dataset.key === returningKey,
+        )
+      : undefined;
+    const showing = slot?.animate(
+      [
+        { visibility: "hidden" },
+        { visibility: "hidden", offset: LANDS },
+        { visibility: "visible", offset: LANDS },
+        { visibility: "visible" },
+      ],
+      { ...FLY_BACK, fill: "backwards" },
+    );
+    return () => showing?.cancel();
+  }, [returningKey]);
+
   const slots = [];
   const last = Math.min(items.length - 1, focus + BEHIND);
   for (let i = Math.max(0, focus - AHEAD); i <= last; i++) {
@@ -114,6 +156,7 @@ const Crate = memo(function Crate({
         aria-hidden={d < 0 || d > BEHIND - 1 || undefined}
         className={`crate-slot ${item.kind} ${d < 0 ? "past" : ""}`}
         data-front={d === 0 || undefined}
+        data-key={item.key}
         onClick={() => onPick(i)}
         style={{
           ...place(d, jitter),
@@ -148,7 +191,8 @@ const Crate = memo(function Crate({
   }
   return (
     <div
-      className={`crate ${dim ? "dim" : ""} ${hidden ? "away" : ""}`}
+      className={`crate ${dim ? "dim" : ""} ${rising ? "rising" : ""} ${hidden ? "away" : ""}`}
+      ref={region}
       role="region"
       aria-label="Your crate"
     >

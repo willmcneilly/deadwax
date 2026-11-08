@@ -158,5 +158,8 @@ export async function runScenario(c: Controller, run: Run): Promise<object> {
       return glow(c, run);
     case "search":
       return search(c);
+    case "putback":
+      // Only the app's own crate flies records back (CrateMeter.tsx).
+      throw new Error("The spike doesn't put records back: use --crate.");
   }
 }

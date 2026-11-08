@@ -12,7 +12,7 @@ export type Run = {
    * crate (DWX-21), which ignores `effects`.
    */
   target?: "spike" | "crate";
-  scenario: "idle" | "flip" | "pull" | "glow" | "search";
+  scenario: "idle" | "flip" | "pull" | "glow" | "search" | "putback";
   /** The 400-record crate instead of the real collection. */
   many: boolean;
   effects: Partial<Effects>;
@@ -23,6 +23,8 @@ export type Run = {
   steps?: number;
   /** For idle and glow: how long to measure. */
   seconds?: number;
+  /** For putback, the app's own crate only: how many put-backs. */
+  times?: number;
 };
 
 /** Must match RUN_EVENT in app/scripts/crateSpikeServer.ts. */
