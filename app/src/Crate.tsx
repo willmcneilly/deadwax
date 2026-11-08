@@ -113,23 +113,29 @@ const Crate = memo(function Crate({
   hidden,
   onPick,
 }: Props) {
-  const slotEls = useRef(new Map<string, HTMLElement>());
+  const region = useRef<HTMLDivElement>(null);
 
   // The place of a record flying back stays empty until the sleeve is over
   // it and starts to fade (LANDS), then shows under it. It's timed by an
   // animation with the flight's own timing, started in the same commit as
   // the flight (Sleeve's layout effect), so both run on one clock: a timer
-  // on the main thread could fire late, and the fading sleeve showed what
-  // was behind its place. It holds before its delay (fill: backwards) and
-  // lets go once the sleeve has gone.
+  // that set React state could land late, and the fading sleeve showed what
+  // was behind its place. It animates visibility, not opacity: WebKit kept
+  // drawing the slot's 3D content under an opacity of 0, a copy rising
+  // behind the sleeve (as DWX-30 found, Crate.css). It holds before its
+  // delay (fill: backwards) and lets go once the sleeve has gone.
   useLayoutEffect(() => {
-    const slot = returningKey ? slotEls.current.get(returningKey) : undefined;
+    const slot = returningKey
+      ? [...(region.current?.querySelectorAll<HTMLElement>(".crate-slot") ?? [])].find(
+          (el) => el.dataset.key === returningKey,
+        )
+      : undefined;
     const showing = slot?.animate(
       [
-        { opacity: 0 },
-        { opacity: 0, offset: LANDS },
-        { opacity: 1, offset: LANDS },
-        { opacity: 1 },
+        { visibility: "hidden" },
+        { visibility: "hidden", offset: LANDS },
+        { visibility: "visible", offset: LANDS },
+        { visibility: "visible" },
       ],
       { ...FLY_BACK, fill: "backwards" },
     );
@@ -145,15 +151,12 @@ const Crate = memo(function Crate({
     slots.push(
       <div
         key={item.key}
-        ref={(el) => {
-          if (el) slotEls.current.set(item.key, el);
-          else slotEls.current.delete(item.key);
-        }}
         role="button"
         aria-label={label(item, d === 0)}
         aria-hidden={d < 0 || d > BEHIND - 1 || undefined}
         className={`crate-slot ${item.kind} ${d < 0 ? "past" : ""}`}
         data-front={d === 0 || undefined}
+        data-key={item.key}
         onClick={() => onPick(i)}
         style={{
           ...place(d, jitter),
@@ -189,6 +192,7 @@ const Crate = memo(function Crate({
   return (
     <div
       className={`crate ${dim ? "dim" : ""} ${rising ? "rising" : ""} ${hidden ? "away" : ""}`}
+      ref={region}
       role="region"
       aria-label="Your crate"
     >

@@ -142,10 +142,10 @@ describe("The sleeve", () => {
     expect(flight?.keyframes[1]).toMatchObject({ opacity: 1, offset: LANDS });
     expect(flight?.keyframes.at(-1)).toMatchObject({ opacity: 0 });
     expect(showing?.keyframes).toEqual([
-      { opacity: 0 },
-      { opacity: 0, offset: LANDS },
-      { opacity: 1, offset: LANDS },
-      { opacity: 1 },
+      { visibility: "hidden" },
+      { visibility: "hidden", offset: LANDS },
+      { visibility: "visible", offset: LANDS },
+      { visibility: "visible" },
     ]);
     // Nothing else hides it, so the animation alone decides.
     expect(place()).not.toHaveStyle({ visibility: "hidden" });
