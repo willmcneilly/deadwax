@@ -22,6 +22,17 @@
   }
 }
 
+/*
+ * A record out and not playing: its colours come up faint and still as the
+ * sleeve flies out, so looking at a record already shows its palette, and
+ * playing still looks different (DWX-32, provisional: D-1). The fade is the
+ * sleeve's flight, 0.95s.
+ */
+.glow.out {
+  opacity: 0.3;
+  transition: opacity 0.95s ease-out;
+}
+
 /* The needle is dropping: it warms, slowly, to a third. */
 .glow.warming {
   opacity: 0.38;
@@ -40,6 +51,7 @@
 }
 
 .glow.off .glow-pool,
+.glow.out .glow-pool,
 .glow.paused .glow-pool {
   animation-play-state: paused;
 }

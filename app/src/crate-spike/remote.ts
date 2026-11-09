@@ -12,7 +12,7 @@ export type Run = {
    * crate (DWX-21), which ignores `effects`.
    */
   target?: "spike" | "crate";
-  scenario: "idle" | "flip" | "pull" | "glow" | "search" | "putback";
+  scenario: "idle" | "flip" | "pull" | "glow" | "out" | "search" | "putback";
   /** The 400-record crate instead of the real collection. */
   many: boolean;
   effects: Partial<Effects>;

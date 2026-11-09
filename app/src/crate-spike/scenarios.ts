@@ -127,6 +127,24 @@ async function glow(c: Controller, run: Run) {
   return { frames, longestCommitMs };
 }
 
+/**
+ * A record pulled out and not playing, in its still glow (DWX-32): the
+ * same 10 seconds as the glow, with nothing drifting.
+ */
+async function out(c: Controller, run: Run) {
+  c.setFocus(Math.min(1, c.count() - 1));
+  await wait(600);
+  c.pull(false);
+  // Let the sleeve land and the still glow fade in.
+  await wait(2000);
+  c.takeLongestCommit();
+  const frames = await measure((run.seconds ?? 10) * 1000);
+  const longestCommitMs = c.takeLongestCommit();
+  c.putBack();
+  await wait(1000);
+  return { frames, longestCommitMs };
+}
+
 /** Search open over the crate: opening it, then scrolling the covers. */
 async function search(c: Controller) {
   c.setFocus(Math.min(3, c.count() - 1));
@@ -156,6 +174,8 @@ export async function runScenario(c: Controller, run: Run): Promise<object> {
       return pull(c, run);
     case "glow":
       return glow(c, run);
+    case "out":
+      return out(c, run);
     case "search":
       return search(c);
     case "putback":

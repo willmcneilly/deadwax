@@ -1,5 +1,6 @@
 // The glow behind a playing record (RFC-002, "4. The UI"): a few soft pools
-// of the album's key colours drifting over the room behind the glow. It
+// of the album's key colours drifting over the room behind the glow. A
+// record out and not playing has it faint and still (provisional: D-1). It
 // warms to a third while the needle drops, comes up fully once Spotify says
 // it's playing, and settles lower, still, while paused. A stranger's record,
 // or one whose palette isn't worked out yet, has theme.css's plain one.
@@ -12,7 +13,7 @@ import AlbumColours from "./AlbumColours";
 import type { Palette } from "./api";
 import "./Glow.css";
 
-export type GlowLevel = "off" | "warming" | "on" | "paused";
+export type GlowLevel = "off" | "out" | "warming" | "on" | "paused";
 
 const POOLS = [0, 1, 2, 3, 4];
 

@@ -282,7 +282,11 @@ function Library({ name }: Props) {
           : "on"
       : advertOut
         ? "paused"
-        : "off";
+        : out && !out.returning
+          ? // Out and not playing: its colours, faint and still
+            // (provisional: D-1).
+            "out"
+          : "off";
   const floating = !!out && out.nowPlaying && !out.returning && turns % 2 === 0;
 
   const itemsRef = useRef(items);
