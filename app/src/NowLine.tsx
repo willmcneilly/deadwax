@@ -1,5 +1,6 @@
 // Now playing (RFC-002, "4. The UI"): the line under the floating record,
-// and the chip that stands for it when the record is back in the crate.
+// the record's name in its place while it's out and not playing, and the
+// chip that stands for it when the record is back in the crate.
 // Each names the device it's on, which brings up the device list.
 //
 // The clock counts on from Spotify's last answer by itself, writing only its
@@ -94,6 +95,29 @@ export function NowLine({
           <OpenInSpotify spotifyId={live.spotifyAlbumId} onFailed={onFailed} />
         )}
       </p>
+    </section>
+  );
+}
+
+/**
+ * The line under a record that's out and not playing: its artist, title and
+ * year, set like now playing's line and in the same place, so pressing play
+ * turns one into the other (provisional: D-3).
+ */
+export function NameLine({
+  artist,
+  title,
+  year,
+}: {
+  artist: string;
+  title: string;
+  year: number | null;
+}) {
+  return (
+    <section className="now-line name-line" aria-label="Record out">
+      <p className="now-side">{artist}</p>
+      <h1 className="now-title">{title}</h1>
+      {year !== null && <p className="now-album">{year}</p>}
     </section>
   );
 }

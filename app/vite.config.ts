@@ -40,6 +40,6 @@ export default defineConfig({
     // Vitest hands back an empty string for CSS unless told otherwise. The
     // crate's tests read its shade rules as text (DWX-31), and the glow's its
     // levels (DWX-32).
-    css: { include: [/(Crate|Glow)\.css\?raw$/] },
+    css: { include: [/(Crate|Glow|Sleeve)\.css\?raw$/] },
   },
 });
