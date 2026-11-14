@@ -11,15 +11,25 @@
   z-index: 9;
 }
 
+/*
+ * The sleeve and, under it, the desk: its name while you look at it, now
+ * playing's line while it plays. The two are one column in the middle of
+ * the room, and the sleeve gives way to the line in a short window rather
+ * than the line to the window (provisional: D-3).
+ */
 .sleeve-out {
-  --h: min(70vh, 66vw); /* the sleeve you've pulled out */
+  /* The desk: its gap under the sleeve, and room for a name with two lines of title. */
+  --line: calc(var(--space) * 20);
+  --margin: calc(var(--space) * 2);
+  --h: min(76vh, 66vw, 100vh - var(--line) - var(--margin) * 2); /* the sleeve you've pulled out */
 
   position: absolute;
   inset: 0;
   z-index: 10;
-  display: grid;
-  place-items: center;
-  padding-bottom: calc(var(--space) * 14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
 
@@ -34,6 +44,7 @@
 
 .sleeve-lift {
   position: relative;
+  flex: none;
   width: var(--h);
   height: var(--h);
   perspective: 1800px;
@@ -60,12 +71,24 @@
   transition: transform 0.95s cubic-bezier(.3, .7, .2, 1);
 }
 
-.sleeve-out.floating .sleeve-offset {
-  transform: translateY(-7vh) scale(0.84);
+/*
+ * How far it rises, and how much it shrinks about its middle. The desk
+ * reads them too, to rise with the sleeve's bottom edge. It rose 7vh when
+ * now playing's line had to find room under it; the desk keeps that room
+ * now, so it rises only a little (provisional: D-3).
+ */
+.sleeve-out.floating {
+  --rise: 2vh;
+  --shrink: 0.84;
 }
 
-.sleeve-out.floating.starting .sleeve-offset {
-  transform: translateY(-5vh) scale(0.86);
+.sleeve-out.floating.starting {
+  --rise: 1vh;
+  --shrink: 0.86;
+}
+
+.sleeve-out.floating .sleeve-offset {
+  transform: translateY(calc(-1 * var(--rise))) scale(var(--shrink));
 }
 
 .sleeve-out.floating:not(.starting) .sleeve-float {
@@ -311,28 +334,37 @@
 
 /* ---------- where it plays ---------- */
 
+/*
+ * Under the sleeve: the record's name while it's out, and now playing's
+ * line in the same place while it floats. Its top is where the line
+ * starts, so the two swap without a jump, and it rises with the floating
+ * sleeve's bottom edge, on the sleeve's own clock (provisional: D-3).
+ */
 .sleeve-desk {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--space) * 9);
+  flex: none;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space);
+  width: 100%;
+  height: var(--line);
+  padding-top: calc(var(--space) * 2);
   pointer-events: auto;
   font-size: 0.85rem;
-  transition: opacity 0.4s;
+  transition:
+    transform 0.95s cubic-bezier(.3, .7, .2, 1),
+    opacity 0.4s;
 }
 
-.sleeve-out.away .sleeve-desk {
+.sleeve-out.away .sleeve-desk,
+.sleeve-out.returning .sleeve-desk {
   opacity: 0;
   pointer-events: none;
 }
 
-/* Now playing's line takes the desk while the record floats. */
 .sleeve-out.floating .sleeve-desk {
-  bottom: calc(var(--space) * 5);
+  transform: translateY(calc(-1 * var(--rise) - (1 - var(--shrink)) / 2 * var(--h)));
 }
 
 /* ---------- a stranger's record ---------- */

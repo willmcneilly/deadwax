@@ -613,6 +613,110 @@ describe("A record out, not playing", () => {
   });
 });
 
+describe("The record out, named under its sleeve", () => {
+  const nameLine = () => screen.getByRole("region", { name: "Record out" });
+  const desk = () => document.querySelector(".sleeve-desk") as HTMLElement;
+
+  it("names it under the sleeve, set like now playing's line, while it's out and not playing", async () => {
+    playingBackEnd();
+    render(<Library name="Will" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" }),
+    );
+
+    // Its artist, title and year, in now playing's own styles, under the sleeve.
+    expect(desk()).toContainElement(nameLine());
+    expect(nameLine().querySelector(".now-side")).toHaveTextContent("Radiohead");
+    expect(
+      within(nameLine()).getByRole("heading", { name: "In Rainbows" }),
+    ).toHaveClass("now-title");
+    expect(nameLine().querySelector(".now-album")).toHaveTextContent("2007");
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
+    // The crate's own caption is hidden behind it, as before.
+    expect(document.querySelector(".caption")).toHaveClass("hidden");
+  });
+
+  it("stays named when it's turned over", async () => {
+    playingBackEnd();
+    render(<Library name="Will" />);
+    await turnOverInRainbows();
+
+    expect(
+      within(nameLine()).getByRole("heading", { name: "In Rainbows" }),
+    ).toBeInTheDocument();
+  });
+
+  it("turns into now playing's line in the same place when a track is pressed", async () => {
+    const calls = playingBackEnd();
+    render(<Library name="Will" />);
+    await turnOverInRainbows();
+    const before = desk();
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Nude" }));
+
+    // The same desk under the sleeve, now with now playing's line in it.
+    expect(desk()).toBe(before);
+    expect(desk()).toContainElement(nowLine());
+    expect(screen.queryByRole("region", { name: "Record out" })).toBeNull();
+    await waitFor(() => expect(calls.map((c) => c.cmd)).toContain("play_album"));
+    play(IN_RAINBOWS, NUDE);
+    await poll();
+    await waitFor(() => expect(side()).toBe("Side A · 3"));
+    expect(desk()).toBe(before);
+  });
+
+  it("is named again when the record playing is turned over, and playing again turned back", async () => {
+    await playNude();
+
+    fireEvent.click(screen.getByRole("button", { name: "Turn In Rainbows over" }));
+    await waitFor(() => expect(document.querySelector(".sleeve-out")).not.toHaveClass("floating"));
+    expect(within(nameLine()).getByRole("heading", { name: "In Rainbows" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "Enter" });
+    await waitFor(() => expect(side()).toBe("Side A · 3"));
+    expect(screen.queryByRole("region", { name: "Record out" })).toBeNull();
+  });
+
+  it("is named again when the music stops", async () => {
+    await playNude();
+
+    playing = null;
+    await poll();
+
+    await waitFor(() =>
+      expect(within(nameLine()).getByRole("heading", { name: "In Rainbows" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
+  });
+
+  it("fades with the record as it goes back into the crate", async () => {
+    playingBackEnd();
+    render(<Library name="Will" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" }),
+    );
+    expect(document.querySelector(".sleeve-out")).not.toHaveClass("returning");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.querySelector(".sleeve-out")).toHaveClass("returning");
+  });
+
+  it("names a record with no year by its artist and title alone", async () => {
+    playingBackEnd({
+      get_collection: () => COLLECTION.map((a) => (a.id === IN_RAINBOWS.id ? { ...a, year: null } : a)),
+    });
+    render(<Library name="Will" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull out In Rainbows by Radiohead" }),
+    );
+
+    expect(within(nameLine()).getByRole("heading", { name: "In Rainbows" })).toBeInTheDocument();
+    expect(nameLine().querySelector(".now-album")).toBeNull();
+  });
+});
+
 describe("A stranger's record", () => {
   const STRANGER = card(9, {
     id: "deadwax-9",
@@ -640,6 +744,9 @@ describe("A stranger's record", () => {
     expect(glow()).toHaveClass("on");
     expect(glow().getAttribute("style") ?? "").not.toContain("--album-");
     expect(side()).toBe("Not in your crate");
+    // Its line is in the same place as a record's: the desk under the sleeve.
+    expect(document.querySelector(".sleeve-out.floating .sleeve-desk")).toContainElement(nowLine());
+    expect(nowLine()).toHaveTextContent("Massive Attack — Blue Lines");
 
     fireEvent.click(within(nowLine()).getByRole("button", { name: "Add to the crate" }));
 

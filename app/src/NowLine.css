@@ -47,6 +47,24 @@
   opacity: 0.75;
 }
 
+/*
+ * The record's name, in the line's place while it's out and not playing
+ * (provisional: D-3). It comes up as the sleeve lands, and a long title
+ * stops at two lines, so it stays in the room kept for it under the sleeve.
+ */
+.name-line {
+  animation-delay: 0.3s;
+}
+
+.name-line .now-title {
+  display: -webkit-box;
+  line-height: 1.1;
+  overflow: hidden;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .now-bar {
   display: flex;
   align-items: center;

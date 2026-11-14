@@ -3,7 +3,8 @@
 // tracklist in sides, the year and the label, Open in Spotify and a quiet way
 // to take it out of the crate. Picking a track drops the needle: the album
 // plays from there, on the remembered device, and the record turns to its
-// front and floats while it plays, with now playing's line under it.
+// front and floats while it plays, with now playing's line under it. While
+// it doesn't, its name is there instead: the artist, the title and the year.
 //
 // Kept to DESIGN.md's rules: no CSS filter on the cover (rule 3), the back is
 // built the first time it's turned over (rule 4), and the 1600 the crate
@@ -24,7 +25,7 @@ import {
 } from "./api";
 import { SleeveFront } from "./Crate";
 import { FADE, FLY_BACK, LANDS } from "./flight";
-import { NowLine } from "./NowLine";
+import { NameLine, NowLine } from "./NowLine";
 import type { Place } from "./place";
 import { playingTrack, type Live } from "./playing";
 import { duration, sides } from "./sides";
@@ -187,7 +188,7 @@ function Sleeve({
 
   return (
     <div
-      className={`sleeve-out ${floating ? "floating" : ""} ${starting ? "starting" : ""} ${away ? "away" : ""}`}
+      className={`sleeve-out ${floating ? "floating" : ""} ${starting ? "starting" : ""} ${away ? "away" : ""} ${returning ? "returning" : ""}`}
     >
       <div className="sleeve-lift" ref={lift}>
         <div className="sleeve-offset">
@@ -249,13 +250,15 @@ function Sleeve({
         </div>
       </div>
       <div className="sleeve-desk">
-        {floating && live && (
+        {floating && live ? (
           <NowLine
             live={live}
             tracks={details?.tracks ?? null}
             onDevice={onDevice}
             onFailed={onFailed}
           />
+        ) : (
+          <NameLine artist={album.artist} title={album.title} year={album.year} />
         )}
       </div>
     </div>

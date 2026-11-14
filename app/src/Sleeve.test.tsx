@@ -12,6 +12,7 @@ import {
 import Library from "./Library";
 import { backEnd } from "./mockBackEnd";
 import { FADE, FLY_BACK, LANDS } from "./flight";
+import sleeveCss from "./Sleeve.css?raw";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -453,5 +454,39 @@ describe("The sleeve", () => {
       "href",
       `https://open.spotify.com/album/${IN_RAINBOWS.spotifyId}`,
     );
+  });
+});
+
+/** The declarations of the rule with exactly this selector. */
+function rule(selector: string): string {
+  const at = sleeveCss.indexOf(`\n${selector} {`);
+  if (at < 0) throw new Error(`no rule for ${selector}`);
+  return sleeveCss.slice(at, sleeveCss.indexOf("}", at));
+}
+
+const declaration = (selector: string, property: string) =>
+  new RegExp(`\\n\\s*${property}:\\s*([^;]+);`).exec(rule(selector))?.[1].replace(/\s+/g, " ");
+
+describe("The line under the sleeve", () => {
+  it("keeps the room under the sleeve for its line, whatever the window's height", () => {
+    // The sleeve gives way to the line, rather than the line to the window.
+    expect(declaration(".sleeve-out", "--h")).toBe("min(76vh, 66vw, 100vh - var(--line) - var(--margin) * 2)");
+    expect(declaration(".sleeve-desk", "height")).toBe("var(--line)");
+  });
+
+  it("rises with the floating sleeve's bottom edge, on the same clock, so its line doesn't jump", () => {
+    // The sleeve rises by --rise and shrinks about its middle to --shrink, so
+    // its bottom edge rises by --rise and half of what it lost.
+    expect(declaration(".sleeve-out.floating .sleeve-offset", "transform")).toBe(
+      "translateY(calc(-1 * var(--rise))) scale(var(--shrink))",
+    );
+    expect(declaration(".sleeve-out.floating .sleeve-desk", "transform")).toBe(
+      "translateY(calc(-1 * var(--rise) - (1 - var(--shrink)) / 2 * var(--h)))",
+    );
+    expect(declaration(".sleeve-out.floating", "--rise")).toBe("2vh");
+    expect(declaration(".sleeve-out.floating.starting", "--rise")).toBe("1vh");
+    const offset = declaration(".sleeve-offset", "transition") as string;
+    expect(offset).toMatch(/^transform /);
+    expect(declaration(".sleeve-desk", "transition")).toContain(offset);
   });
 });
