@@ -34,6 +34,11 @@ describe("readLog", () => {
     expect(readLog(log)).toEqual({ ready: true, failure: undefined, progress: "launching the app" });
   });
 
+  it("is ready once cargo launches deadwax-app through scripts/dev-sign", () => {
+    const log = `${vite}     Running \`${TREE}/scripts/dev-sign run ${TREE}/target/debug/deadwax-app\`\n`;
+    expect(readLog(log)).toMatchObject({ ready: true, progress: "launching the app" });
+  });
+
   it("reports the latest compile progress", () => {
     const log = `${vite}    Building [=> ] 12/370: syn\n    Building [==> ] 124/370: syn\n`;
     expect(readLog(log)).toMatchObject({ ready: false, progress: "compiling 124/370" });

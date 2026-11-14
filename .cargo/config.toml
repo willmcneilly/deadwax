@@ -1,0 +1,8 @@
+# Cargo runs every binary it builds on macOS (`cargo run`, `cargo test`, and so
+# `npm run tauri dev` and `scripts/dev-app`) through scripts/dev-sign. It signs
+# a debug deadwax-app with one Apple Development identity, so the Keychain asks
+# once rather than for every build and worktree (DWX-36), and runs everything
+# else untouched. Without that identity (CI, a fresh clone) it runs the app
+# ad-hoc signed, as before. `scripts/dev-sign --help` has the one-time setup.
+[target.'cfg(target_os = "macos")']
+runner = ["scripts/dev-sign", "run"]
