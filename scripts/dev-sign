@@ -42,6 +42,11 @@ One-time setup (in Xcode, about two minutes):
   1. Xcode → Settings → Accounts → + → Apple ID, and sign in.
   2. Select your Personal Team, then Manage Certificates → + → Apple Development.
   3. Check: `security find-identity -v -p codesigning` lists "Apple Development: …".
+     If it says "0 valid identities found" but `security find-identity -p codesigning`
+     lists the certificate, the Mac lacks the intermediate that issued it. Download
+     Apple's "Worldwide Developer Relations - G3" certificate from
+     https://www.apple.com/certificateauthority/ (AppleWWDRCAG3.cer), double-click
+     it to add it to the login keychain, and check again.
 Then start a dev build (`scripts/dev-app start`). Expect two prompts, once each:
   - "codesign wants to sign using key …": enter your login password, Always Allow;
   - "deadwax-app wants to use … com.willmcneilly.deadwax": Always Allow.
