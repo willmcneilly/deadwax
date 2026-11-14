@@ -19,13 +19,17 @@ const RUST = [
   // that the UI's tests fail with the sentences Rust really says.
   "app/src/Account.tsx",
   "app/src/mockBackEnd.ts",
+  // Cargo runs every test binary through scripts/dev-sign (DWX-36).
+  ".cargo/",
+  "scripts/dev-sign",
 ];
 
 /**
  * The frontend: the app without its Rust side. app/scripts/ is in it, so
- * these jobs check scripts/check itself.
+ * these jobs check scripts/check itself, and scripts/dev-sign, which its
+ * tests run.
  */
-const FRONTEND = ["app/", "!app/src-tauri/"];
+const FRONTEND = ["app/", "!app/src-tauri/", "scripts/dev-sign"];
 
 /**
  * The release build only breaks locally in ways CI wouldn't catch first when

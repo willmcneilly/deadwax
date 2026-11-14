@@ -18,7 +18,8 @@ app/src-tauri           the app's Rust side (the `deadwax-app` crate)
 app/src-tauri/sample-notes  five liner-notes essays the Develop menu imports
 docs/rfcs               RFCs (Notion is the source of truth once accepted)
 docs/plans              project plans: tickets, order, checkpoints
-scripts                 the repository's own tools (`check`, `warm`, `ticket`, `dev-app`; for reviewers `review-setup`, `ci-wait`, `mutate`; each with `--help`, their logic in app/scripts) and CI's release check
+scripts                 the repository's own tools (`check`, `warm`, `ticket`, `dev-app`, `dev-sign`; for reviewers `review-setup`, `ci-wait`, `mutate`; each with `--help`, their logic in app/scripts, except `dev-sign`, which is plain sh) and CI's release check
+.cargo/config.toml      runs every binary cargo builds on macOS through `scripts/dev-sign` (Signing dev builds, below)
 .githooks               git hooks: pre-push runs `scripts/check`, post-checkout warms a new worktree
 .github/workflows       CI
 .dev-data/              a development build's database, one per checkout (ignored by git)
@@ -36,6 +37,7 @@ scripts/warm                                        # give a new worktree a warm
 scripts/dev-app start                               # open this checkout's app on a free port from 1440, titled with its branch
 scripts/dev-app status                              # is it up, which commit and port, any errors since it started
 scripts/dev-app stop                                # stop it: tauri dev, Vite and the app
+scripts/dev-sign status target/debug/deadwax-app    # which signing identity dev builds use, and how this build is signed
 scripts/ticket ready                                # a ticket's Notion and GitHub steps: show, ready, claim, tick, evidence-check, sync, merge
 scripts/review-setup <pr>                           # a review round's PR, history, CI and warm worktree, in one go
 scripts/ci-wait <pr> --commit <sha>                 # wait for CI on that commit: exit 0 green, 1 red, 2 no checks, 3 timeout
@@ -63,11 +65,17 @@ scripts/check-release-has-no-dev-list.sh            # the release build has no d
 `cargo build`/`clippy`/`test` compile the app crate in dev mode, so they don't need `app/dist`. Only `tauri build` needs the frontend built, and it does that itself.
 
 **Before opening a PR, run `scripts/check` and fix everything it reports.** It runs the checks above that the change needs, against `origin/main`, in parallel:
-- Rust (fmt, clippy, test) when `crates/`, `app/src-tauri/`, `Cargo.*`, `rust-toolchain.toml`, `app/src/Account.tsx` or `app/src/mockBackEnd.ts` (Rust tests read them) changed;
-- the frontend checks (typecheck, lint, test) when anything else under `app/` changed, `app/scripts/` included;
+- Rust (fmt, clippy, test) when `crates/`, `app/src-tauri/`, `Cargo.*`, `rust-toolchain.toml`, `.cargo/`, `scripts/dev-sign`, `app/src/Account.tsx` or `app/src/mockBackEnd.ts` (Rust tests read them) changed;
+- the frontend checks (typecheck, lint, test) when anything else under `app/` changed, `app/scripts/` included, or `scripts/dev-sign` (its tests are there);
 - the release build and its dev-list check only when they could break: when `app/src-tauri/`, `app/package.json`, `crates/deadwax-core/src/dev_list*`, `scripts/check-release-has-no-dev-list.sh` or a Rust file containing `debug_assertions` changed. CI builds it on every PR.
 
 Each pass is stamped with the content it checked, so running it again is instant. `--all` runs every job and `--rerun` ignores earlier passes. It warns when `origin/main` has moved on. `git push` runs it through the pre-push hook and blocks a push that hasn't passed; don't skip that with `--no-verify`. CI runs the full set on `macos-15` on every PR.
+
+### Signing dev builds
+
+The Keychain remembers Always Allow on the Spotify item against the app's signature, and cargo's builds are ad-hoc signed, so without this every rebuild and every worktree asks again. `.cargo/config.toml` makes `scripts/dev-sign run` cargo's runner on macOS, so `cargo run`, `cargo test`, `npm run tauri dev` and `scripts/dev-app` all go through it. It signs a debug `deadwax-app` with an Apple Development identity and the identifier `com.willmcneilly.deadwax.dev` before it runs, and runs everything else (test binaries included) untouched. A self-signed certificate doesn't work: the Keychain also ties each item to the signature's Team ID, which only an Apple-issued certificate has. Without an identity (a fresh clone, CI) it prints one line and runs the app ad-hoc signed, as before.
+
+One-time setup, done by Will, not an agent (it changes his keychain): in Xcode, Settings → Accounts → + → sign in with an Apple ID → select the Personal Team → Manage Certificates → + → Apple Development. No paid account is needed. The next dev build asks twice, once each: codesign using the key (login password, Always Allow), and the Spotify item (Always Allow). The identity is found from `$DEADWAX_SIGNING_IDENTITY`, then `git config deadwax.signingIdentity`, then the first "Apple Development" identity in the keychain; no Team ID is committed. `scripts/dev-sign --help` has the details.
 
 ## Shell and tools
 
