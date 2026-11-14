@@ -1,5 +1,6 @@
 // Now playing (RFC-002, "4. The UI"): the line under the floating record,
-// the record's name in its place while it's out and not playing, and the chip that stands for it when the record is back in the crate.
+// the record's name in its place while it's out and not playing, and the
+// chip that stands for it when the record is back in the crate.
 // Each names the device it's on, which brings up the device list.
 //
 // The clock counts on from Spotify's last answer by itself, writing only its

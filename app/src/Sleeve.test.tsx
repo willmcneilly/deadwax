@@ -474,6 +474,22 @@ describe("The line under the sleeve", () => {
     expect(declaration(".sleeve-desk", "height")).toBe("var(--line)");
   });
 
+  it("lets clicks through to the room, which puts the record back, except on now playing's line", () => {
+    expect(declaration(".sleeve-desk", "pointer-events")).toBe("none");
+    expect(declaration(".sleeve-desk .now-line:not(.name-line)", "pointer-events")).toBe("auto");
+    // Nothing in it takes a click while it fades, away or going back.
+    expect(sleeveCss).toMatch(
+      /\n\.sleeve-out\.away \.sleeve-desk \*,\s*\.sleeve-out\.returning \.sleeve-desk \* \{\s*pointer-events: none;/,
+    );
+  });
+
+  it("fades as the record goes back into the crate, as it does for the gatefold", () => {
+    expect(sleeveCss).toMatch(
+      /\n\.sleeve-out\.away \.sleeve-desk,\s*\.sleeve-out\.returning \.sleeve-desk \{\s*opacity: 0;/,
+    );
+    expect(declaration(".sleeve-desk", "transition")).toContain("opacity 0.4s");
+  });
+
   it("rises with the floating sleeve's bottom edge, on the same clock, so its line doesn't jump", () => {
     // The sleeve rises by --rise and shrinks about its middle to --shrink, so
     // its bottom edge rises by --rise and half of what it lost.

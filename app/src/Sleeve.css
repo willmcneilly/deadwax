@@ -350,16 +350,29 @@
   width: 100%;
   height: var(--line);
   padding-top: calc(var(--space) * 2);
-  pointer-events: auto;
+  pointer-events: none;
   font-size: 0.85rem;
   transition:
     transform 0.95s cubic-bezier(.3, .7, .2, 1),
     opacity 0.4s;
 }
 
+/*
+ * The desk spans the room, so it lets clicks through to the room around
+ * the sleeve, which puts the record back. Only now playing's line, with its
+ * device and its links, takes them; the name has nothing to press.
+ */
+.sleeve-desk .now-line:not(.name-line) {
+  pointer-events: auto;
+}
+
 .sleeve-out.away .sleeve-desk,
 .sleeve-out.returning .sleeve-desk {
   opacity: 0;
+}
+
+.sleeve-out.away .sleeve-desk *,
+.sleeve-out.returning .sleeve-desk * {
   pointer-events: none;
 }
 
