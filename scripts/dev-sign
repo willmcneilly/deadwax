@@ -1,0 +1,129 @@
+#!/bin/sh
+# Signs development builds of deadwax-app with one Apple Development identity,
+# so the macOS Keychain sees every build, in every checkout, as the same app
+# (DWX-36). Cargo runs every binary on macOS through it (.cargo/config.toml).
+# `scripts/dev-sign --help` says how. Plain sh, so it runs anywhere cargo does,
+# CI included, with nothing to install.
+
+set -u
+
+IDENTIFIER=com.willmcneilly.deadwax.dev
+APP=deadwax-app
+
+help() {
+  cat <<'EOF'
+Usage: scripts/dev-sign run <binary> [args…]   sign a debug deadwax-app, then run it (cargo's runner)
+       scripts/dev-sign status [<binary>]      which identity it would use, and how a build is signed
+       scripts/dev-sign --help
+
+Why: macOS remembers "Always Allow" on the Spotify Keychain item against the
+app's signature. Cargo's builds are ad-hoc signed, so every rebuild and every
+worktree is a new app, and the Keychain asks again. A self-signed certificate
+doesn't help: the Keychain also ties each item to the signature's Team ID, and
+only an Apple-issued certificate has one. An Apple Development certificate
+(free, no paid account) gives every build the same Team ID and identity.
+
+`run` is cargo's runner for macOS (.cargo/config.toml), so `cargo run`,
+`cargo test`, `npm run tauri dev` and `scripts/dev-app` all go through it.
+It signs only a debug build of deadwax-app, with the identifier
+com.willmcneilly.deadwax.dev, and only when the build isn't signed that way
+already. Every other binary (test binaries included) runs untouched. With no
+identity (a fresh clone, CI), or if codesign fails, the app runs ad-hoc signed
+as before, after a one-line note.
+
+The identity, first found wins:
+  1. $DEADWAX_SIGNING_IDENTITY
+  2. git config deadwax.signingIdentity   (local to this clone, shared by its worktrees)
+  3. the first valid "Apple Development" identity in your keychains
+Each is a name as `security find-identity -v -p codesigning` prints it, or its
+SHA-1 hash. Nothing about it is committed to the repository.
+
+One-time setup (in Xcode, about two minutes):
+  1. Xcode → Settings → Accounts → + → Apple ID, and sign in.
+  2. Select your Personal Team, then Manage Certificates → + → Apple Development.
+  3. Check: `security find-identity -v -p codesigning` lists "Apple Development: …".
+     If it says "0 valid identities found" but `security find-identity -p codesigning`
+     lists the certificate, the Mac lacks the intermediate that issued it. Download
+     Apple's "Worldwide Developer Relations - G3" certificate from
+     https://www.apple.com/certificateauthority/ (AppleWWDRCAG3.cer), double-click
+     it to add it to the login keychain, and check again.
+Then start a dev build (`scripts/dev-app start`). Expect two prompts, once each:
+  - "codesign wants to sign using key …": enter your login password, Always Allow;
+  - "deadwax-app wants to use … com.willmcneilly.deadwax": Always Allow.
+After that, no rebuild or worktree asks again. The certificate lasts a year;
+when Xcode renews it, codesign (and maybe the Keychain) asks once more.
+EOF
+}
+
+note() { printf 'dev-sign: %s\n' "$*" >&2; }
+
+# Prints the identity to sign with (a name or SHA-1 hash), or nothing.
+identity() {
+  if [ -n "${DEADWAX_SIGNING_IDENTITY:-}" ]; then
+    printf '%s\n' "$DEADWAX_SIGNING_IDENTITY"
+    return
+  fi
+  configured=$(git -C "$(dirname "$0")" config --get deadwax.signingIdentity 2>/dev/null || true)
+  if [ -n "$configured" ]; then
+    printf '%s\n' "$configured"
+    return
+  fi
+  # Lines look like:  1) 0123…ABCD "Apple Development: Name (TEAMID)"
+  security find-identity -v -p codesigning 2>/dev/null |
+    awk '/"Apple Development: / { print $2; exit }'
+}
+
+# True when the binary is already signed with our identifier and a Team ID, so
+# a run without a rebuild doesn't sign it again.
+signed_already() {
+  details=$(codesign -dvv "$1" 2>&1) || return 1
+  printf '%s\n' "$details" | grep -qx "Identifier=$IDENTIFIER" || return 1
+  printf '%s\n' "$details" | grep -q '^TeamIdentifier=' || return 1
+  ! printf '%s\n' "$details" | grep -qx 'TeamIdentifier=not set'
+}
+
+# Only a debug build of the app is signed: `…/debug/deadwax-app`, with or
+# without a target triple in the path.
+is_dev_app() {
+  case "$1" in
+    */debug/"$APP") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+run() {
+  if [ $# -eq 0 ]; then
+    note "run needs a binary. See scripts/dev-sign --help."
+    exit 64
+  fi
+  binary=$1
+  if is_dev_app "$binary" && ! signed_already "$binary"; then
+    id=$(identity)
+    if [ -z "$id" ]; then
+      note "no Apple Development certificate, so $APP runs ad-hoc signed and the Keychain will ask again (one-time setup: scripts/dev-sign --help)."
+    elif ! output=$(codesign --force --sign "$id" --identifier "$IDENTIFIER" --timestamp=none "$binary" 2>&1); then
+      note "codesign failed, so $APP runs ad-hoc signed: $(printf '%s' "$output" | tail -n 1)"
+    fi
+  fi
+  exec "$@"
+}
+
+status() {
+  id=$(identity)
+  if [ -n "$id" ]; then
+    printf 'identity: %s\n' "$id"
+  else
+    printf 'identity: none (one-time setup: scripts/dev-sign --help)\n'
+  fi
+  if [ $# -gt 0 ]; then
+    codesign -dvv "$1" 2>&1 | grep -E '^(Identifier|Signature|Authority|TeamIdentifier)=' | sed 's/^/  /'
+    codesign -d -r- "$1" 2>&1 | sed -n 's/^designated => /  designated requirement: /p'
+  fi
+}
+
+case "${1:-}" in
+  run) shift; run "$@" ;;
+  status) shift; status "$@" ;;
+  -h | --help | help) help ;;
+  *) help >&2; exit 64 ;;
+esac
